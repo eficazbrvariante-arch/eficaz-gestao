@@ -1,0 +1,320 @@
+import { prisma } from "@/lib/prisma";
+import type { CreateSaleInput } from "@/lib/validations/sale";
+
+/** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
+const CENT = 0.005;
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export type CreateSaleContext = {
+  tenantId: string;
+  sellerId: string;
+  cashRegisterId: string;
+  /** Se falso, qualquer desconto informado é rejeitado. */
+  allowDiscount: boolean;
+};
+
+export type CreateSaleResult =
+  | { ok: true; saleId: string; number: number; changeAmount: number }
+  | { ok: false; error: string };
+
+/**
+ * Registra uma venda do PDV.
+ *
+ * Tudo acontece numa única transação: numeração sequencial, itens, pagamentos,
+ * baixa de estoque e movimentações. Se qualquer passo falhar, nada é gravado —
+ * o estoque nunca fica divergente de uma venda pela metade.
+ *
+ * O preço usado é o promocional quando existir, senão o de venda. O preço não vem
+ * do cliente: é sempre relido do banco, para que ninguém consiga forjar valores.
+ */
+export async function createSale(
+  ctx: CreateSaleContext,
+  input: CreateSaleInput
+): Promise<CreateSaleResult> {
+  const productIds = [...new Set(input.items.map((i) => i.productId))];
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds }, tenantId: ctx.tenantId },
+    include: { variants: true },
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  // Consolida quantidades por produto (o mesmo item pode vir repetido).
+  const quantityByProduct = new Map<string, number>();
+  for (const item of input.items) {
+    quantityByProduct.set(
+      item.productId,
+      (quantityByProduct.get(item.productId) ?? 0) + item.quantity
+    );
+  }
+
+  type ResolvedItem = {
+    productId: string;
+    variantId: string | null;
+    nameSnapshot: string;
+    quantity: number;
+    unitPrice: number;
+    unitCost: number;
+    total: number;
+  };
+
+  const resolvedItems: ResolvedItem[] = [];
+  let subtotal = 0;
+  let costTotal = 0;
+
+  for (const item of input.items) {
+    const product = productMap.get(item.productId);
+    if (!product) return { ok: false, error: "Produto não encontrado na venda." };
+    if (!product.active) {
+      return { ok: false, error: `O produto "${product.name}" está inativo.` };
+    }
+
+    const variant = item.variantId
+      ? product.variants.find((v) => v.id === item.variantId)
+      : undefined;
+    if (item.variantId && !variant) {
+      return { ok: false, error: `Variação inválida para "${product.name}".` };
+    }
+
+    const basePrice = Number(product.promoPrice ?? product.salePrice);
+    const unitPrice = round2(basePrice + Number(variant?.priceAdjustment ?? 0));
+    const unitCost = Number(product.costPrice);
+    const total = round2(unitPrice * item.quantity);
+
+    resolvedItems.push({
+      productId: product.id,
+      variantId: variant?.id ?? null,
+      nameSnapshot: variant ? `${product.name} (${variant.name})` : product.name,
+      quantity: item.quantity,
+      unitPrice,
+      unitCost,
+      total,
+    });
+
+    subtotal = round2(subtotal + total);
+    costTotal = round2(costTotal + unitCost * item.quantity);
+  }
+
+  // Estoque: valida o total consolidado por produto.
+  for (const [productId, quantity] of quantityByProduct) {
+    const product = productMap.get(productId)!;
+    if (product.stockQty < quantity) {
+      return {
+        ok: false,
+        error: `Estoque insuficiente de "${product.name}": ${product.stockQty} disponível(is), ${quantity} solicitada(s).`,
+      };
+    }
+  }
+
+  const discount = round2(input.discount ?? 0);
+  if (discount > 0 && !ctx.allowDiscount) {
+    return { ok: false, error: "Seu perfil não tem permissão para conceder descontos." };
+  }
+  if (discount > subtotal + CENT) {
+    return { ok: false, error: "O desconto não pode ser maior que o subtotal." };
+  }
+
+  const total = round2(subtotal - discount);
+
+  const paidAmount = round2(input.payments.reduce((sum, p) => sum + p.amount, 0));
+  if (Math.abs(paidAmount - total) > CENT) {
+    return {
+      ok: false,
+      error: `A soma dos pagamentos (${paidAmount.toFixed(2)}) não corresponde ao total da venda (${total.toFixed(2)}).`,
+    };
+  }
+
+  // Troco: só faz sentido quando parte do pagamento é em dinheiro.
+  const cashPortion = round2(
+    input.payments.filter((p) => p.method === "CASH").reduce((sum, p) => sum + p.amount, 0)
+  );
+  let changeAmount = 0;
+  let cashReceived: number | null = null;
+
+  if (cashPortion > 0 && input.cashReceived !== undefined) {
+    cashReceived = round2(input.cashReceived);
+    if (cashReceived + CENT < cashPortion) {
+      return { ok: false, error: "O valor recebido em dinheiro é menor que a parcela em espécie." };
+    }
+    changeAmount = round2(cashReceived - cashPortion);
+  }
+
+  const customerId = input.customerId || null;
+  if (customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Cliente não encontrado." };
+  }
+
+  try {
+    const sale = await prisma.$transaction(async (tx) => {
+      // Incremento atômico garante numeração única mesmo com vendas simultâneas.
+      const tenant = await tx.tenant.update({
+        where: { id: ctx.tenantId },
+        data: { saleSequence: { increment: 1 } },
+        select: { saleSequence: true },
+      });
+
+      const created = await tx.sale.create({
+        data: {
+          tenantId: ctx.tenantId,
+          number: tenant.saleSequence,
+          cashRegisterId: ctx.cashRegisterId,
+          customerId,
+          sellerId: ctx.sellerId,
+          subtotal,
+          discount,
+          total,
+          costTotal,
+          cashReceived,
+          changeAmount,
+          notes: input.notes || null,
+          items: {
+            create: resolvedItems.map((item) => ({
+              productId: item.productId,
+              variantId: item.variantId,
+              nameSnapshot: item.nameSnapshot,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              unitCost: item.unitCost,
+              total: item.total,
+            })),
+          },
+          payments: {
+            create: input.payments.map((p) => ({
+              method: p.method,
+              amount: round2(p.amount),
+            })),
+          },
+        },
+        select: { id: true, number: true },
+      });
+
+      for (const [productId, quantity] of quantityByProduct) {
+        await tx.product.update({
+          where: { id: productId },
+          data: { stockQty: { decrement: quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            tenantId: ctx.tenantId,
+            productId,
+            type: "SALE",
+            quantity: -quantity,
+            reason: `Venda #${created.number}`,
+            userId: ctx.sellerId,
+            saleId: created.id,
+          },
+        });
+      }
+
+      // Baixa também o estoque da variação, quando informada.
+      for (const item of resolvedItems) {
+        if (item.variantId) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stockQty: { decrement: item.quantity } },
+          });
+        }
+      }
+
+      if (customerId) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: {
+            totalSpent: { increment: total },
+            lastPurchaseAt: new Date(),
+          },
+        });
+      }
+
+      return created;
+    });
+
+    return { ok: true, saleId: sale.id, number: sale.number, changeAmount };
+  } catch {
+    return { ok: false, error: "Não foi possível registrar a venda. Tente novamente." };
+  }
+}
+
+export type CancelSaleResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Cancela uma venda concluída, devolvendo o estoque e revertendo o total do cliente.
+ * A venda permanece no histórico com status CANCELLED e a justificativa registrada.
+ */
+export async function cancelSale(
+  tenantId: string,
+  saleId: string,
+  userId: string,
+  reason: string
+): Promise<CancelSaleResult> {
+  const sale = await prisma.sale.findFirst({
+    where: { id: saleId, tenantId },
+    include: { items: true },
+  });
+  if (!sale) return { ok: false, error: "Venda não encontrada." };
+  if (sale.status === "CANCELLED") return { ok: false, error: "Esta venda já está cancelada." };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelledById: userId,
+          cancelReason: reason,
+        },
+      });
+
+      const quantityByProduct = new Map<string, number>();
+      for (const item of sale.items) {
+        quantityByProduct.set(
+          item.productId,
+          (quantityByProduct.get(item.productId) ?? 0) + item.quantity
+        );
+        if (item.variantId) {
+          await tx.productVariant.update({
+            where: { id: item.variantId },
+            data: { stockQty: { increment: item.quantity } },
+          });
+        }
+      }
+
+      for (const [productId, quantity] of quantityByProduct) {
+        await tx.product.update({
+          where: { id: productId },
+          data: { stockQty: { increment: quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            tenantId,
+            productId,
+            type: "CANCEL_RETURN",
+            quantity,
+            reason: `Cancelamento da venda #${sale.number}`,
+            userId,
+            saleId: sale.id,
+          },
+        });
+      }
+
+      if (sale.customerId) {
+        await tx.customer.update({
+          where: { id: sale.customerId },
+          data: { totalSpent: { decrement: sale.total } },
+        });
+      }
+    });
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Não foi possível cancelar a venda. Tente novamente." };
+  }
+}

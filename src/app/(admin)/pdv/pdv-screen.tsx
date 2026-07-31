@@ -1,0 +1,597 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { formatBRL } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { FormBanner } from "@/components/ui/form-banner";
+import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
+import { searchCustomersAction } from "../clientes/actions";
+
+type CartLine = {
+  /** Identidade da linha no carrinho: produto + variação. */
+  key: string;
+  productId: string;
+  variantId: string | null;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  stockQty: number;
+};
+
+type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT";
+
+const METHOD_LABELS: Record<PaymentMethod, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de débito",
+  CREDIT: "Cartão de crédito",
+};
+
+type PaymentLine = { id: number; method: PaymentMethod; amount: number };
+
+type CustomerOption = {
+  id: string;
+  name: string;
+  document: string | null;
+  phone: string | null;
+};
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
+  const router = useRouter();
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState<PdvProduct[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [discount, setDiscount] = useState(0);
+  const [error, setError] = useState<string>();
+  const [isPending, startTransition] = useTransition();
+
+  const [customerTerm, setCustomerTerm] = useState("");
+  const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
+  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+
+  const [payments, setPayments] = useState<PaymentLine[]>([
+    { id: 1, method: "CASH", amount: 0 },
+  ]);
+  const [cashReceived, setCashReceived] = useState<number | "">("");
+
+  const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
+  const total = round2(Math.max(0, subtotal - discount));
+
+  // Com uma única forma de pagamento o valor é sempre o total da venda (derivado, não
+  // guardado em estado). Ao dividir o pagamento, cada linha passa a ter valor explícito.
+  const isSplit = payments.length > 1;
+  const effectivePayments = isSplit
+    ? payments
+    : [{ ...payments[0], amount: total }];
+
+  const paid = round2(effectivePayments.reduce((sum, p) => sum + (p.amount || 0), 0));
+  const remaining = round2(total - paid);
+  const cashPortion = round2(
+    effectivePayments
+      .filter((p) => p.method === "CASH")
+      .reduce((sum, p) => sum + (p.amount || 0), 0)
+  );
+  const change =
+    cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
+
+  function addToCart(product: PdvProduct, variantId: string | null) {
+    const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
+    const key = `${product.id}:${variantId ?? ""}`;
+    const unitPrice = round2(product.price + (variant?.priceAdjustment ?? 0));
+    const availableStock = variant ? variant.stockQty : product.stockQty;
+
+    setError(undefined);
+    setCart((current) => {
+      const existing = current.find((line) => line.key === key);
+      if (existing) {
+        if (existing.quantity + 1 > product.stockQty) {
+          setError(`Estoque insuficiente de "${product.name}".`);
+          return current;
+        }
+        return current.map((line) =>
+          line.key === key ? { ...line, quantity: line.quantity + 1 } : line
+        );
+      }
+      if (product.stockQty < 1) {
+        setError(`"${product.name}" está sem estoque.`);
+        return current;
+      }
+      return [
+        ...current,
+        {
+          key,
+          productId: product.id,
+          variantId: variantId ?? null,
+          name: variant ? `${product.name} (${variant.name})` : product.name,
+          unitPrice,
+          quantity: 1,
+          stockQty: availableStock,
+        },
+      ];
+    });
+
+    setTerm("");
+    setResults([]);
+    searchRef.current?.focus();
+  }
+
+  function runSearch() {
+    const query = term.trim();
+    if (!query) return;
+    setSearching(true);
+    startTransition(async () => {
+      const { products, exact } = await searchProductsAction(query);
+      setSearching(false);
+      if (exact && products.length === 1 && products[0].variants.length === 0) {
+        addToCart(products[0], null);
+      } else if (products.length === 0) {
+        setError(`Nenhum produto encontrado para "${query}".`);
+        setResults([]);
+      } else {
+        setError(undefined);
+        setResults(products);
+      }
+    });
+  }
+
+  function changeQuantity(key: string, quantity: number) {
+    setCart((current) =>
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const next = Math.max(1, Math.min(quantity, line.stockQty));
+        return { ...line, quantity: next };
+      })
+    );
+  }
+
+  function removeLine(key: string) {
+    setCart((current) => current.filter((line) => line.key !== key));
+  }
+
+  function searchCustomers() {
+    const query = customerTerm.trim();
+    if (query.length < 2) return;
+    startTransition(async () => {
+      setCustomerResults(await searchCustomersAction(query));
+    });
+  }
+
+  function updatePayment(id: number, patch: Partial<PaymentLine>) {
+    setPayments((current) => current.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }
+
+  function addPaymentLine() {
+    setPayments((current) => {
+      // Ao sair do modo "pagamento único", a primeira linha passa a carregar o total
+      // explicitamente, para o operador redistribuir os valores manualmente.
+      const base =
+        current.length === 1 ? [{ ...current[0], amount: total }] : current;
+      return [
+        ...base,
+        {
+          id: Math.max(0, ...base.map((p) => p.id)) + 1,
+          method: "PIX",
+          amount: 0,
+        },
+      ];
+    });
+  }
+
+  function removePaymentLine(id: number) {
+    setPayments((current) =>
+      current.length === 1 ? current : current.filter((p) => p.id !== id)
+    );
+  }
+
+  function finalizeSale() {
+    setError(undefined);
+
+    if (cart.length === 0) {
+      setError("Adicione pelo menos um produto.");
+      return;
+    }
+    if (Math.abs(remaining) > 0.005) {
+      setError(
+        remaining > 0
+          ? `Falta distribuir ${formatBRL(remaining)} nas formas de pagamento.`
+          : `Os pagamentos excedem o total em ${formatBRL(Math.abs(remaining))}.`
+      );
+      return;
+    }
+    if (cashPortion > 0 && cashReceived !== "" && Number(cashReceived) < cashPortion) {
+      setError("O valor recebido em dinheiro é menor que a parcela em espécie.");
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await createSaleAction({
+        customerId: customer?.id ?? "",
+        items: cart.map((line) => ({
+          productId: line.productId,
+          variantId: line.variantId ?? "",
+          quantity: line.quantity,
+        })),
+        discount,
+        payments: effectivePayments
+          .filter((p) => p.amount > 0)
+          .map((p) => ({ method: p.method, amount: p.amount })),
+        cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
+      });
+
+      if ("error" in result && result.error) {
+        setError(result.error);
+        return;
+      }
+      if ("saleId" in result) {
+        router.push(`/vendas/${result.saleId}?nova=1`);
+      }
+    });
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      {/* Coluna esquerda: busca e carrinho */}
+      <div className="lg:col-span-3">
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <Label htmlFor="pdv-search">Produto (nome, código interno ou código de barras)</Label>
+          <div className="flex gap-2">
+            <Input
+              id="pdv-search"
+              ref={searchRef}
+              autoFocus
+              autoComplete="off"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  runSearch();
+                }
+              }}
+              placeholder="Passe o leitor de código de barras ou digite e pressione Enter"
+              className="min-w-0 flex-1"
+            />
+            <Button
+              type="button"
+              onClick={runSearch}
+              variant="secondary"
+              fullWidth={false}
+              className="shrink-0 px-4"
+            >
+              {searching ? "Buscando..." : "Buscar"}
+            </Button>
+          </div>
+
+          {results.length > 0 && (
+            <div className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+              {results.map((product) => (
+                <div key={product.id} className="p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{product.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {product.internalCode ?? "sem código"} · estoque {product.stockQty}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-sm text-slate-900">{formatBRL(product.price)}</span>
+                      {product.variants.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => addToCart(product, null)}
+                          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                        >
+                          Adicionar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {product.variants.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {product.variants.map((variant) => (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => addToCart(product, variant.id)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                          {variant.name} · {formatBRL(product.price + variant.priceAdjustment)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+            Carrinho ({cart.length} {cart.length === 1 ? "item" : "itens"})
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {cart.map((line) => (
+                  <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-900">{line.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {formatBRL(line.unitPrice)} · estoque {line.stockQty}
+                      </p>
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => changeQuantity(line.key, line.quantity - 1)}
+                          className="h-7 w-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={line.stockQty}
+                          value={line.quantity}
+                          onChange={(e) => changeQuantity(line.key, Number(e.target.value))}
+                          className="h-7 w-14 rounded border border-slate-300 px-1 text-center"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => changeQuantity(line.key, line.quantity + 1)}
+                          className="h-7 w-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-slate-900">
+                      {formatBRL(line.unitPrice * line.quantity)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => removeLine(line.key)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {cart.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-slate-400">
+                      Nenhum item no carrinho. Busque um produto acima para começar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Coluna direita: cliente, totais e pagamento */}
+      <div className="lg:col-span-2">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <Label htmlFor="pdv-customer">Cliente (opcional)</Label>
+            {customer ? (
+              <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{customer.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {customer.document ?? customer.phone ?? "sem documento"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCustomer(null)}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  Remover
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <Input
+                    id="pdv-customer"
+                    autoComplete="off"
+                    value={customerTerm}
+                    onChange={(e) => setCustomerTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        searchCustomers();
+                      }
+                    }}
+                    placeholder="Nome, CPF/CNPJ ou telefone"
+                    className="min-w-0 flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={searchCustomers}
+                    fullWidth={false}
+                    className="shrink-0 px-3"
+                  >
+                    Buscar
+                  </Button>
+                </div>
+                {customerResults.length > 0 && (
+                  <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+                    {customerResults.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setCustomer(c);
+                          setCustomerResults([]);
+                          setCustomerTerm("");
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-medium text-slate-900">{c.name}</span>
+                        <span className="ml-2 text-xs text-slate-400">
+                          {c.document ?? c.phone ?? ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 space-y-1 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal</span>
+                <span>{formatBRL(subtotal)}</span>
+              </div>
+              {canDiscount ? (
+                <div className="flex items-center justify-between gap-2 py-1">
+                  <span className="text-slate-600">Desconto (R$)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={subtotal}
+                    value={discount || ""}
+                    onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
+                    className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm"
+                  />
+                </div>
+              ) : (
+                discount > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Desconto</span>
+                    <span>-{formatBRL(discount)}</span>
+                  </div>
+                )
+              )}
+              <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-semibold text-slate-900">
+                <span>Total</span>
+                <span>{formatBRL(total)}</span>
+              </div>
+            </div>
+
+            <div className="mb-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Formas de pagamento</Label>
+                <button
+                  type="button"
+                  onClick={addPaymentLine}
+                  className="text-xs font-medium text-slate-700 hover:underline"
+                >
+                  + Dividir pagamento
+                </button>
+              </div>
+
+              {effectivePayments.map((payment) => (
+                <div key={payment.id} className="flex gap-2">
+                  <Select
+                    value={payment.method}
+                    onChange={(e) =>
+                      updatePayment(payment.id, { method: e.target.value as PaymentMethod })
+                    }
+                  >
+                    {(Object.keys(METHOD_LABELS) as PaymentMethod[]).map((method) => (
+                      <option key={method} value={method}>
+                        {METHOD_LABELS[method]}
+                      </option>
+                    ))}
+                  </Select>
+                  {isSplit ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={payment.amount || ""}
+                      onChange={(e) =>
+                        updatePayment(payment.id, { amount: Number(e.target.value) || 0 })
+                      }
+                      className="w-28 shrink-0 rounded-md border border-slate-300 px-2 text-right text-sm"
+                    />
+                  ) : (
+                    <div className="flex w-28 shrink-0 items-center justify-end rounded-md bg-slate-50 px-2 text-sm font-medium text-slate-900">
+                      {formatBRL(payment.amount)}
+                    </div>
+                  )}
+                  {isSplit && (
+                    <button
+                      type="button"
+                      onClick={() => removePaymentLine(payment.id)}
+                      className="shrink-0 text-xs text-red-600 hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {Math.abs(remaining) > 0.005 && (
+                <p className={remaining > 0 ? "text-xs text-amber-600" : "text-xs text-red-600"}>
+                  {remaining > 0
+                    ? `Falta distribuir ${formatBRL(remaining)}`
+                    : `Excede o total em ${formatBRL(Math.abs(remaining))}`}
+                </p>
+              )}
+            </div>
+
+            {cashPortion > 0 && (
+              <div className="mb-3 rounded-md bg-slate-50 p-3">
+                <Label htmlFor="cash-received">Valor recebido em dinheiro (R$)</Label>
+                <input
+                  id="cash-received"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={cashReceived}
+                  onChange={(e) =>
+                    setCashReceived(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  placeholder={String(cashPortion.toFixed(2))}
+                  className="mb-2 h-9 w-full rounded border border-slate-300 px-2 text-right text-sm"
+                />
+                <div className="flex justify-between text-sm font-medium">
+                  <span className="text-slate-700">Troco</span>
+                  <span className={change < 0 ? "text-red-600" : "text-emerald-700"}>
+                    {formatBRL(Math.max(0, change))}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <FormBanner message={error} variant="error" />
+
+            <Button
+              type="button"
+              onClick={finalizeSale}
+              disabled={isPending || cart.length === 0}
+              className="py-3 text-base"
+            >
+              {isPending ? "Finalizando..." : `Finalizar venda · ${formatBRL(total)}`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

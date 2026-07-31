@@ -1,0 +1,246 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useFieldArray, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  productSchema,
+  type ProductInput,
+  type ProductFormValues,
+} from "@/lib/validations/catalog";
+import { createProductAction, updateProductAction } from "./actions";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field-error";
+import { FormBanner } from "@/components/ui/form-banner";
+
+type Option = { id: string; name: string };
+
+export function ProductForm({
+  productId,
+  defaultValues,
+  categories,
+  brands,
+  suppliers,
+}: {
+  productId?: string;
+  defaultValues?: Partial<ProductFormValues>;
+  categories: Option[];
+  brands: Option[];
+  suppliers: Option[];
+}) {
+  const [serverError, setServerError] = useState<string>();
+  const [isPending, startTransition] = useTransition();
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<ProductFormValues, unknown, ProductInput>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      active: true,
+      showInCatalog: true,
+      stockQty: 0,
+      minStock: 0,
+      costPrice: 0,
+      salePrice: 0,
+      variants: [],
+      ...defaultValues,
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({ control, name: "variants" });
+
+  const onSubmit = (data: ProductInput) => {
+    setServerError(undefined);
+    startTransition(async () => {
+      const result = productId
+        ? await updateProductAction(productId, data)
+        : await createProductAction(data);
+      if (result?.error) {
+        setServerError(result.error);
+      }
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <FormBanner message={serverError} variant="error" />
+
+      <div className="mb-4">
+        <Label htmlFor="name">Nome do produto</Label>
+        <Input id="name" {...register("name")} />
+        <FieldError message={errors.name?.message} />
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="internalCode">Código interno</Label>
+          <Input id="internalCode" {...register("internalCode")} />
+          <FieldError message={errors.internalCode?.message} />
+        </div>
+        <div>
+          <Label htmlFor="barcode">Código de barras / EAN</Label>
+          <Input id="barcode" {...register("barcode")} />
+          <FieldError message={errors.barcode?.message} />
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div>
+          <Label htmlFor="categoryId">Categoria</Label>
+          <Select id="categoryId" {...register("categoryId")}>
+            <option value="">Sem categoria</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="brandId">Marca</Label>
+          <Select id="brandId" {...register("brandId")}>
+            <option value="">Sem marca</option>
+            {brands.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="supplierId">Fornecedor</Label>
+          <Select id="supplierId" {...register("supplierId")}>
+            <option value="">Sem fornecedor</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="description">Descrição</Label>
+        <Textarea id="description" rows={3} {...register("description")} />
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div>
+          <Label htmlFor="costPrice">Preço de custo (R$)</Label>
+          <Input id="costPrice" type="number" step="0.01" {...register("costPrice")} />
+          <FieldError message={errors.costPrice?.message} />
+        </div>
+        <div>
+          <Label htmlFor="salePrice">Preço de venda (R$)</Label>
+          <Input id="salePrice" type="number" step="0.01" {...register("salePrice")} />
+          <FieldError message={errors.salePrice?.message} />
+        </div>
+        <div>
+          <Label htmlFor="promoPrice">Preço promocional (R$)</Label>
+          <Input id="promoPrice" type="number" step="0.01" {...register("promoPrice")} />
+          <FieldError message={errors.promoPrice?.message} />
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="stockQty">Quantidade em estoque</Label>
+          <Input id="stockQty" type="number" step="1" {...register("stockQty")} />
+          <FieldError message={errors.stockQty?.message} />
+        </div>
+        <div>
+          <Label htmlFor="minStock">Estoque mínimo</Label>
+          <Input id="minStock" type="number" step="1" {...register("minStock")} />
+          <FieldError message={errors.minStock?.message} />
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <Label htmlFor="imageUrl">URL da imagem principal</Label>
+        <Input id="imageUrl" placeholder="https://..." {...register("imageUrl")} />
+        <FieldError message={errors.imageUrl?.message} />
+        <p className="mt-1 text-xs text-slate-400">
+          Upload direto de arquivos será adicionado quando o armazenamento de imagens (Cloudinary)
+          for configurado.
+        </p>
+      </div>
+
+      <div className="mb-6 flex gap-6">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <Checkbox {...register("active")} />
+          Produto ativo
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <Checkbox {...register("showInCatalog")} />
+          Mostrar no catálogo online
+        </label>
+      </div>
+
+      <div className="mb-6">
+        <div className="mb-2 flex items-center justify-between">
+          <Label>Variações (cor, tamanho, modelo...)</Label>
+          <button
+            type="button"
+            onClick={() =>
+              append({ name: "", sku: "", barcode: "", priceAdjustment: 0, stockQty: 0 })
+            }
+            className="text-sm font-medium text-slate-700 hover:underline"
+          >
+            + Adicionar variação
+          </button>
+        </div>
+
+        {fields.length === 0 && (
+          <p className="text-sm text-slate-400">Nenhuma variação adicionada.</p>
+        )}
+
+        <div className="space-y-3">
+          {fields.map((field, index) => (
+            <div
+              key={field.id}
+              className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-5"
+            >
+              <Input placeholder="Nome (ex: Preto - M)" {...register(`variants.${index}.name`)} />
+              <Input placeholder="SKU" {...register(`variants.${index}.sku`)} />
+              <Input placeholder="Cód. barras" {...register(`variants.${index}.barcode`)} />
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Ajuste de preço"
+                {...register(`variants.${index}.priceAdjustment`)}
+              />
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="1"
+                  placeholder="Estoque"
+                  {...register(`variants.${index}.stockQty`)}
+                />
+                <button
+                  type="button"
+                  onClick={() => remove(index)}
+                  className="shrink-0 text-sm text-red-600 hover:underline"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
+        {isPending ? "Salvando..." : "Salvar produto"}
+      </Button>
+    </form>
+  );
+}

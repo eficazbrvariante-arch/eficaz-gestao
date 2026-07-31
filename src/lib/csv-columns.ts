@@ -1,0 +1,16 @@
+export const CSV_COLUMNS = [
+  "nome",
+  "codigo_interno",
+  "codigo_barras",
+  "categoria",
+  "marca",
+  "fornecedor",
+  "descricao",
+  "preco_custo",
+  "preco_venda",
+  "preco_promocional",
+  "estoque",
+  "estoque_minimo",
+  "ativo",
+  "mostrar_catalogo",
+] as const;

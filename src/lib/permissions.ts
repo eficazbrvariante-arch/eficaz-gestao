@@ -1,0 +1,64 @@
+import type { UserRole } from "@/generated/prisma/enums";
+
+/**
+ * Regras de permissão por papel.
+ *
+ * No MVP as permissões são derivadas diretamente do papel do usuário.
+ * A tabela de permissões customizadas por usuário está prevista para a Fase 8;
+ * quando existir, estas funções passam a consultá-la antes de cair no papel.
+ */
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  ADMIN: "Administrador",
+  MANAGER: "Gerente",
+  SELLER: "Vendedor",
+  STOCKIST: "Estoquista",
+};
+
+/** Vender no PDV. */
+export function canSell(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
+}
+
+/**
+ * Conceder desconto numa venda.
+ * Vendedores não podem — evita desconto sem autorização no balcão.
+ */
+export function canApplyDiscount(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/** Cancelar uma venda já concluída (devolve o estoque). */
+export function canCancelSale(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/** Abrir e fechar o caixa. */
+export function canManageCashRegister(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
+}
+
+/** Registrar sangria e suprimento. */
+export function canMoveCash(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/** Cadastrar e editar produtos. */
+export function canManageProducts(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "STOCKIST";
+}
+
+/** Lançar movimentações de estoque. */
+export function canManageStock(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "STOCKIST";
+}
+
+/** Ver relatórios financeiros e de desempenho. */
+export function canViewReports(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/** Gerenciar usuários e configurações da empresa. */
+export function canManageSettings(role: UserRole) {
+  return role === "ADMIN";
+}

@@ -1,0 +1,81 @@
+import { prisma } from "@/lib/prisma";
+
+/**
+ * Registro das ações sensíveis do painel.
+ *
+ * Nunca deve derrubar a operação que está sendo auditada: se a gravação do log
+ * falhar, a venda/cancelamento/alteração já aconteceu e o certo é seguir em
+ * frente, não desfazer o trabalho do usuário por causa do histórico.
+ */
+
+export type AuditAction =
+  | "sale.cancel"
+  | "order.status_change"
+  | "order.cancel"
+  | "stock.adjust"
+  | "stock.inventory"
+  | "user.create"
+  | "user.role_change"
+  | "user.deactivate"
+  | "user.activate"
+  | "user.password_reset"
+  | "settings.company"
+  | "settings.catalog"
+  | "settings.delivery"
+  | "settings.domain"
+  | "product.delete";
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  "sale.cancel": "Venda cancelada",
+  "order.status_change": "Status de pedido alterado",
+  "order.cancel": "Pedido cancelado",
+  "stock.adjust": "Estoque ajustado",
+  "stock.inventory": "Inventário aplicado",
+  "user.create": "Usuário criado",
+  "user.role_change": "Papel de usuário alterado",
+  "user.deactivate": "Usuário desativado",
+  "user.activate": "Usuário reativado",
+  "user.password_reset": "Senha redefinida",
+  "settings.company": "Dados da empresa alterados",
+  "settings.catalog": "Catálogo configurado",
+  "settings.delivery": "Entrega configurada",
+  "settings.domain": "Domínio alterado",
+  "product.delete": "Produto excluído",
+};
+
+export type AuditEntry = {
+  tenantId: string;
+  userId: string;
+  userName: string;
+  action: AuditAction;
+  entity: string;
+  entityId?: string | null;
+  description: string;
+};
+
+export async function recordAudit(entry: AuditEntry) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        tenantId: entry.tenantId,
+        userId: entry.userId,
+        userName: entry.userName,
+        action: entry.action,
+        entity: entry.entity,
+        entityId: entry.entityId ?? null,
+        description: entry.description,
+      },
+    });
+  } catch {
+    // Log é histórico, não regra de negócio: falhar aqui não pode desfazer
+    // a ação que o usuário acabou de concluir.
+  }
+}
+
+export async function listAuditLogs(tenantId: string, take = 200) {
+  return prisma.auditLog.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+}
