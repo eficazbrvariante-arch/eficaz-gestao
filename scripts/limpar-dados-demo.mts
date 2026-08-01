@@ -75,6 +75,11 @@ console.table({
   "usuários de teste": usuariosTeste,
 });
 console.log(`Outros administradores ativos: ${outrosAdmins}`);
+console.log(
+  outrosAdmins > 0
+    ? "Os dois usuários de teste serão removidos."
+    : "admin@eficazbr.test será MANTIDO nesta passada (é o único acesso que resta).",
+);
 
 if (!confirmado) {
   console.log("\nNada foi apagado. Rode de novo com --confirmar para executar.");
@@ -82,16 +87,17 @@ if (!confirmado) {
   process.exit(0);
 }
 
-// Trava de segurança: sem outro admin, apagar os usuários de teste deixaria a
-// empresa sem ninguém capaz de entrar no sistema.
-if (usuariosTeste > 0 && outrosAdmins === 0) {
-  console.error(
-    "\nABORTADO: não existe nenhum administrador além dos usuários de teste.\n" +
-      "Crie o seu usuário em /usuarios (papel Administrador) antes de rodar a limpeza.",
-  );
-  await prisma.$disconnect();
-  process.exit(1);
-}
+// Quais usuários de teste podem sair agora.
+//
+// O administrador só é removido quando já existe outro admin ativo: sem isso,
+// ninguém conseguiria mais entrar no sistema. Como o plano gratuito limita o
+// número de usuários, ele também não poderia ser recriado depois. Por isso a
+// limpeza roda em duas passadas — a primeira libera a vaga, e a segunda, depois
+// de você criar o seu acesso, remove o administrador de teste.
+const removerAgora =
+  outrosAdmins > 0
+    ? USUARIOS_DE_TESTE
+    : USUARIOS_DE_TESTE.filter((email) => email !== "admin@eficazbr.test");
 
 // Ordem importa: os filhos saem antes dos pais. Onde há onDelete: Cascade o
 // banco daria conta sozinho, mas ser explícito deixa o efeito visível aqui.
@@ -118,7 +124,7 @@ await prisma.$transaction([
   prisma.deliveryZone.deleteMany({ where }),
   prisma.auditLog.deleteMany({ where }),
 
-  prisma.user.deleteMany({ where: { ...where, email: { in: USUARIOS_DE_TESTE } } }),
+  prisma.user.deleteMany({ where: { ...where, email: { in: removerAgora } } }),
 
   // A numeração volta a zero: a primeira venda real será a nº 1.
   prisma.tenant.update({
@@ -128,4 +134,12 @@ await prisma.$transaction([
 ]);
 
 console.log("\nLimpeza concluída. A empresa e as configurações foram preservadas.");
+
+if (outrosAdmins === 0) {
+  console.log(
+    "\nO acesso admin@eficazbr.test foi MANTIDO para você não perder a entrada.\n" +
+      "Entre com ele, crie o seu usuário administrador em /usuarios e rode\n" +
+      "este script de novo para removê-lo.",
+  );
+}
 await prisma.$disconnect();
