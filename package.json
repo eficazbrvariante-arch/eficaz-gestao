@@ -10,6 +10,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "seed:demo": "tsx scripts/seed-demo.mts",
+    "limpar:demo": "tsx scripts/limpar-dados-demo.mts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
