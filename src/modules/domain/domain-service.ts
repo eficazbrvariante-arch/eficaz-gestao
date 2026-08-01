@@ -101,12 +101,33 @@ export async function checkVerificationRecord(
 
 /**
  * Confere se o domínio já aponta para a aplicação.
- * Serve para avisar a empresa que falta o CNAME; não bloqueia a verificação.
+ * Serve para avisar a empresa que falta o apontamento; não bloqueia a verificação.
+ *
+ * São duas checagens porque há duas formas legítimas de apontar:
+ *
+ * - **CNAME**, quando a loja usa um subdomínio (`loja.exemplo.com.br`);
+ * - **A**, quando usa o domínio raiz (`exemplo.com.br`) — o DNS proíbe CNAME
+ *   na raiz, então o provedor devolve o endereço IP direto.
+ *
+ * No segundo caso comparamos os IPs do domínio com os do alvo: se coincidem,
+ * as duas pontas chegam ao mesmo servidor.
  */
 export async function checkDomainPointing(domain: string): Promise<boolean> {
+  const target = CNAME_TARGET.toLowerCase();
+
   try {
     const records = await dns.resolveCname(domain);
-    return records.some((record) => record.toLowerCase().includes(CNAME_TARGET.toLowerCase()));
+    if (records.some((record) => record.toLowerCase().includes(target))) return true;
+  } catch {
+    // Ausência de CNAME é o caso normal do domínio raiz, não um erro.
+  }
+
+  try {
+    const [domainIps, targetIps] = await Promise.all([
+      dns.resolve4(domain),
+      dns.resolve4(target),
+    ]);
+    return domainIps.some((ip) => targetIps.includes(ip));
   } catch {
     return false;
   }
