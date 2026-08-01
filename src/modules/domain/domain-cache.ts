@@ -28,11 +28,16 @@ export async function resolveCustomDomain(hostname: string): Promise<string | nu
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.subdomain;
 
+  // O cadastro remove o `www.` (ver `normalizeDomain`), tratando os dois como o
+  // mesmo domínio. A resolução precisa fazer o mesmo: senão quem chega por
+  // www.exemplo.com.br não encontra a loja salva como exemplo.com.br.
+  const candidates = key.startsWith("www.") ? [key, key.slice(4)] : [key];
+
   let subdomain: string | null = null;
   try {
     const tenant = await prisma.tenant.findFirst({
       where: {
-        customDomain: key,
+        customDomain: { in: candidates },
         catalogEnabled: true,
         domainStatus: { in: ["VERIFIED", "ACTIVE"] },
       },
