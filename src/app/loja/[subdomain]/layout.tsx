@@ -42,7 +42,7 @@ export default async function StoreLayout({
       products: { some: { active: true, showInCatalog: true } },
     },
     select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    orderBy: [{ order: "asc" }, { name: "asc" }],
   });
 
   // A cor da empresa entra como variável CSS para os componentes da loja usarem

@@ -226,6 +226,6 @@ export async function listCatalogCategories(tenantId: string) {
   return prisma.category.findMany({
     where: { tenantId, products: { some: { active: true, showInCatalog: true } } },
     select: { id: true, name: true, _count: { select: { products: true } } },
-    orderBy: { name: "asc" },
+    orderBy: [{ order: "asc" }, { name: "asc" }],
   });
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
 import { CartBadge } from "./cart-badge";
 import { StoreSearch } from "./store-search";
+import { MobileCategoryMenu } from "./mobile-category-menu";
 
 export function StoreHeader({
   store,
@@ -37,13 +38,14 @@ export function StoreHeader({
           <StoreSearch base={base} />
         </div>
 
-        <div className="order-2 ml-auto sm:order-3 sm:ml-0">
+        <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
+          <MobileCategoryMenu base={base} categories={categories} />
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>
 
       {categories.length > 0 && (
-        <nav className="mx-auto w-full max-w-6xl overflow-x-auto px-4 pb-3 sm:px-6">
+        <nav className="mx-auto hidden w-full max-w-6xl overflow-x-auto px-4 pb-3 sm:block sm:px-6">
           <ul className="flex gap-2 whitespace-nowrap text-sm">
             <li>
               <Link

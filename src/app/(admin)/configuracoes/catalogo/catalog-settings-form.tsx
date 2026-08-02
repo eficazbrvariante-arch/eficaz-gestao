@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { ImageUploadField } from "@/components/ui/image-upload-field";
 
 export function CatalogSettingsForm({
   defaultValues,
@@ -27,6 +28,8 @@ export function CatalogSettingsForm({
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CatalogSettingsFormValues, unknown, CatalogSettingsInput>({
     resolver: zodResolver(catalogSettingsSchema),
@@ -67,12 +70,14 @@ export function CatalogSettingsForm({
       </div>
 
       <div className="mb-4">
-        <Label htmlFor="bannerUrl">URL da imagem do banner</Label>
-        <Input id="bannerUrl" placeholder="https://..." {...register("bannerUrl")} />
+        <Label>Imagem do banner</Label>
+        <ImageUploadField
+          value={watch("bannerUrl") ?? undefined}
+          onChange={(url) => setValue("bannerUrl", url, { shouldDirty: true })}
+        />
         <FieldError message={errors.bannerUrl?.message} />
         <p className="mt-1 text-xs text-slate-400">
-          Opcional. Sem imagem, o banner usa a cor principal da empresa. O upload direto de
-          arquivos entra quando o armazenamento de imagens (Cloudinary) for configurado.
+          Opcional. Sem imagem, o banner usa a cor principal da empresa.
         </p>
       </div>
 

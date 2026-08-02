@@ -176,6 +176,9 @@ model Category {
   tenantId  String
   name      String
   parentId  String?
+  /// Posição de exibição no catálogo online (menor primeiro). Definida por
+  /// arrastar-e-soltar em Produtos → Categorias.
+  order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { ImageUploadField } from "@/components/ui/image-upload-field";
 
 type Option = { id: string; name: string };
 
@@ -40,6 +41,8 @@ export function ProductForm({
     register,
     handleSubmit,
     control,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<ProductFormValues, unknown, ProductInput>({
     resolver: zodResolver(productSchema),
@@ -165,13 +168,12 @@ export function ProductForm({
       </div>
 
       <div className="mb-6">
-        <Label htmlFor="imageUrl">URL da imagem principal</Label>
-        <Input id="imageUrl" placeholder="https://..." {...register("imageUrl")} />
+        <Label>Imagem principal</Label>
+        <ImageUploadField
+          value={watch("imageUrl") ?? undefined}
+          onChange={(url) => setValue("imageUrl", url, { shouldDirty: true })}
+        />
         <FieldError message={errors.imageUrl?.message} />
-        <p className="mt-1 text-xs text-slate-400">
-          Upload direto de arquivos será adicionado quando o armazenamento de imagens (Cloudinary)
-          for configurado.
-        </p>
       </div>
 
       <div className="mb-6 flex gap-6">

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
+import { deleteBlob } from "@/lib/blob";
 import { prisma } from "@/lib/prisma";
 import {
   categorySchema,
@@ -42,6 +43,32 @@ export async function deleteCategoryAction(id: string) {
   const user = await requireUser();
   await prisma.category.deleteMany({ where: { id, tenantId: user.tenantId } });
   revalidatePath("/produtos/categorias");
+}
+
+/**
+ * Grava a nova ordem de exibição das categorias (a posição de cada id na lista
+ * recebida vira o valor salvo em `order`) e reflete essa ordem no catálogo online.
+ */
+export async function updateCategoryOrderAction(orderedIds: string[]) {
+  const user = await requireUser();
+  if (orderedIds.length === 0) return;
+
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.category.updateMany({
+        where: { id, tenantId: user.tenantId },
+        data: { order: index },
+      })
+    )
+  );
+
+  const tenant = await prisma.tenant.findUniqueOrThrow({
+    where: { id: user.tenantId },
+    select: { subdomain: true },
+  });
+
+  revalidatePath("/produtos/categorias");
+  revalidatePath(`/loja/${tenant.subdomain}`, "layout");
 }
 
 // --- Marcas ---
@@ -187,9 +214,12 @@ export async function updateProductAction(id: string, input: ProductInput) {
     data: normalizeProductData(parsed.data),
   });
 
+  const firstImage = current.images[0];
   if (parsed.data.imageUrl) {
-    const firstImage = current.images[0];
     if (firstImage) {
+      if (firstImage.url !== parsed.data.imageUrl) {
+        await deleteBlob(firstImage.url);
+      }
       await prisma.productImage.update({
         where: { id: firstImage.id },
         data: { url: parsed.data.imageUrl },
@@ -199,6 +229,9 @@ export async function updateProductAction(id: string, input: ProductInput) {
         data: { productId: id, url: parsed.data.imageUrl, order: 0 },
       });
     }
+  } else if (firstImage) {
+    await prisma.productImage.delete({ where: { id: firstImage.id } });
+    await deleteBlob(firstImage.url);
   }
 
   if (stockDelta !== 0) {
