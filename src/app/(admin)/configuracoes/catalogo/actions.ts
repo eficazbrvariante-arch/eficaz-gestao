@@ -23,8 +23,13 @@ export async function updateCatalogSettingsAction(input: CatalogSettingsInput) {
 
   const tenant = await prisma.tenant.findUniqueOrThrow({
     where: { id: user.tenantId },
-    select: { subdomain: true, bannerUrl: true },
+    select: { subdomain: true, logoUrl: true, bannerUrl: true },
   });
+
+  const logoUrl = parsed.data.logoUrl || null;
+  if (tenant.logoUrl && tenant.logoUrl !== logoUrl) {
+    await deleteBlob(tenant.logoUrl);
+  }
 
   const bannerUrl = parsed.data.bannerUrl || null;
   if (tenant.bannerUrl && tenant.bannerUrl !== bannerUrl) {
@@ -35,7 +40,7 @@ export async function updateCatalogSettingsAction(input: CatalogSettingsInput) {
     where: { id: user.tenantId },
     data: {
       catalogEnabled: parsed.data.catalogEnabled,
-      logoUrl: parsed.data.logoUrl || null,
+      logoUrl,
       bannerUrl,
       bannerTitle: parsed.data.bannerTitle || null,
       bannerSubtitle: parsed.data.bannerSubtitle || null,

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
 import { CartBadge } from "./cart-badge";
 import { StoreSearch } from "./store-search";
-import { MobileCategoryMenu } from "./mobile-category-menu";
+import { CategoryMenu } from "./category-menu";
 
 export function StoreHeader({
   store,
@@ -39,35 +39,10 @@ export function StoreHeader({
         </div>
 
         <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
-          <MobileCategoryMenu base={base} categories={categories} />
+          <CategoryMenu base={base} categories={categories} />
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>
-
-      {categories.length > 0 && (
-        <nav className="mx-auto hidden w-full max-w-6xl overflow-x-auto px-4 pb-3 sm:block sm:px-6">
-          <ul className="flex gap-2 whitespace-nowrap text-sm">
-            <li>
-              <Link
-                href={`${base}/produtos`}
-                className="rounded-full border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-              >
-                Todos os produtos
-              </Link>
-            </li>
-            {categories.map((category) => (
-              <li key={category.id}>
-                <Link
-                  href={`${base}/produtos?categoria=${category.id}`}
-                  className="rounded-full border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                >
-                  {category.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
     </header>
   );
 }

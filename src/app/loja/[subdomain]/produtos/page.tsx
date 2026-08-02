@@ -115,40 +115,6 @@ export default async function StoreProductsPage({
               </ul>
             </div>
 
-            {categories.length > 0 && (
-              <div>
-                <p className="mb-2 text-sm font-semibold text-slate-900">Categoria</p>
-                <ul className="space-y-1 text-sm">
-                  <li>
-                    <Link
-                      href={`${listUrl}${buildQuery(search, { categoria: undefined, pagina: undefined })}`}
-                      className={
-                        !search.categoria
-                          ? "font-medium text-slate-900"
-                          : "text-slate-600 hover:text-slate-900"
-                      }
-                    >
-                      Todas
-                    </Link>
-                  </li>
-                  {categories.map((category) => (
-                    <li key={category.id}>
-                      <Link
-                        href={`${listUrl}${buildQuery(search, { categoria: category.id, pagina: undefined })}`}
-                        className={
-                          search.categoria === category.id
-                            ? "font-medium text-slate-900"
-                            : "text-slate-600 hover:text-slate-900"
-                        }
-                      >
-                        {category.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {brands.length > 0 && (
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">Marca</p>

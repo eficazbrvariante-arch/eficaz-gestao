@@ -64,8 +64,11 @@ export function CatalogSettingsForm({
       </label>
 
       <div className="mb-4">
-        <Label htmlFor="logoUrl">URL do logotipo</Label>
-        <Input id="logoUrl" placeholder="https://..." {...register("logoUrl")} />
+        <Label>Logotipo</Label>
+        <ImageUploadField
+          value={watch("logoUrl") ?? undefined}
+          onChange={(url) => setValue("logoUrl", url, { shouldDirty: true })}
+        />
         <FieldError message={errors.logoUrl?.message} />
       </div>
 

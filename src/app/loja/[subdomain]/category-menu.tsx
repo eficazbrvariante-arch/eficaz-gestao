@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "@/lib/clsx";
 
-export function MobileCategoryMenu({
+export function CategoryMenu({
   base,
   categories,
 }: {
@@ -16,11 +16,11 @@ export function MobileCategoryMenu({
   if (categories.length === 0) return null;
 
   return (
-    <div className="sm:hidden">
+    <div>
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50"
+        className="flex items-center gap-2 rounded-md border border-slate-300 px-2 py-2 text-slate-700 hover:bg-slate-50 sm:px-3"
         aria-label="Abrir menu de categorias"
         aria-expanded={isOpen}
       >
@@ -32,12 +32,13 @@ export function MobileCategoryMenu({
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="h-5 w-5"
+          className="h-5 w-5 shrink-0"
         >
           <line x1="3" y1="6" x2="21" y2="6" />
           <line x1="3" y1="12" x2="21" y2="12" />
           <line x1="3" y1="18" x2="21" y2="18" />
         </svg>
+        <span className="hidden text-sm font-medium sm:inline">Categorias</span>
       </button>
 
       {isOpen && (
