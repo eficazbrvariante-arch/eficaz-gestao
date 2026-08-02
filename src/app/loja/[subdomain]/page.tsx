@@ -6,7 +6,6 @@ import {
 } from "@/modules/catalog/tenant-resolver";
 import {
   listBestSellers,
-  listCatalogCategories,
   listNewProducts,
   listPromoProducts,
 } from "@/modules/catalog/catalog-service";
@@ -24,11 +23,10 @@ export default async function StoreHomePage({
   const base = `/loja/${store.subdomain}`;
   const name = storeDisplayName(store);
 
-  const [promos, bestSellers, novelties, categories] = await Promise.all([
+  const [promos, bestSellers, novelties] = await Promise.all([
     listPromoProducts(store.id),
     listBestSellers(store.id),
     listNewProducts(store.id),
-    listCatalogCategories(store.id),
   ]);
 
   const isEmpty =
@@ -75,23 +73,6 @@ export default async function StoreHomePage({
           <p className="mt-1 text-sm text-slate-400">
             Os produtos aparecem aqui quando marcados como &quot;Mostrar no catálogo online&quot;.
           </p>
-        </section>
-      )}
-
-      {categories.length > 0 && (
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Categorias</h2>
-          <div className="flex flex-wrap gap-3">
-            {categories.map((category) => (
-              <Link
-                key={category.id}
-                href={`${base}/produtos?categoria=${category.id}`}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50"
-              >
-                {category.name}
-              </Link>
-            ))}
-          </div>
         </section>
       )}
 
