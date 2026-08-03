@@ -123,6 +123,7 @@ export default async function FichaClientePage({
             addressState: customer.addressState ?? "",
             addressZip: customer.addressZip ?? "",
             notes: customer.notes ?? "",
+            birthDate: customer.birthDate ? customer.birthDate.toISOString().slice(0, 10) : "",
           }}
         />
       </div>

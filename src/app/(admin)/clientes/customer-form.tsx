@@ -77,6 +77,14 @@ export function CustomerForm({
         </div>
       </div>
 
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="birthDate">Data de nascimento</Label>
+          <Input id="birthDate" type="date" {...register("birthDate")} />
+          <FieldError message={errors.birthDate?.message} />
+        </div>
+      </div>
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="sm:col-span-2">
           <Label htmlFor="addressStreet">Endereço</Label>

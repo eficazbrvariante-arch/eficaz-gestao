@@ -6,6 +6,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
 
+/** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia. */
+function parseDateOnly(value: string | undefined) {
+  if (!value) return null;
+  return new Date(`${value}T12:00:00-03:00`);
+}
+
 function normalize(data: CustomerInput) {
   return {
     name: data.name,
@@ -19,6 +25,7 @@ function normalize(data: CustomerInput) {
     addressState: data.addressState || null,
     addressZip: data.addressZip || null,
     notes: data.notes || null,
+    birthDate: parseDateOnly(data.birthDate),
   };
 }
 

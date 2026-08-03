@@ -345,6 +345,8 @@ model Customer {
   addressState   String?
   addressZip     String?
   notes          String?
+  /// Reservado para ações de relacionamento futuras (ex.: mensagem de aniversário).
+  birthDate      DateTime?
   // Totais desnormalizados, mantidos pela transação de venda/cancelamento
   // para evitar recalcular a cada listagem.
   totalSpent     Decimal   @default(0) @db.Decimal(12, 2)
