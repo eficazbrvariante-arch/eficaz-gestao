@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { clsx } from "@/lib/clsx";
 import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
 import {
   listCatalogBrands,
@@ -9,6 +10,7 @@ import {
 } from "@/modules/catalog/catalog-service";
 import { ProductGrid } from "../product-card";
 import { BrandFilter } from "./brand-filter";
+import { FilterDropdown } from "./filter-dropdown";
 import { buildQuery, type SearchParams } from "./query-utils";
 
 const SORT_OPTIONS = [
@@ -78,129 +80,122 @@ export default async function StoreProductsPage({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        {/* Filtros */}
-        <aside className="lg:col-span-1">
-          <div className="space-y-6 rounded-xl border border-slate-200 p-4">
-            {hasFilters && (
-              <Link href={listUrl} className="block text-sm text-slate-600 hover:underline">
-                Limpar filtros
-              </Link>
-            )}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <FilterDropdown label="Organizar">
+          <ul className="space-y-1 text-sm">
+            {SORT_OPTIONS.map((option) => {
+              const isActive = (search.ordem ?? "relevancia") === option.value;
+              return (
+                <li key={option.value}>
+                  <Link
+                    href={`${listUrl}${buildQuery(search, { ordem: option.value, pagina: undefined })}`}
+                    className={clsx(
+                      "block rounded-md px-2 py-1.5",
+                      isActive
+                        ? "font-medium text-slate-900"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    )}
+                  >
+                    {option.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </FilterDropdown>
 
-            <div>
-              <p className="mb-2 text-sm font-semibold text-slate-900">Ordenar por</p>
-              <ul className="space-y-1 text-sm">
-                {SORT_OPTIONS.map((option) => {
-                  const isActive =
-                    (search.ordem ?? "relevancia") === option.value;
-                  return (
-                    <li key={option.value}>
-                      <Link
-                        href={`${listUrl}${buildQuery(search, { ordem: option.value, pagina: undefined })}`}
-                        className={
-                          isActive
-                            ? "font-medium text-slate-900"
-                            : "text-slate-600 hover:text-slate-900"
-                        }
-                      >
-                        {option.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+        {brands.length > 0 && (
+          <FilterDropdown label="Marca">
+            <BrandFilter brands={brands} listUrl={listUrl} search={search} />
+          </FilterDropdown>
+        )}
 
-            {brands.length > 0 && (
-              <BrandFilter brands={brands} listUrl={listUrl} search={search} />
-            )}
-          </div>
-        </aside>
+        {hasFilters && (
+          <Link href={listUrl} className="text-sm text-slate-600 hover:underline">
+            Limpar filtros
+          </Link>
+        )}
+      </div>
 
-        {/* Resultados */}
-        <div className="lg:col-span-3">
-          {(activeCategory || activeBrand) && (
-            <div className="mb-4 flex flex-wrap gap-2 text-xs">
-              {activeCategory && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                  Categoria: {activeCategory.name}
-                </span>
-              )}
-              {activeBrand && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                  Marca: {activeBrand.name}
-                </span>
-              )}
-            </div>
+      {(activeCategory || activeBrand) && (
+        <div className="mb-4 flex flex-wrap gap-2 text-xs">
+          {activeCategory && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+              Categoria: {activeCategory.name}
+            </span>
           )}
-
-          {products.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center">
-              <p className="text-slate-600">Nenhum produto encontrado.</p>
-              {hasFilters && (
-                <Link
-                  href={listUrl}
-                  className="mt-2 inline-block text-sm text-slate-500 hover:underline"
-                >
-                  Limpar filtros e ver tudo
-                </Link>
-              )}
-            </div>
-          ) : (
-            <>
-              <ProductGrid products={products} base={base} />
-
-              {totalPages > 1 && (
-                <nav
-                  className="mt-8 flex flex-wrap items-center justify-center gap-2 text-sm"
-                  aria-label="Paginação"
-                >
-                  {page > 1 && (
-                    <Link
-                      href={`${listUrl}${buildQuery(search, { pagina: String(page - 1) })}`}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                    >
-                      Anterior
-                    </Link>
-                  )}
-
-                  {buildPageNumbers(page, totalPages).map((item, index) =>
-                    item === "ellipsis" ? (
-                      <span key={`ellipsis-${index}`} className="px-1 text-slate-400">
-                        …
-                      </span>
-                    ) : (
-                      <Link
-                        key={item}
-                        href={`${listUrl}${buildQuery(search, { pagina: String(item) })}`}
-                        aria-current={item === page ? "page" : undefined}
-                        className={
-                          item === page
-                            ? "rounded-md px-3 py-1.5 font-semibold text-white"
-                            : "rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                        }
-                        style={item === page ? { backgroundColor: "var(--store-primary)" } : undefined}
-                      >
-                        {item}
-                      </Link>
-                    )
-                  )}
-
-                  {page < totalPages && (
-                    <Link
-                      href={`${listUrl}${buildQuery(search, { pagina: String(page + 1) })}`}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                    >
-                      Próxima
-                    </Link>
-                  )}
-                </nav>
-              )}
-            </>
+          {activeBrand && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+              Marca: {activeBrand.name}
+            </span>
           )}
         </div>
-      </div>
+      )}
+
+      {products.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center">
+          <p className="text-slate-600">Nenhum produto encontrado.</p>
+          {hasFilters && (
+            <Link
+              href={listUrl}
+              className="mt-2 inline-block text-sm text-slate-500 hover:underline"
+            >
+              Limpar filtros e ver tudo
+            </Link>
+          )}
+        </div>
+      ) : (
+        <>
+          <ProductGrid products={products} base={base} />
+
+          {totalPages > 1 && (
+            <nav
+              className="mt-8 flex flex-wrap items-center justify-center gap-2 text-sm"
+              aria-label="Paginação"
+            >
+              {page > 1 && (
+                <Link
+                  href={`${listUrl}${buildQuery(search, { pagina: String(page - 1) })}`}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                >
+                  Anterior
+                </Link>
+              )}
+
+              {buildPageNumbers(page, totalPages).map((item, index) =>
+                item === "ellipsis" ? (
+                  <span key={`ellipsis-${index}`} className="px-1 text-slate-400">
+                    …
+                  </span>
+                ) : (
+                  <Link
+                    key={item}
+                    href={`${listUrl}${buildQuery(search, { pagina: String(item) })}`}
+                    aria-current={item === page ? "page" : undefined}
+                    className={
+                      item === page
+                        ? "rounded-md px-3 py-1.5 font-semibold text-white"
+                        : "rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                    }
+                    style={item === page ? { backgroundColor: "var(--store-primary)" } : undefined}
+                  >
+                    {item}
+                  </Link>
+                )
+              )}
+
+              {page < totalPages && (
+                <Link
+                  href={`${listUrl}${buildQuery(search, { pagina: String(page + 1) })}`}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                >
+                  Próxima
+                </Link>
+              )}
+            </nav>
+          )}
+        </>
+      )}
     </div>
   );
 }

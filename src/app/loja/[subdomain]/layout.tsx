@@ -8,6 +8,7 @@ import {
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
+import { WhatsappFloatingButton } from "./whatsapp-floating-button";
 
 export async function generateMetadata({
   params,
@@ -60,6 +61,7 @@ export default async function StoreLayout({
         <StoreHeader store={store} categories={categories} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
+        {store.whatsapp && <WhatsappFloatingButton whatsapp={store.whatsapp} />}
       </div>
     </CartProvider>
   );

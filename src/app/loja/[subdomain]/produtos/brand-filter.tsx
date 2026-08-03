@@ -25,8 +25,6 @@ export function BrandFilter({
 
   return (
     <div>
-      <p className="mb-2 text-sm font-semibold text-slate-900">Marca</p>
-
       {brands.length > 8 && (
         <input
           type="search"
