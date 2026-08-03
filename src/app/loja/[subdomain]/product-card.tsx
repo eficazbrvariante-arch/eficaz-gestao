@@ -55,7 +55,7 @@ export function ProductCard({
 
         <div className="mt-auto pt-3">
           {hasPromo && (
-            <p className="text-xs text-slate-400 line-through">{formatBRL(product.price)}</p>
+            <p className="text-xs text-red-600 line-through">{formatBRL(product.price)}</p>
           )}
           <p
             className="text-lg font-semibold"

@@ -8,6 +8,8 @@ import {
   type ProductFilters,
 } from "@/modules/catalog/catalog-service";
 import { ProductGrid } from "../product-card";
+import { BrandFilter } from "./brand-filter";
+import { buildQuery, type SearchParams } from "./query-utils";
 
 const SORT_OPTIONS = [
   { value: "relevancia", label: "Nome (A-Z)" },
@@ -16,27 +18,22 @@ const SORT_OPTIONS = [
   { value: "novidades", label: "Novidades" },
 ] as const;
 
-type SearchParams = {
-  q?: string;
-  categoria?: string;
-  marca?: string;
-  ordem?: string;
-  pagina?: string;
-};
-
 function isSortOption(value: string | undefined): value is ProductFilters["ordem"] {
   return SORT_OPTIONS.some((option) => option.value === value);
 }
 
-/** Monta um link preservando os filtros atuais e trocando só o que foi informado. */
-function buildQuery(current: SearchParams, changes: Partial<SearchParams>) {
-  const params = new URLSearchParams();
-  const merged = { ...current, ...changes };
-  for (const [key, value] of Object.entries(merged)) {
-    if (value) params.set(key, value);
+/** Números de página a exibir na paginação, com "…" para intervalos omitidos. */
+function buildPageNumbers(current: number, total: number): (number | "ellipsis")[] {
+  const window = 1;
+  const pages: (number | "ellipsis")[] = [];
+  for (let i = 1; i <= total; i++) {
+    if (i === 1 || i === total || (i >= current - window && i <= current + window)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== "ellipsis") {
+      pages.push("ellipsis");
+    }
   }
-  const query = params.toString();
-  return query ? `?${query}` : "";
+  return pages;
 }
 
 export default async function StoreProductsPage({
@@ -116,37 +113,7 @@ export default async function StoreProductsPage({
             </div>
 
             {brands.length > 0 && (
-              <div>
-                <p className="mb-2 text-sm font-semibold text-slate-900">Marca</p>
-                <ul className="space-y-1 text-sm">
-                  <li>
-                    <Link
-                      href={`${listUrl}${buildQuery(search, { marca: undefined, pagina: undefined })}`}
-                      className={
-                        !search.marca
-                          ? "font-medium text-slate-900"
-                          : "text-slate-600 hover:text-slate-900"
-                      }
-                    >
-                      Todas
-                    </Link>
-                  </li>
-                  {brands.map((brand) => (
-                    <li key={brand.id}>
-                      <Link
-                        href={`${listUrl}${buildQuery(search, { marca: brand.id, pagina: undefined })}`}
-                        className={
-                          search.marca === brand.id
-                            ? "font-medium text-slate-900"
-                            : "text-slate-600 hover:text-slate-900"
-                        }
-                      >
-                        {brand.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <BrandFilter brands={brands} listUrl={listUrl} search={search} />
             )}
           </div>
         </aside>
@@ -185,7 +152,10 @@ export default async function StoreProductsPage({
               <ProductGrid products={products} base={base} />
 
               {totalPages > 1 && (
-                <nav className="mt-8 flex items-center justify-center gap-2 text-sm">
+                <nav
+                  className="mt-8 flex flex-wrap items-center justify-center gap-2 text-sm"
+                  aria-label="Paginação"
+                >
                   {page > 1 && (
                     <Link
                       href={`${listUrl}${buildQuery(search, { pagina: String(page - 1) })}`}
@@ -194,9 +164,29 @@ export default async function StoreProductsPage({
                       Anterior
                     </Link>
                   )}
-                  <span className="px-2 text-slate-500">
-                    Página {page} de {totalPages}
-                  </span>
+
+                  {buildPageNumbers(page, totalPages).map((item, index) =>
+                    item === "ellipsis" ? (
+                      <span key={`ellipsis-${index}`} className="px-1 text-slate-400">
+                        …
+                      </span>
+                    ) : (
+                      <Link
+                        key={item}
+                        href={`${listUrl}${buildQuery(search, { pagina: String(item) })}`}
+                        aria-current={item === page ? "page" : undefined}
+                        className={
+                          item === page
+                            ? "rounded-md px-3 py-1.5 font-semibold text-white"
+                            : "rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                        }
+                        style={item === page ? { backgroundColor: "var(--store-primary)" } : undefined}
+                      >
+                        {item}
+                      </Link>
+                    )
+                  )}
+
                   {page < totalPages && (
                     <Link
                       href={`${listUrl}${buildQuery(search, { pagina: String(page + 1) })}`}

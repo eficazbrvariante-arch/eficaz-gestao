@@ -17,7 +17,7 @@ export function StoreHeader({
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6">
-        <Link href={base} className="flex items-center gap-3">
+        <Link href={base} className="order-1 flex items-center gap-3">
           {store.logoUrl ? (
             // Imagens vêm de URLs livres cadastradas pela empresa; sem o domínio
             // conhecido de antemão, next/image não pode otimizá-las.
@@ -34,12 +34,15 @@ export function StoreHeader({
           <span className="text-lg font-semibold tracking-tight text-slate-900">{name}</span>
         </Link>
 
-        <div className="order-3 w-full sm:order-2 sm:w-auto sm:flex-1">
+        <div className="order-2">
+          <CategoryMenu base={base} categories={categories} />
+        </div>
+
+        <div className="order-4 w-full sm:order-3 sm:w-auto sm:flex-1">
           <StoreSearch base={base} />
         </div>
 
-        <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
-          <CategoryMenu base={base} categories={categories} />
+        <div className="order-3 ml-auto sm:order-4 sm:ml-0">
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>

@@ -8,8 +8,10 @@ import {
   listBestSellers,
   listNewProducts,
   listPromoProducts,
+  type CatalogProductCard,
 } from "@/modules/catalog/catalog-service";
-import { ProductGrid } from "./product-card";
+import { ProductCard, ProductGrid } from "./product-card";
+import { FeaturedCarousel } from "./featured-carousel";
 
 export default async function StoreHomePage({
   params,
@@ -24,13 +26,15 @@ export default async function StoreHomePage({
   const name = storeDisplayName(store);
 
   const [promos, bestSellers, novelties] = await Promise.all([
-    listPromoProducts(store.id),
-    listBestSellers(store.id),
+    listPromoProducts(store.id, 10),
+    listBestSellers(store.id, 10),
     listNewProducts(store.id),
   ]);
 
   const isEmpty =
     promos.length === 0 && bestSellers.length === 0 && novelties.length === 0;
+
+  const featured = dedupeById([...promos, ...bestSellers]).slice(0, 10);
 
   return (
     <div className="space-y-10">
@@ -65,6 +69,16 @@ export default async function StoreHomePage({
         </div>
       </section>
 
+      {featured.length > 0 && (
+        <FeaturedCarousel>
+          {featured.map((product) => (
+            <div key={product.id} className="w-[65%] shrink-0 snap-start sm:w-[38%] lg:w-[23%]">
+              <ProductCard product={product} base={base} />
+            </div>
+          ))}
+        </FeaturedCarousel>
+      )}
+
       {isEmpty && (
         <section className="rounded-xl border border-dashed border-slate-300 p-10 text-center">
           <p className="text-slate-600">
@@ -81,13 +95,18 @@ export default async function StoreHomePage({
           title="Promoções"
           subtitle="Aproveite enquanto durar"
           href={`${base}/produtos?ordem=menor-preco`}
-          products={promos}
+          products={promos.slice(0, 4)}
           base={base}
         />
       )}
 
       {bestSellers.length > 0 && (
-        <ShelfSection title="Mais vendidos" href={`${base}/produtos`} products={bestSellers} base={base} />
+        <ShelfSection
+          title="Mais vendidos"
+          href={`${base}/produtos`}
+          products={bestSellers.slice(0, 4)}
+          base={base}
+        />
       )}
 
       {novelties.length > 0 && (
@@ -100,6 +119,16 @@ export default async function StoreHomePage({
       )}
     </div>
   );
+}
+
+/** Remove duplicados quando um produto aparece em mais de uma lista (ex.: em promoção e mais vendido). */
+function dedupeById(products: CatalogProductCard[]): CatalogProductCard[] {
+  const seen = new Set<string>();
+  return products.filter((product) => {
+    if (seen.has(product.id)) return false;
+    seen.add(product.id);
+    return true;
+  });
 }
 
 function ShelfSection({

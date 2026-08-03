@@ -58,7 +58,7 @@ export default async function StoreLayout({
         className="flex min-h-screen flex-col bg-white [--store-primary:#0f172a]"
       >
         <StoreHeader store={store} categories={categories} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
       </div>
     </CartProvider>
