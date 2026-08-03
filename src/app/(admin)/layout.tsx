@@ -10,9 +10,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <MobileSidebarProvider>
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar role={user.role} />
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <Topbar name={user.name ?? user.email ?? "Usuário"} role={user.role} />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="min-w-0 flex-1 p-6">{children}</main>
         </div>
       </div>
     </MobileSidebarProvider>

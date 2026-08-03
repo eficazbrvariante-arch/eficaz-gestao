@@ -1,9 +1,19 @@
 import Link from "next/link";
+import type { Viewport } from "next";
 import { requireUser } from "@/lib/session";
 import { canApplyDiscount, canSell } from "@/lib/permissions";
 import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { PdvScreen } from "./pdv-screen";
+
+// Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
+// acidental durante uma venda não pode distorcer o layout dos botões.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export default async function PdvPage() {
   const user = await requireUser();
