@@ -6,6 +6,7 @@ import {
   canManageStock,
   canSell,
   canViewReports,
+  isStockCollaborator,
 } from "@/lib/permissions";
 
 export type NavItem = {
@@ -67,6 +68,14 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/** Não é um item da lista geral: esse papel só enxerga essa única tela, nunca o resto do painel. */
+const STOCK_COLLABORATOR_ITEM: NavItem = {
+  label: "Estoque (fotos)",
+  href: "/colaborador-estoque",
+  available: true,
+};
+
 export function navItemsForRole(role: UserRole) {
+  if (isStockCollaborator(role)) return [STOCK_COLLABORATOR_ITEM];
   return NAV_ITEMS.filter((item) => !item.visibleTo || item.visibleTo(role));
 }

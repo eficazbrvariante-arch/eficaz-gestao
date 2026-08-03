@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   MANAGER: "Gerente",
   SELLER: "Vendedor",
   STOCKIST: "Estoquista",
+  STOCK_COLLABORATOR: "Colaborador de Estoque",
 };
 
 /** Vender no PDV. */
@@ -83,4 +84,17 @@ export function canManageRepairOrderCostAnytime(role: UserRole) {
  */
 export function canEnterRepairOrderCostOnCreate(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
+ * Acesso restrito à tela de ajuste rápido de estoque (foto + quantidade,
+ * sem preço nem qualquer outra informação do produto).
+ */
+export function isStockCollaborator(role: UserRole) {
+  return role === "STOCK_COLLABORATOR";
+}
+
+/** Quem pode usar a tela de ajuste rápido de estoque — o colaborador dedicado, ou quem já gerencia estoque. */
+export function canQuickEditStockQty(role: UserRole) {
+  return isStockCollaborator(role) || canManageStock(role);
 }

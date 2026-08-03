@@ -117,6 +117,9 @@ enum UserRole {
   MANAGER
   SELLER
   STOCKIST
+  /// Só vê a foto e edita a quantidade em estoque de qualquer produto; sem
+  /// acesso a preços nem a qualquer outra tela do painel.
+  STOCK_COLLABORATOR
 }
 
 model User {

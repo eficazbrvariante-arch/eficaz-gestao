@@ -80,3 +80,10 @@ export const stockMovementSchema = z
   });
 export type StockMovementInput = z.infer<typeof stockMovementSchema>;
 export type StockMovementFormValues = z.input<typeof stockMovementSchema>;
+
+/** Ajuste rápido de quantidade — usado pela tela do Colaborador de Estoque, que não vê preço nem mais nada do produto. */
+export const quickStockAdjustSchema = z.object({
+  productId: z.string().trim().min(1),
+  quantity: z.coerce.number().int("Deve ser um número inteiro").min(0, "Não pode ser negativo"),
+});
+export type QuickStockAdjustInput = z.infer<typeof quickStockAdjustSchema>;
