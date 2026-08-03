@@ -25,10 +25,11 @@ export default async function StoreHomePage({
   const base = `/loja/${store.subdomain}`;
   const name = storeDisplayName(store);
 
+  const SHELF_SIZE = 12;
   const [promos, bestSellers, novelties] = await Promise.all([
-    listPromoProducts(store.id, 10),
-    listBestSellers(store.id, 10),
-    listNewProducts(store.id),
+    listPromoProducts(store.id, 20),
+    listBestSellers(store.id, 20),
+    listNewProducts(store.id, SHELF_SIZE),
   ]);
 
   const isEmpty =
@@ -50,7 +51,7 @@ export default async function StoreHomePage({
             <img
               src={store.bannerUrl}
               alt=""
-              className="absolute inset-0 h-full w-full object-contain"
+              className="absolute inset-0 h-full w-full object-cover"
             />
           )}
           {/* Faixa fina no rodapé do banner, na cor da marca, para não cobrir a foto. */}
@@ -102,7 +103,7 @@ export default async function StoreHomePage({
           title="Promoções"
           subtitle="Aproveite enquanto durar"
           href={`${base}/produtos?ordem=menor-preco`}
-          products={promos.slice(0, 4)}
+          products={promos.slice(0, SHELF_SIZE)}
           base={base}
         />
       )}
@@ -111,7 +112,7 @@ export default async function StoreHomePage({
         <ShelfSection
           title="Mais vendidos"
           href={`${base}/produtos`}
-          products={bestSellers.slice(0, 4)}
+          products={bestSellers.slice(0, SHELF_SIZE)}
           base={base}
         />
       )}

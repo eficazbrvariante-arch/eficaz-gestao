@@ -15,6 +15,7 @@ export type PdvProduct = {
   barcode: string | null;
   price: number;
   stockQty: number;
+  imageUrl: string | null;
   variants: { id: string; name: string; priceAdjustment: number; stockQty: number }[];
 };
 
@@ -39,6 +40,7 @@ export async function searchProductsAction(
     salePrice: true,
     promoPrice: true,
     stockQty: true,
+    images: { select: { url: true }, orderBy: { order: "asc" as const }, take: 1 },
     variants: {
       select: { id: true, name: true, priceAdjustment: true, stockQty: true },
     },
@@ -52,6 +54,7 @@ export async function searchProductsAction(
     salePrice: unknown;
     promoPrice: unknown;
     stockQty: number;
+    images: { url: string }[];
     variants: { id: string; name: string; priceAdjustment: unknown; stockQty: number }[];
   }): PdvProduct => ({
     id: p.id,
@@ -60,6 +63,7 @@ export async function searchProductsAction(
     barcode: p.barcode,
     price: Number(p.promoPrice ?? p.salePrice),
     stockQty: p.stockQty,
+    imageUrl: p.images[0]?.url ?? null,
     variants: p.variants.map((v) => ({
       id: v.id,
       name: v.name,

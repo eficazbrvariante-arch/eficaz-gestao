@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatBRL } from "@/lib/format";
+import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,9 +48,11 @@ function round2(value: number) {
 export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
 
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<PdvProduct[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState(0);
@@ -64,6 +67,40 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     { id: 1, method: "CASH", amount: 0 },
   ]);
   const [cashReceived, setCashReceived] = useState<number | "">("");
+
+  // Sugestões em tempo real conforme o operador digita (busca parcial pelo
+  // nome). Separado do Enter/leitor de código de barras, que continua
+  // adicionando direto quando casa exatamente com um código.
+  useEffect(() => {
+    const query = term.trim();
+
+    const timeout = window.setTimeout(() => {
+      if (query.length < 2) {
+        setResults([]);
+        setSuggestionsOpen(false);
+        return;
+      }
+      startTransition(async () => {
+        const { products } = await searchProductsAction(query);
+        setResults(products);
+        setSuggestionsOpen(true);
+      });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [term]);
+
+  // Fecha a lista de sugestões ao clicar fora do campo de busca.
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        setSuggestionsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [suggestionsOpen]);
 
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
   const total = round2(Math.max(0, subtotal - discount));
@@ -123,6 +160,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
 
     setTerm("");
     setResults([]);
+    setSuggestionsOpen(false);
     searchRef.current?.focus();
   }
 
@@ -138,9 +176,11 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
       } else if (products.length === 0) {
         setError(`Nenhum produto encontrado para "${query}".`);
         setResults([]);
+        setSuggestionsOpen(false);
       } else {
         setError(undefined);
         setResults(products);
+        setSuggestionsOpen(true);
       }
     });
   }
@@ -243,7 +283,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Coluna esquerda: busca e carrinho */}
       <div className="lg:col-span-3">
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div ref={searchBoxRef} className="relative mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <Label htmlFor="pdv-search">Produto (nome, código interno ou código de barras)</Label>
           <div className="flex gap-2">
             <Input
@@ -253,13 +293,19 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
               autoComplete="off"
               value={term}
               onChange={(e) => setTerm(e.target.value)}
+              onFocus={() => {
+                if (results.length > 0) setSuggestionsOpen(true);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   runSearch();
                 }
+                if (e.key === "Escape") {
+                  setSuggestionsOpen(false);
+                }
               }}
-              placeholder="Passe o leitor de código de barras ou digite e pressione Enter"
+              placeholder="Passe o leitor de código de barras ou digite o nome do produto"
               className="min-w-0 flex-1"
             />
             <Button
@@ -273,47 +319,82 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
             </Button>
           </div>
 
-          {results.length > 0 && (
-            <div className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
-              {results.map((product) => (
-                <div key={product.id} className="p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{product.name}</p>
-                      <p className="text-xs text-slate-400">
-                        {product.internalCode ?? "sem código"} · estoque {product.stockQty}
-                      </p>
+          {/* Sugestões em tempo real: atualiza a cada tecla digitada (busca parcial
+              pelo nome) e some quando o campo esvazia ou uma opção é escolhida. */}
+          {suggestionsOpen && results.length > 0 && (
+            <div className="absolute inset-x-4 top-full z-20 mt-1 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+              {results.map((product) => {
+                const hasVariants = product.variants.length > 0;
+                return (
+                  <div
+                    key={product.id}
+                    role={hasVariants ? undefined : "button"}
+                    tabIndex={hasVariants ? undefined : 0}
+                    onClick={hasVariants ? undefined : () => addToCart(product, null)}
+                    onKeyDown={
+                      hasVariants
+                        ? undefined
+                        : (e) => {
+                            if (e.key === "Enter") addToCart(product, null);
+                          }
+                    }
+                    className={clsx("p-3", !hasVariants && "cursor-pointer hover:bg-slate-50")}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
+                        {product.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={product.imageUrl}
+                            alt=""
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-[9px] text-slate-400">sem foto</span>
+                        )}
+                      </div>
+                      <div className="min-w-[140px] flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {product.name}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {product.internalCode ?? "sem código"} · estoque {product.stockQty}
+                        </p>
+                      </div>
+                      <div className="ml-auto flex shrink-0 items-center gap-3">
+                        <span className="text-sm text-slate-900">{formatBRL(product.price)}</span>
+                        {!hasVariants && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(product, null);
+                            }}
+                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                          >
+                            Adicionar
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="text-sm text-slate-900">{formatBRL(product.price)}</span>
-                      {product.variants.length === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => addToCart(product, null)}
-                          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
-                        >
-                          Adicionar
-                        </button>
-                      )}
-                    </div>
-                  </div>
 
-                  {product.variants.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {product.variants.map((variant) => (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          onClick={() => addToCart(product, variant.id)}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                        >
-                          {variant.name} · {formatBRL(product.price + variant.priceAdjustment)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                    {hasVariants && (
+                      <div className="mt-2 flex flex-wrap gap-2 pl-14">
+                        {product.variants.map((variant) => (
+                          <button
+                            key={variant.id}
+                            type="button"
+                            onClick={() => addToCart(product, variant.id)}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          >
+                            {variant.name} · {formatBRL(product.price + variant.priceAdjustment)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
