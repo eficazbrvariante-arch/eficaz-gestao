@@ -39,34 +39,41 @@ export default async function StoreHomePage({
   return (
     <div className="space-y-10">
       {/* Banner */}
-      <section
-        className="relative overflow-hidden rounded-2xl"
-        style={{ backgroundColor: "var(--store-primary)" }}
-      >
-        {store.bannerUrl && (
-          // Banner é uma URL cadastrada pela empresa; domínio desconhecido em build time.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={store.bannerUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-40"
-          />
-        )}
-        <div className="relative px-6 py-12 sm:px-10 sm:py-16">
-          <h1 className="max-w-2xl text-2xl font-semibold text-white sm:text-3xl">
-            {store.bannerTitle || `Bem-vindo à ${name}`}
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-white/90 sm:text-base">
-            {store.bannerSubtitle ||
-              "Confira nossos produtos disponíveis e faça seu pedido pelo WhatsApp."}
-          </p>
-          <Link
-            href={`${base}/produtos`}
-            className="mt-6 inline-block rounded-md bg-white px-5 py-2.5 text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            Ver todos os produtos
-          </Link>
+      <section>
+        <div
+          className="relative min-h-40 overflow-hidden rounded-2xl sm:min-h-0 sm:aspect-[16/5]"
+          style={{ backgroundColor: "var(--store-primary)" }}
+        >
+          {store.bannerUrl && (
+            // Banner é uma URL cadastrada pela empresa; domínio desconhecido em build time.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={store.bannerUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+          <div className="relative flex h-full flex-col justify-center px-4 py-4 sm:px-8">
+            {/* Fundo sólido só atrás do texto, para não precisar escurecer a foto inteira
+                (a imagem do banner pode já trazer seu próprio texto promocional). */}
+            <div className="inline-block max-w-xs self-start rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm sm:max-w-xl sm:px-5 sm:py-4">
+              <h1 className="text-base font-semibold text-white sm:text-2xl lg:text-3xl">
+                {store.bannerTitle || `Bem-vindo à ${name}`}
+              </h1>
+              <p className="mt-1 text-xs text-white/90 sm:mt-2 sm:text-base">
+                {store.bannerSubtitle ||
+                  "Confira nossos produtos disponíveis e faça seu pedido pelo WhatsApp."}
+              </p>
+            </div>
+          </div>
         </div>
+        <Link
+          href={`${base}/produtos`}
+          className="mt-4 inline-block rounded-md px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+          style={{ backgroundColor: "var(--store-primary)" }}
+        >
+          Ver todos os produtos
+        </Link>
       </section>
 
       {featured.length > 0 && (

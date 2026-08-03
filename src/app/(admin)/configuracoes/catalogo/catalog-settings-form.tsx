@@ -82,6 +82,10 @@ export function CatalogSettingsForm({
         <p className="mt-1 text-xs text-slate-400">
           Opcional. Sem imagem, o banner usa a cor principal da empresa.
         </p>
+        <p className="mt-1 text-xs text-slate-400">
+          Tamanho ideal: 1600 x 500 pixels (proporção 16:5). A imagem se ajusta
+          automaticamente ao celular sem cortar nem distorcer.
+        </p>
       </div>
 
       <div className="mb-4">
