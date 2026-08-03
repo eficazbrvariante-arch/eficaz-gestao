@@ -3,6 +3,7 @@ import type { Viewport } from "next";
 import { requireUser } from "@/lib/session";
 import { canApplyDiscount, canSell } from "@/lib/permissions";
 import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
+import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { PdvScreen } from "./pdv-screen";
 
@@ -50,7 +51,10 @@ export default async function PdvPage() {
     );
   }
 
-  const summary = await getCashSummary(user.tenantId, register.id);
+  const [summary, birthdayAlerts] = await Promise.all([
+    getCashSummary(user.tenantId, register.id),
+    getBirthdayAlerts(user.tenantId),
+  ]);
 
   return (
     <div>
@@ -76,6 +80,18 @@ export default async function PdvPage() {
           </Link>
         </div>
       </div>
+
+      {birthdayAlerts.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {birthdayAlerts.map((alert) => (
+            <p key={alert.id}>
+              {alert.when === "today"
+                ? `Hoje é aniversário de ${alert.name}!`
+                : `Amanhã é aniversário de ${alert.name}.`}
+            </p>
+          ))}
+        </div>
+      )}
 
       <PdvScreen canDiscount={canApplyDiscount(user.role)} />
     </div>
