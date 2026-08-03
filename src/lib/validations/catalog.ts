@@ -55,9 +55,10 @@ export const productSchema = z.object({
   minStock: z.coerce.number().int("Deve ser um número inteiro").min(0),
   active: z.boolean().default(true),
   showInCatalog: z.boolean().default(true),
-  imageUrl: z
-    .union([z.string().trim().url("Informe uma URL válida"), z.literal("")])
-    .optional(),
+  images: z
+    .array(z.string().trim().url("Informe uma URL válida"))
+    .max(5, "No máximo 5 fotos por produto")
+    .default([]),
   variants: z.array(productVariantSchema).default([]),
 });
 export type ProductInput = z.infer<typeof productSchema>;

@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
-import { ImageUploadField } from "@/components/ui/image-upload-field";
+import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
 
 type Option = { id: string; name: string };
 
@@ -54,6 +54,7 @@ export function ProductForm({
       costPrice: 0,
       salePrice: 0,
       variants: [],
+      images: [],
       ...defaultValues,
     },
   });
@@ -168,12 +169,14 @@ export function ProductForm({
       </div>
 
       <div className="mb-6">
-        <Label>Imagem principal</Label>
-        <ImageUploadField
-          value={watch("imageUrl") ?? undefined}
-          onChange={(url) => setValue("imageUrl", url, { shouldDirty: true })}
+        <Label>Fotos do produto (até 5)</Label>
+        <MultiImageUploadField
+          value={watch("images") ?? []}
+          onChange={(urls) => setValue("images", urls, { shouldDirty: true })}
+          max={5}
+          alt="Foto do produto"
         />
-        <FieldError message={errors.imageUrl?.message} />
+        <FieldError message={errors.images?.message} />
       </div>
 
       <div className="mb-6 flex gap-6">

@@ -149,9 +149,9 @@ export async function createProductAction(input: ProductInput) {
     },
   });
 
-  if (parsed.data.imageUrl) {
-    await prisma.productImage.create({
-      data: { productId: product.id, url: parsed.data.imageUrl, order: 0 },
+  if (parsed.data.images.length > 0) {
+    await prisma.productImage.createMany({
+      data: parsed.data.images.map((url, index) => ({ productId: product.id, url, order: index })),
     });
   }
 
@@ -214,24 +214,20 @@ export async function updateProductAction(id: string, input: ProductInput) {
     data: normalizeProductData(parsed.data),
   });
 
-  const firstImage = current.images[0];
-  if (parsed.data.imageUrl) {
-    if (firstImage) {
-      if (firstImage.url !== parsed.data.imageUrl) {
-        await deleteBlob(firstImage.url);
-      }
-      await prisma.productImage.update({
-        where: { id: firstImage.id },
-        data: { url: parsed.data.imageUrl },
-      });
-    } else {
-      await prisma.productImage.create({
-        data: { productId: id, url: parsed.data.imageUrl, order: 0 },
-      });
-    }
-  } else if (firstImage) {
-    await prisma.productImage.delete({ where: { id: firstImage.id } });
-    await deleteBlob(firstImage.url);
+  // Fotos não têm identidade própria fora do produto: mais simples recriar a
+  // lista (na nova ordem) do que calcular um diff a cada edição.
+  const removedUrls = current.images
+    .map((image) => image.url)
+    .filter((url) => !parsed.data.images.includes(url));
+
+  await prisma.productImage.deleteMany({ where: { productId: id } });
+  if (parsed.data.images.length > 0) {
+    await prisma.productImage.createMany({
+      data: parsed.data.images.map((url, index) => ({ productId: id, url, order: index })),
+    });
+  }
+  for (const url of removedUrls) {
+    await deleteBlob(url);
   }
 
   if (stockDelta !== 0) {

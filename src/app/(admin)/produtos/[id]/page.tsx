@@ -14,7 +14,7 @@ export default async function EditarProdutoPage({
   const [product, categories, brands, suppliers] = await Promise.all([
     prisma.product.findFirst({
       where: { id, tenantId: user.tenantId },
-      include: { images: true, variants: true },
+      include: { images: { orderBy: { order: "asc" } }, variants: true },
     }),
     prisma.category.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
     prisma.brand.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
@@ -47,7 +47,7 @@ export default async function EditarProdutoPage({
             minStock: product.minStock,
             active: product.active,
             showInCatalog: product.showInCatalog,
-            imageUrl: product.images[0]?.url ?? "",
+            images: product.images.map((image) => image.url),
             variants: product.variants.map((v) => ({
               name: v.name,
               sku: v.sku ?? "",

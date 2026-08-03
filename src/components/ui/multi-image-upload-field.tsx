@@ -7,22 +7,38 @@ export function MultiImageUploadField({
   value,
   onChange,
   disabled,
+  max,
+  alt = "Foto",
 }: {
   value: string[];
   onChange: (urls: string[]) => void;
   disabled?: boolean;
+  /** Quando informado, limita o total de fotos e desativa o envio ao atingir o teto. */
+  max?: number;
+  alt?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>();
 
+  const remainingSlots = max !== undefined ? Math.max(0, max - value.length) : undefined;
+  const atCap = remainingSlots === 0;
+
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setError(undefined);
+
+    const selected =
+      remainingSlots !== undefined ? Array.from(files).slice(0, remainingSlots) : Array.from(files);
+    if (selected.length === 0) {
+      setError(`Máximo de ${max} fotos.`);
+      return;
+    }
+
     setIsUploading(true);
     try {
       const uploaded: string[] = [];
-      for (const file of Array.from(files)) {
+      for (const file of selected) {
         const blob = await upload(file.name, file, {
           access: "public",
           handleUploadUrl: "/api/produtos/upload",
@@ -57,7 +73,7 @@ export function MultiImageUploadField({
 
       <button
         type="button"
-        disabled={disabled || isUploading}
+        disabled={disabled || isUploading || atCap}
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -67,10 +83,18 @@ export function MultiImageUploadField({
         className="w-full rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="font-medium text-slate-700">
-          {isUploading ? "Enviando..." : "Clique para adicionar foto"}
+          {atCap
+            ? `Limite de ${max} fotos atingido`
+            : isUploading
+              ? "Enviando..."
+              : "Clique para adicionar foto"}
         </span>
-        <br />
-        ou arraste imagens aqui — PNG, JPG até 10MB cada
+        {!atCap && (
+          <>
+            <br />
+            ou arraste imagens aqui — PNG, JPG até 10MB cada{max !== undefined ? ` (até ${max})` : ""}
+          </>
+        )}
       </button>
 
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
@@ -82,7 +106,7 @@ export function MultiImageUploadField({
               {/* eslint-disable-next-line @next/next/no-img-element -- domínio da imagem não é conhecido em build time */}
               <img
                 src={url}
-                alt="Foto do aparelho"
+                alt={alt}
                 className="h-24 w-full rounded-md border border-slate-200 object-cover"
               />
               <button
