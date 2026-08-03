@@ -34,7 +34,7 @@ export function StoreHeader({
           <span className="text-lg font-semibold tracking-tight text-slate-900">{name}</span>
         </Link>
 
-        <div className="order-2">
+        <div className="order-3 sm:order-2">
           <CategoryMenu base={base} categories={categories} />
         </div>
 
@@ -42,7 +42,7 @@ export function StoreHeader({
           <StoreSearch base={base} />
         </div>
 
-        <div className="order-3 ml-auto sm:order-4 sm:ml-0">
+        <div className="order-2 ml-auto sm:order-4 sm:ml-0">
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>

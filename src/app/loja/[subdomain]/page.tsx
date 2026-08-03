@@ -53,18 +53,18 @@ export default async function StoreHomePage({
               className="absolute inset-0 h-full w-full object-contain"
             />
           )}
-          <div className="relative flex h-full flex-col justify-center px-4 py-4 sm:px-8">
-            {/* Fundo sólido só atrás do texto, para não precisar escurecer a foto inteira
-                (a imagem do banner pode já trazer seu próprio texto promocional). */}
-            <div className="inline-block max-w-xs self-start rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm sm:max-w-xl sm:px-5 sm:py-4">
-              <h1 className="text-base font-semibold text-white sm:text-2xl lg:text-3xl">
-                {store.bannerTitle || `Bem-vindo à ${name}`}
-              </h1>
-              <p className="mt-1 text-xs text-white/90 sm:mt-2 sm:text-base">
-                {store.bannerSubtitle ||
-                  "Confira nossos produtos disponíveis e faça seu pedido pelo WhatsApp."}
-              </p>
-            </div>
+          {/* Faixa fina no rodapé do banner, na cor da marca, para não cobrir a foto. */}
+          <div
+            className="absolute inset-x-0 bottom-0 flex flex-col justify-center gap-0.5 px-4 py-2 sm:px-8 sm:py-2.5"
+            style={{ backgroundColor: "var(--store-primary)" }}
+          >
+            <h1 className="truncate text-xs font-semibold leading-tight text-white sm:text-base">
+              {store.bannerTitle || `Bem-vindo à ${name}`}
+            </h1>
+            <p className="truncate text-[11px] leading-tight text-white/90 sm:text-sm">
+              {store.bannerSubtitle ||
+                "Confira nossos produtos disponíveis e faça seu pedido pelo WhatsApp."}
+            </p>
           </div>
         </div>
         <Link
