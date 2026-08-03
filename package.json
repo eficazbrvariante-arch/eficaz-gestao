@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "seed:demo": "tsx scripts/seed-demo.mts",
     "limpar:demo": "tsx scripts/limpar-dados-demo.mts",
+    "corrigir:promocao-zerada": "tsx scripts/corrigir-promocao-zerada.mts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

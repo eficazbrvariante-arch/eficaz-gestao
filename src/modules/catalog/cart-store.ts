@@ -102,7 +102,7 @@ class CartStore {
     const existing = current.find((line) => line.key === key);
 
     if (existing) {
-      const next = Math.min(existing.quantity + quantity, item.stockQty);
+      const next = existing.quantity + quantity;
       this.commit(
         current.map((line) =>
           line.key === key ? { ...line, quantity: next, stockQty: item.stockQty } : line
@@ -111,15 +111,13 @@ class CartStore {
       return;
     }
 
-    this.commit([...current, { ...item, key, quantity: Math.min(quantity, item.stockQty) }]);
+    this.commit([...current, { ...item, key, quantity }]);
   }
 
   setQuantity(key: string, quantity: number) {
     this.commit(
       this.snapshot.items.map((line) =>
-        line.key === key
-          ? { ...line, quantity: Math.min(Math.max(1, quantity), line.stockQty) }
-          : line
+        line.key === key ? { ...line, quantity: Math.max(1, quantity) } : line
       )
     );
   }

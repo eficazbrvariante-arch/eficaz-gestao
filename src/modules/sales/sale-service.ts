@@ -98,17 +98,6 @@ export async function createSale(
     costTotal = round2(costTotal + unitCost * item.quantity);
   }
 
-  // Estoque: valida o total consolidado por produto.
-  for (const [productId, quantity] of quantityByProduct) {
-    const product = productMap.get(productId)!;
-    if (product.stockQty < quantity) {
-      return {
-        ok: false,
-        error: `Estoque insuficiente de "${product.name}": ${product.stockQty} disponível(is), ${quantity} solicitada(s).`,
-      };
-    }
-  }
-
   const discount = round2(input.discount ?? 0);
   if (discount > 0 && !ctx.allowDiscount) {
     return { ok: false, error: "Seu perfil não tem permissão para conceder descontos." };

@@ -99,7 +99,6 @@ export async function createOrder(
   };
 
   const resolvedItems: ResolvedItem[] = [];
-  const quantityByProduct = new Map<string, number>();
   let subtotal = 0;
   let costTotal = 0;
 
@@ -132,21 +131,6 @@ export async function createOrder(
 
     subtotal = round2(subtotal + total);
     costTotal = round2(costTotal + Number(product.costPrice) * item.quantity);
-    quantityByProduct.set(
-      product.id,
-      (quantityByProduct.get(product.id) ?? 0) + item.quantity
-    );
-  }
-
-  // Mesmo reservando, recusa o que já não tem em estoque hoje.
-  for (const [productId, quantity] of quantityByProduct) {
-    const product = productMap.get(productId)!;
-    if (product.stockQty < quantity) {
-      return {
-        ok: false,
-        error: `Estoque insuficiente de "${product.name}": restam ${product.stockQty} unidade(s).`,
-      };
-    }
   }
 
   // Taxa de entrega vem sempre da faixa cadastrada, nunca do formulário.
@@ -342,27 +326,6 @@ export async function updateOrderStatus(
     variantId: item.variantId,
     quantity: item.quantity,
   }));
-
-  // Concluir um pedido reservado exige que o estoque ainda exista.
-  if (status === "COMPLETED" && !alreadyDeducted) {
-    const byProduct = new Map<string, number>();
-    for (const line of lines) {
-      byProduct.set(line.productId, (byProduct.get(line.productId) ?? 0) + line.quantity);
-    }
-    const products = await prisma.product.findMany({
-      where: { id: { in: [...byProduct.keys()] } },
-      select: { id: true, name: true, stockQty: true },
-    });
-    for (const product of products) {
-      const needed = byProduct.get(product.id) ?? 0;
-      if (product.stockQty < needed) {
-        return {
-          ok: false,
-          error: `Estoque insuficiente de "${product.name}" para concluir: restam ${product.stockQty}, o pedido precisa de ${needed}.`,
-        };
-      }
-    }
-  }
 
   try {
     await prisma.$transaction(async (tx) => {

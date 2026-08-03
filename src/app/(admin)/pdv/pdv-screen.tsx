@@ -132,17 +132,9 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     setCart((current) => {
       const existing = current.find((line) => line.key === key);
       if (existing) {
-        if (existing.quantity + 1 > product.stockQty) {
-          setError(`Estoque insuficiente de "${product.name}".`);
-          return current;
-        }
         return current.map((line) =>
           line.key === key ? { ...line, quantity: line.quantity + 1 } : line
         );
-      }
-      if (product.stockQty < 1) {
-        setError(`"${product.name}" está sem estoque.`);
-        return current;
       }
       return [
         ...current,
@@ -187,11 +179,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
 
   function changeQuantity(key: string, quantity: number) {
     setCart((current) =>
-      current.map((line) => {
-        if (line.key !== key) return line;
-        const next = Math.max(1, Math.min(quantity, line.stockQty));
-        return { ...line, quantity: next };
-      })
+      current.map((line) => (line.key === key ? { ...line, quantity: Math.max(1, quantity) } : line))
     );
   }
 
@@ -426,7 +414,6 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                         <input
                           type="number"
                           min={1}
-                          max={line.stockQty}
                           value={line.quantity}
                           onChange={(e) => changeQuantity(line.key, Number(e.target.value))}
                           className="h-7 w-14 rounded border border-slate-300 px-1 text-center"

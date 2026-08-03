@@ -73,7 +73,6 @@ export function CartView({ base }: { base: string }) {
                     <input
                       type="number"
                       min={1}
-                      max={line.stockQty}
                       value={line.quantity}
                       onChange={(e) => setQuantity(line.key, Number(e.target.value) || 1)}
                       className="h-8 w-14 rounded border border-slate-300 px-1 text-center text-sm"
@@ -94,11 +93,6 @@ export function CartView({ base }: { base: string }) {
                   >
                     Remover
                   </button>
-                  {line.quantity >= line.stockQty && (
-                    <span className="text-xs text-amber-600">
-                      quantidade máxima disponível atingida
-                    </span>
-                  )}
                 </div>
               </div>
 

@@ -12,7 +12,6 @@ export function ProductCard({
 }) {
   const price = effectivePrice(product);
   const hasPromo = product.promoPrice !== null;
-  const outOfStock = product.stockQty <= 0;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
@@ -34,14 +33,9 @@ export function ProductCard({
             </div>
           )}
 
-          {hasPromo && !outOfStock && (
+          {hasPromo && (
             <span className="absolute left-2 top-2 rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
               Promoção
-            </span>
-          )}
-          {outOfStock && (
-            <span className="absolute left-2 top-2 rounded bg-slate-700 px-2 py-0.5 text-xs font-semibold text-white">
-              Esgotado
             </span>
           )}
         </div>
@@ -68,18 +62,16 @@ export function ProductCard({
 
       {/* Fica fora do <Link> (irmão, não descendente) para não aninhar botão
           dentro de âncora — clicar aqui não navega para a página do produto. */}
-      {!outOfStock && (
-        <AddToCartQuickButton
-          product={{
-            id: product.id,
-            name: product.name,
-            unitPrice: price,
-            imageUrl: product.imageUrl,
-            stockQty: product.stockQty,
-          }}
-          className="absolute right-2 top-2 z-10"
-        />
-      )}
+      <AddToCartQuickButton
+        product={{
+          id: product.id,
+          name: product.name,
+          unitPrice: price,
+          imageUrl: product.imageUrl,
+          stockQty: product.stockQty,
+        }}
+        className="absolute right-2 top-2 z-10"
+      />
     </div>
   );
 }

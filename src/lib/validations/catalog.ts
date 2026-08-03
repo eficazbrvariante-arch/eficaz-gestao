@@ -48,7 +48,7 @@ export const productSchema = z.object({
   costPrice: z.coerce.number().min(0, "O custo não pode ser negativo"),
   salePrice: z.coerce.number().min(0, "O preço de venda não pode ser negativo"),
   promoPrice: z
-    .union([z.coerce.number().min(0), z.literal("")])
+    .union([z.literal(""), z.coerce.number().min(0)])
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v)),
   stockQty: z.coerce.number().int("Deve ser um número inteiro").min(0),
