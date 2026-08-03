@@ -3,12 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { canManageRepairOrders } from "@/lib/permissions";
+import {
+  canEnterRepairOrderCostOnCreate,
+  canManageRepairOrderCostAnytime,
+  canManageRepairOrders,
+} from "@/lib/permissions";
 import {
   createRepairOrder,
   updateRepairOrder,
   updateRepairOrderStatus,
 } from "@/modules/repairs/repair-order-service";
+import { ensureRepairOrderReceiptUrl } from "@/modules/repairs/receipt-service";
 import {
   repairOrderSchema,
   updateRepairOrderStatusSchema,
@@ -26,7 +31,11 @@ export async function createRepairOrderAction(input: RepairOrderInput) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
-  const result = await createRepairOrder({ tenantId: user.tenantId, userId: user.id }, parsed.data);
+  const result = await createRepairOrder(
+    { tenantId: user.tenantId, userId: user.id },
+    parsed.data,
+    { canSetCost: canEnterRepairOrderCostOnCreate(user.role) }
+  );
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/assistencia-tecnica");
@@ -44,7 +53,10 @@ export async function updateRepairOrderAction(id: string, input: RepairOrderInpu
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
-  const result = await updateRepairOrder(user.tenantId, id, parsed.data);
+  const result = await updateRepairOrder(user.tenantId, id, parsed.data, {
+    canWriteCostAlways: canManageRepairOrderCostAnytime(user.role),
+    canWriteCostIfUnset: canEnterRepairOrderCostOnCreate(user.role),
+  });
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/assistencia-tecnica");
@@ -69,4 +81,17 @@ export async function updateRepairOrderStatusAction(id: string, status: string) 
   revalidatePath("/assistencia-tecnica");
   revalidatePath(`/assistencia-tecnica/${id}`);
   return { success: "Status atualizado." };
+}
+
+/** Garante que o comprovante em PDF da OS já foi gerado, antes de compartilhar o link. */
+export async function ensureRepairOrderReceiptAction(id: string) {
+  const user = await requireUser();
+  if (!canManageRepairOrders(user.role)) {
+    return { error: "Seu perfil não tem permissão para gerar o comprovante." };
+  }
+
+  const result = await ensureRepairOrderReceiptUrl(id, user.tenantId);
+  if (!result.ok) return { error: result.error };
+
+  return { success: true as const, path: `/comprovante/${id}` };
 }

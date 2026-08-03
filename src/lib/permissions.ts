@@ -67,3 +67,20 @@ export function canManageSettings(role: UserRole) {
 export function canManageRepairOrders(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
 }
+
+/**
+ * Ver e editar o preço de custo (e o lucro) de uma OS a qualquer momento,
+ * inclusive depois de criada e em relatórios. Só o administrador.
+ */
+export function canManageRepairOrderCostAnytime(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
+ * Informar o preço de custo no instante em que a OS é criada.
+ * Gerente tem esse acesso só na criação — depois de salva, só ADMIN vê/edita
+ * (ver canManageRepairOrderCostAnytime).
+ */
+export function canEnterRepairOrderCostOnCreate(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}

@@ -24,7 +24,8 @@ export type RepairOrderResult =
 
 export async function createRepairOrder(
   ctx: RepairOrderContext,
-  input: RepairOrderInput
+  input: RepairOrderInput,
+  options: { canSetCost: boolean }
 ): Promise<RepairOrderResult> {
   const customer = await prisma.customer.findFirst({
     where: { id: input.customerId, tenantId: ctx.tenantId },
@@ -62,6 +63,7 @@ export async function createRepairOrder(
           internalNotes: input.internalNotes || null,
           estimatedAt: parseDateOnly(input.estimatedAt),
           discount: input.discount,
+          costPrice: options.canSetCost ? (input.costPrice ?? null) : null,
           createdById: ctx.userId,
           items: {
             create: input.items.map((item) => ({
@@ -88,13 +90,20 @@ export async function createRepairOrder(
 export async function updateRepairOrder(
   tenantId: string,
   id: string,
-  input: RepairOrderInput
+  input: RepairOrderInput,
+  options: { canWriteCostAlways: boolean; canWriteCostIfUnset: boolean }
 ): Promise<RepairOrderResult> {
   const existing = await prisma.repairOrder.findFirst({
     where: { id, tenantId },
-    select: { id: true, number: true },
+    select: { id: true, number: true, costPrice: true },
   });
   if (!existing) return { ok: false, error: "Ordem de serviço não encontrada." };
+
+  // Gerente só grava o custo enquanto ninguém tiver informado um valor nesta
+  // OS ainda — em qualquer outra OS, mesmo criada por outra pessoa, vale a
+  // mesma regra. Depois de salvo uma vez, só ADMIN mexe.
+  const canWriteCost =
+    options.canWriteCostAlways || (options.canWriteCostIfUnset && existing.costPrice === null);
 
   const customer = await prisma.customer.findFirst({
     where: { id: input.customerId, tenantId },
@@ -129,6 +138,10 @@ export async function updateRepairOrder(
           internalNotes: input.internalNotes || null,
           estimatedAt: parseDateOnly(input.estimatedAt),
           discount: input.discount,
+          // Omitido (não `null`) quando quem chamou não pode mexer no custo: um
+          // update parcial do Prisma não toca no campo se a chave não existir,
+          // preservando o valor gravado por quem tinha permissão antes.
+          ...(canWriteCost ? { costPrice: input.costPrice ?? null } : {}),
           items: {
             create: input.items.map((item) => ({
               description: item.description,

@@ -12,8 +12,8 @@ const PUBLIC_ROUTES = [
   "/sessao-expirada",
 ];
 
-/** Prefixos totalmente públicos (catálogo online). */
-const PUBLIC_PREFIXES = ["/loja/", "/redefinir-senha/"];
+/** Prefixos totalmente públicos (catálogo online, comprovantes de OS). */
+const PUBLIC_PREFIXES = ["/loja/", "/redefinir-senha/", "/comprovante/"];
 
 /** Hostname sem a porta, em minúsculas. */
 function hostnameOf(host: string | null) {

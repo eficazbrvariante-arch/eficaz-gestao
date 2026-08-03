@@ -60,6 +60,8 @@ export const repairOrderSchema = z.object({
   /** Data prevista de entrega, formato `YYYY-MM-DD`. */
   estimatedAt: z.string().trim().optional().or(z.literal("")),
   discount: z.coerce.number().min(0, "O desconto não pode ser negativo"),
+  /** Preço de custo da peça — quem pode de fato gravá-lo é decidido no servidor, pelo papel do usuário. */
+  costPrice: z.coerce.number().min(0, "O preço de custo não pode ser negativo").nullable().optional(),
   items: z.array(repairOrderItemSchema),
   photoUrls: z.array(z.string()),
 });

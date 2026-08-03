@@ -399,6 +399,15 @@ model RepairOrder {
   estimatedAt   DateTime?
   pickedUpAt    DateTime?
 
+  /// Preço de custo da peça, usado só para calcular a margem internamente.
+  /// Visível/editável a qualquer momento apenas por ADMIN; MANAGER só informa
+  /// na criação da OS. Nunca exposto a outros perfis nem em relatórios.
+  costPrice Decimal? @db.Decimal(12, 2)
+
+  /// URL do comprovante em PDF, gerado sob demanda e cacheado aqui — evita
+  /// re-renderizar (e re-subir pro blob) a cada clique em "Enviar por WhatsApp".
+  receiptPdfUrl String?
+
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

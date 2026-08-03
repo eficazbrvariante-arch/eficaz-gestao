@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { canManageRepairOrders } from "@/lib/permissions";
+import {
+  canEnterRepairOrderCostOnCreate,
+  canManageRepairOrderCostAnytime,
+  canManageRepairOrders,
+} from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -38,6 +42,14 @@ export default async function OrdemServicoPage({
   });
   if (!order) notFound();
 
+  // Gerente só vê/edita o custo enquanto ninguém tiver salvo um valor nesta OS
+  // ainda; depois disso é só do administrador — em qualquer OS, não importa
+  // quem a criou.
+  const canEditCost =
+    canManageRepairOrderCostAnytime(user.role) ||
+    (canEnterRepairOrderCostOnCreate(user.role) && order.costPrice === null);
+  const canViewProfit = canManageRepairOrderCostAnytime(user.role);
+
   const defaults: RepairOrderDefaults = {
     customer: order.customer
       ? {
@@ -58,6 +70,9 @@ export default async function OrdemServicoPage({
     internalNotes: order.internalNotes ?? "",
     estimatedAt: order.estimatedAt ? order.estimatedAt.toISOString().slice(0, 10) : "",
     discount: Number(order.discount),
+    // Só entra no payload enviado ao cliente quando o papel pode mesmo ver o
+    // custo desta OS — nunca em texto/props para quem não pode.
+    costPrice: canEditCost && order.costPrice !== null ? Number(order.costPrice) : null,
     items: order.items.map((item) => ({
       description: item.description,
       unitPrice: Number(item.unitPrice),
@@ -80,5 +95,12 @@ export default async function OrdemServicoPage({
     })),
   };
 
-  return <RepairOrderWorkspace defaults={defaults} meta={meta} />;
+  return (
+    <RepairOrderWorkspace
+      defaults={defaults}
+      meta={meta}
+      canEditCost={canEditCost}
+      canViewProfit={canViewProfit}
+    />
+  );
 }

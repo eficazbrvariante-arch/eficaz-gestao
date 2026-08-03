@@ -15,6 +15,7 @@ import { formatBRL } from "@/lib/format";
 import { searchCustomersAction } from "../clientes/actions";
 import {
   createRepairOrderAction,
+  ensureRepairOrderReceiptAction,
   updateRepairOrderAction,
   updateRepairOrderStatusAction,
 } from "./actions";
@@ -54,6 +55,8 @@ export type RepairOrderDefaults = {
   internalNotes: string;
   estimatedAt: string;
   discount: number;
+  /** `null` também quando o papel atual não pode ver o custo desta OS — não só quando ele não existe. */
+  costPrice: number | null;
   items: { description: string; unitPrice: number; quantity: number }[];
   photoUrls: string[];
 };
@@ -81,9 +84,15 @@ function toServiceLines(items: RepairOrderDefaults["items"]): ServiceLine[] {
 export function RepairOrderWorkspace({
   defaults,
   meta,
+  canEditCost,
+  canViewProfit,
 }: {
   defaults: RepairOrderDefaults;
   meta?: RepairOrderMeta;
+  /** Se o papel atual pode ver/editar o campo de custo nesta OS agora. */
+  canEditCost: boolean;
+  /** Admin: também vê o lucro (orçamento − custo) calculado. */
+  canViewProfit: boolean;
 }) {
   const router = useRouter();
   const isEditing = Boolean(meta);
@@ -104,6 +113,7 @@ export function RepairOrderWorkspace({
   const [internalNotes, setInternalNotes] = useState(defaults.internalNotes);
   const [estimatedAt, setEstimatedAt] = useState(defaults.estimatedAt);
   const [discount, setDiscount] = useState(defaults.discount);
+  const [costPrice, setCostPrice] = useState<number | null>(defaults.costPrice);
   const [items, setItems] = useState<ServiceLine[]>(() => toServiceLines(defaults.items));
   const [photoUrls, setPhotoUrls] = useState<string[]>(defaults.photoUrls);
 
@@ -113,6 +123,7 @@ export function RepairOrderWorkspace({
   const [success, setSuccess] = useState<string>();
   const [isPending, startTransition] = useTransition();
   const [isUpdatingStatus, startStatusTransition] = useTransition();
+  const [isSendingWhatsapp, startWhatsappTransition] = useTransition();
   const [, startSearchTransition] = useTransition();
   const searchTimeout = useRef<number | undefined>(undefined);
 
@@ -162,6 +173,7 @@ export function RepairOrderWorkspace({
       internalNotes,
       estimatedAt,
       discount,
+      costPrice,
       items: items.map((line) => ({
         description: line.description,
         unitPrice: line.unitPrice,
@@ -216,6 +228,7 @@ export function RepairOrderWorkspace({
     setInternalNotes("");
     setEstimatedAt("");
     setDiscount(0);
+    setCostPrice(null);
     setItems([]);
     setPhotoUrls([]);
     setError(undefined);
@@ -238,22 +251,37 @@ export function RepairOrderWorkspace({
   }
 
   function handleWhatsapp() {
+    if (!meta) return;
     if (!customer?.phone) {
       setError("Este cliente não tem telefone cadastrado.");
       return;
     }
-    const digits = customer.phone.replace(/\D/g, "");
-    const lines = [
-      `Orçamento da OS${meta ? ` #${String(meta.number).padStart(6, "0")}` : ""}`,
-      `Aparelho: ${brand} ${model}`.trim(),
-      "",
-      "Serviços:",
-      ...items.map((item) => `- ${item.description}: ${formatBRL(item.unitPrice * item.quantity)}`),
-      "",
-      `Total: ${formatBRL(totalWithDiscount)}`,
-    ];
-    const url = `https://wa.me/${digits}?text=${encodeURIComponent(lines.join("\n"))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    setError(undefined);
+
+    // Abre a aba já em resposta ao clique, para o navegador não bloquear o
+    // popup — o link de destino só é preenchido depois que o PDF existir.
+    const receiptWindow = window.open("", "_blank");
+
+    startWhatsappTransition(async () => {
+      const result = await ensureRepairOrderReceiptAction(meta.id);
+      if (result?.error) {
+        setError(result.error);
+        receiptWindow?.close();
+        return;
+      }
+
+      const digits = customer.phone!.replace(/\D/g, "");
+      const receiptUrl = `${window.location.origin}${result.path}`;
+      const osLabel = `#${String(meta.number).padStart(6, "0")}`;
+      const message = `Olá! Segue o comprovante da sua Ordem de Serviço ${osLabel}: ${receiptUrl}`;
+      const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+
+      if (receiptWindow) {
+        receiptWindow.location.href = whatsappUrl;
+      } else {
+        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      }
+    });
   }
 
   return (
@@ -549,6 +577,31 @@ export function RepairOrderWorkspace({
             </div>
           </div>
 
+          {canEditCost && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm print:hidden">
+              <p className="mb-3 text-sm font-semibold text-slate-900">Custo (uso interno)</p>
+              <Label htmlFor="costPrice">Preço de custo da peça (R$)</Label>
+              <input
+                id="costPrice"
+                type="number"
+                min={0}
+                step="0.01"
+                value={costPrice ?? ""}
+                onChange={(e) =>
+                  setCostPrice(e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0))
+                }
+                placeholder="0,00"
+                className="h-9 w-full rounded border border-slate-300 px-2 text-sm"
+              />
+              {canViewProfit && (
+                <div className="mt-3 flex justify-between border-t border-amber-200 pt-2 text-sm font-semibold text-slate-900">
+                  <span>Lucro estimado</span>
+                  <span>{formatBRL(totalWithDiscount - (costPrice ?? 0))}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {isEditing && meta && (
             <>
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -609,9 +662,10 @@ export function RepairOrderWorkspace({
                 <button
                   type="button"
                   onClick={handleWhatsapp}
-                  className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+                  disabled={isSendingWhatsapp}
+                  className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                 >
-                  Enviar por WhatsApp
+                  {isSendingWhatsapp ? "Gerando comprovante..." : "Enviar por WhatsApp"}
                 </button>
               </div>
             </>

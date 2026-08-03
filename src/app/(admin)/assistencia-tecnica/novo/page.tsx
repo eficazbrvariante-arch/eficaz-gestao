@@ -1,5 +1,9 @@
 import { requireUser } from "@/lib/session";
-import { canManageRepairOrders } from "@/lib/permissions";
+import {
+  canEnterRepairOrderCostOnCreate,
+  canManageRepairOrderCostAnytime,
+  canManageRepairOrders,
+} from "@/lib/permissions";
 import { RepairOrderWorkspace, type RepairOrderDefaults } from "../repair-order-workspace";
 
 const EMPTY_DEFAULTS: RepairOrderDefaults = {
@@ -15,6 +19,7 @@ const EMPTY_DEFAULTS: RepairOrderDefaults = {
   internalNotes: "",
   estimatedAt: "",
   discount: 0,
+  costPrice: null,
   items: [],
   photoUrls: [],
 };
@@ -29,5 +34,11 @@ export default async function NovaOrdemServicoPage() {
     );
   }
 
-  return <RepairOrderWorkspace defaults={EMPTY_DEFAULTS} />;
+  return (
+    <RepairOrderWorkspace
+      defaults={EMPTY_DEFAULTS}
+      canEditCost={canEnterRepairOrderCostOnCreate(user.role)}
+      canViewProfit={canManageRepairOrderCostAnytime(user.role)}
+    />
+  );
 }
