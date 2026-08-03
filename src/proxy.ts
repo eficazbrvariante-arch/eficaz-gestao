@@ -40,6 +40,13 @@ export default auth(async (req) => {
   const { pathname } = nextUrl;
   const hostname = hostnameOf(req.headers.get("host"));
 
+  // robots.txt precisa responder igual em qualquer host (painel, subdomínio ou
+  // domínio próprio da loja) — sem isso, era reescrito para /loja/<loja>/robots.txt
+  // (404) num domínio próprio, ou exigia login no domínio do painel.
+  if (pathname === "/robots.txt") {
+    return NextResponse.next();
+  }
+
   // Loja acessada por subdomínio (ex.: eficazbr.localhost:3000) é reescrita
   // internamente para /loja/[subdominio], mantendo a URL bonita no navegador.
   const subdomain = subdomainFromHost(req.headers.get("host"));

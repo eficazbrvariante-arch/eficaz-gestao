@@ -52,7 +52,7 @@ export default async function ProdutosPage({
             name="q"
             defaultValue={q}
             placeholder="Buscar por nome, código ou EAN..."
-            className="w-full min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 sm:w-72 sm:flex-none"
+            className="w-full min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 sm:w-72 sm:flex-none"
           />
           <button
             type="submit"

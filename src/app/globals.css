@@ -12,12 +12,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Sem modo escuro: o app inteiro (painel e loja) é desenhado só pro tema
+   claro. O bloco padrão de "prefers-color-scheme: dark" do Next.js foi
+   removido de propósito — com o sistema do visitante em modo escuro, ele
+   deixava o texto quase branco em qualquer campo sem cor definida
+   explicitamente, sobre fundo branco (texto invisível). */
 
 body {
   background: var(--background);

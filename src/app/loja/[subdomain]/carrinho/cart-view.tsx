@@ -96,7 +96,7 @@ export function CartView({ base }: { base: string }) {
                   </button>
                   {line.quantity >= line.stockQty && (
                     <span className="text-xs text-amber-600">
-                      máximo disponível: {line.stockQty}
+                      quantidade máxima disponível atingida
                     </span>
                   )}
                 </div>

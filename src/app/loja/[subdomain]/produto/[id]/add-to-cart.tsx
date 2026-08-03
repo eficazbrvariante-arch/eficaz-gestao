@@ -113,10 +113,22 @@ export function AddToCart({
         </p>
       ) : (
         <>
-          <p className="mb-3 text-sm text-emerald-700">
-            {available === 1
-              ? "1 unidade disponível"
-              : `${available} unidades disponíveis`}
+          {/* Mostra só a disponibilidade, não a quantidade exata em estoque
+              (informação sensível do negócio, não precisa aparecer pro cliente). */}
+          <p className="mb-3 flex items-center gap-1.5 text-sm text-emerald-700">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4 shrink-0"
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Em estoque
           </p>
 
           <div className="mb-4 flex items-center gap-3">

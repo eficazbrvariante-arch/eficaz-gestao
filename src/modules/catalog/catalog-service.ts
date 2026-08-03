@@ -107,7 +107,10 @@ export async function listCatalogProducts(tenantId: string, filters: ProductFilt
     prisma.product.findMany({
       where,
       select: productCardSelect,
-      orderBy,
+      // Produtos sem foto vão pro fim da lista (não somem, só perdem prioridade)
+      // até que ganhem uma imagem — a ordenação escolhida pelo cliente decide a
+      // posição dentro de cada grupo (com foto / sem foto).
+      orderBy: [{ images: { _count: "desc" } }, orderBy],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -123,10 +126,19 @@ export async function listCatalogProducts(tenantId: string, filters: ProductFilt
   };
 }
 
-/** Produtos em promoção (com preço promocional definido). */
+/**
+ * Produtos em promoção (com preço promocional definido).
+ *
+ * Exige ao menos uma imagem: as vitrines da home são a vitrine principal da
+ * loja, e um produto sem foto ali prejudica a apresentação.
+ */
 export async function listPromoProducts(tenantId: string, take = 4) {
   const products = await prisma.product.findMany({
-    where: { ...publicProductWhere(tenantId), promoPrice: { not: null } },
+    where: {
+      ...publicProductWhere(tenantId),
+      promoPrice: { not: null },
+      images: { some: {} },
+    },
     select: productCardSelect,
     orderBy: { updatedAt: "desc" },
     take,
@@ -134,10 +146,10 @@ export async function listPromoProducts(tenantId: string, take = 4) {
   return products.map(toCard);
 }
 
-/** Últimos produtos cadastrados. */
+/** Últimos produtos cadastrados (exige foto — ver nota em `listPromoProducts`). */
 export async function listNewProducts(tenantId: string, take = 4) {
   const products = await prisma.product.findMany({
-    where: publicProductWhere(tenantId),
+    where: { ...publicProductWhere(tenantId), images: { some: {} } },
     select: productCardSelect,
     orderBy: { createdAt: "desc" },
     take,
@@ -147,7 +159,8 @@ export async function listNewProducts(tenantId: string, take = 4) {
 
 /**
  * Mais vendidos do catálogo, apurados a partir dos itens de vendas concluídas.
- * Produtos que saíram do catálogo são descartados do ranking.
+ * Produtos que saíram do catálogo ou não têm foto são descartados do ranking
+ * (ver nota em `listPromoProducts`).
  */
 export async function listBestSellers(tenantId: string, take = 4) {
   const ranking = await prisma.saleItem.groupBy({
@@ -160,7 +173,11 @@ export async function listBestSellers(tenantId: string, take = 4) {
   if (ranking.length === 0) return [];
 
   const products = await prisma.product.findMany({
-    where: { ...publicProductWhere(tenantId), id: { in: ranking.map((r) => r.productId) } },
+    where: {
+      ...publicProductWhere(tenantId),
+      id: { in: ranking.map((r) => r.productId) },
+      images: { some: {} },
+    },
     select: productCardSelect,
   });
 
@@ -210,6 +227,11 @@ export async function listRelatedProducts(
     take,
   });
   return products.map(toCard);
+}
+
+/** Quantidade de produtos visíveis no catálogo (para destaques como "mais de N produtos"). */
+export async function countCatalogProducts(tenantId: string) {
+  return prisma.product.count({ where: publicProductWhere(tenantId) });
 }
 
 /** Marcas que possuem ao menos um produto visível na loja. */

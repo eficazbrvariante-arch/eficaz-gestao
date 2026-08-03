@@ -15,7 +15,7 @@ export function ProductCard({
   const outOfStock = product.stockQty <= 0;
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md">
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
       <Link href={`${base}/produto/${product.id}`} className="flex flex-1 flex-col">
         <div className="relative aspect-square bg-slate-50">
           {product.imageUrl ? (
