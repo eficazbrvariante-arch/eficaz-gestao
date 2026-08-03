@@ -5,7 +5,7 @@ import type { UserRole } from "@/generated/prisma/enums";
 
 export function Topbar({ name, role }: { name: string; role: UserRole }) {
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 print:hidden">
       <div className="flex items-center text-sm text-slate-500">
         <MobileMenuButton />
         Bem-vindo(a), <span className="font-medium text-slate-900">{name}</span>{" "}

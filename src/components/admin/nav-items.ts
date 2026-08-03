@@ -1,6 +1,7 @@
 import type { UserRole } from "@/generated/prisma/enums";
 import {
   canManageProducts,
+  canManageRepairOrders,
   canManageSettings,
   canManageStock,
   canSell,
@@ -26,6 +27,12 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Clientes", href: "/clientes", available: true },
   { label: "Fornecedores", href: "/fornecedores", available: true, visibleTo: canManageProducts },
   { label: "Pedidos online", href: "/pedidos", available: true, visibleTo: canSell },
+  {
+    label: "Assistência Técnica",
+    href: "/assistencia-tecnica",
+    available: true,
+    visibleTo: canManageRepairOrders,
+  },
   { label: "Relatórios", href: "/relatorios", available: true, visibleTo: canViewReports },
   { label: "Usuários", href: "/usuarios", available: true, visibleTo: canManageSettings },
   {

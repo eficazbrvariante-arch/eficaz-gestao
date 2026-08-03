@@ -62,3 +62,8 @@ export function canViewReports(role: UserRole) {
 export function canManageSettings(role: UserRole) {
   return role === "ADMIN";
 }
+
+/** Registrar e acompanhar ordens de serviço de assistência técnica. */
+export function canManageRepairOrders(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
+}

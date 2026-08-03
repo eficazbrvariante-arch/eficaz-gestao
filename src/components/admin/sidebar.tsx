@@ -29,7 +29,7 @@ export function Sidebar({ role }: { role: UserRole }) {
       )}
       <aside
         className={clsx(
-          "fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out",
+          "fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out print:hidden",
           "md:static md:z-auto md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}

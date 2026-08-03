@@ -12,53 +12,54 @@ datasource db {
 }
 
 model Tenant {
-  id             String   @id @default(cuid())
-  name           String
-  tradeName      String?
-  document       String?
-  logoUrl        String?
-  primaryColor   String?
-  secondaryColor String?
-  phone          String?
-  whatsapp       String?
-  addressStreet  String?
-  addressNumber  String?
-  addressCity    String?
-  addressState   String?
-  addressZip     String?
-  subdomain      String   @unique
+  id                  String       @id @default(cuid())
+  name                String
+  tradeName           String?
+  document            String?
+  logoUrl             String?
+  primaryColor        String?
+  secondaryColor      String?
+  phone               String?
+  whatsapp            String?
+  addressStreet       String?
+  addressNumber       String?
+  addressCity         String?
+  addressState        String?
+  addressZip          String?
+  subdomain           String       @unique
   // Domínio próprio (Fase 7)
-  customDomain   String?      @unique
-  domainStatus   DomainStatus @default(NONE)
+  customDomain        String?      @unique
+  domainStatus        DomainStatus @default(NONE)
   /// Valor que a empresa publica num registro TXT para provar que é dona do domínio.
-  domainToken    String?
+  domainToken         String?
   /// Quando a posse do domínio foi confirmada.
-  domainVerifiedAt DateTime?
+  domainVerifiedAt    DateTime?
   /// Última tentativa de verificação, para mostrar "verificado há X".
-  domainCheckedAt  DateTime?
-  timezone       String   @default("America/Sao_Paulo")
-  currency       String   @default("BRL")
+  domainCheckedAt     DateTime?
+  timezone            String       @default("America/Sao_Paulo")
+  currency            String       @default("BRL")
   // Catálogo online (Fase 4)
-  catalogEnabled Boolean  @default(true)
-  bannerUrl      String?
-  bannerTitle    String?
-  bannerSubtitle String?
+  catalogEnabled      Boolean      @default(true)
+  bannerUrl           String?
+  bannerTitle         String?
+  bannerSubtitle      String?
   // Pedidos online (Fase 5)
-  deliveryEnabled Boolean     @default(true)
-  pickupEnabled   Boolean     @default(true)
+  deliveryEnabled     Boolean      @default(true)
+  pickupEnabled       Boolean      @default(true)
   /// Como o estoque reage a um pedido online (ver enum StockPolicy).
-  stockPolicy     StockPolicy @default(RESERVE)
+  stockPolicy         StockPolicy  @default(RESERVE)
   /// Instruções mostradas ao cliente na retirada (endereço, horário...).
-  pickupNotes     String?
+  pickupNotes         String?
   // Plano contratado (Fase 8). Os limites vêm de PLAN_LIMITS, no código —
   // assim ajustar um plano não exige migração nem atualizar cada empresa.
-  plan           Plan     @default(FREE)
+  plan                Plan         @default(FREE)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
-  saleSequence   Int      @default(0)
-  orderSequence  Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  saleSequence        Int          @default(0)
+  orderSequence       Int          @default(0)
+  repairOrderSequence Int          @default(0)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   users          User[]
   categories     Category[]
@@ -73,6 +74,7 @@ model Tenant {
   orders         Order[]
   deliveryZones  DeliveryZone[]
   auditLogs      AuditLog[]
+  repairOrders   RepairOrder[]
 
   @@map("tenants")
 }
@@ -87,9 +89,9 @@ enum Plan {
 /**
  * Momento em que o pedido online rebaixa o estoque.
  * RESERVE: o estoque só sai quando o pedido é concluído — evita furar o estoque
- *   do PDV com pedidos que podem não se confirmar.
+ * do PDV com pedidos que podem não se confirmar.
  * DEDUCT: o estoque sai assim que o pedido entra — garante o produto para quem
- *   pediu online, mas some do balcão antes da confirmação.
+ * pediu online, mas some do balcão antes da confirmação.
  */
 enum StockPolicy {
   RESERVE
@@ -131,38 +133,38 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  stockMovements   StockMovement[]
-  cashMovements    CashMovement[]
-  registersOpened  CashRegister[]  @relation("CashRegisterOpenedBy")
-  registersClosed  CashRegister[]  @relation("CashRegisterClosedBy")
-  salesMade        Sale[]          @relation("SaleSeller")
-  salesCancelled   Sale[]          @relation("SaleCancelledBy")
-  auditLogs        AuditLog[]
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockMovements      StockMovement[]
+  cashMovements       CashMovement[]
+  registersOpened     CashRegister[]  @relation("CashRegisterOpenedBy")
+  registersClosed     CashRegister[]  @relation("CashRegisterClosedBy")
+  salesMade           Sale[]          @relation("SaleSeller")
+  salesCancelled      Sale[]          @relation("SaleCancelledBy")
+  auditLogs           AuditLog[]
+  repairOrdersCreated RepairOrder[]   @relation("RepairOrderCreatedBy")
 
   @@map("users")
 }
 
 /**
  * Registro das ações sensíveis do painel: quem fez, o quê e quando.
- *
  * Guarda o nome do autor além do vínculo, para o histórico continuar legível
  * mesmo se o usuário for removido depois.
  */
 model AuditLog {
-  id         String   @id @default(cuid())
-  tenantId   String
-  userId     String?
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String?
   /// Nome de quem agiu no momento da ação (snapshot).
-  userName   String
+  userName    String
   /// O que aconteceu, em código: "sale.cancel", "user.role_change"...
-  action     String
+  action      String
   /// Tipo do registro afetado: "Sale", "User", "Product"...
-  entity     String
-  entityId   String?
+  entity      String
+  entityId    String?
   /// Descrição pronta para leitura, montada no momento da ação.
   description String
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -292,10 +294,10 @@ enum StockMovementType {
   IN
   OUT
   ADJUST
-  SALE          // baixa automática gerada por uma venda no PDV
+  SALE // baixa automática gerada por uma venda no PDV
   CANCEL_RETURN // devolução ao estoque por cancelamento de venda
-  ORDER         // baixa gerada por um pedido do catálogo online
-  ORDER_RETURN  // devolução por cancelamento de pedido online
+  ORDER // baixa gerada por um pedido do catálogo online
+  ORDER_RETURN // devolução por cancelamento de pedido online
 }
 
 model StockMovement {
@@ -347,12 +349,107 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sales  Sale[]
-  orders Order[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales        Sale[]
+  orders       Order[]
+  repairOrders RepairOrder[]
 
   @@index([tenantId, name])
   @@map("customers")
+}
+
+// ---------------------------------------------------------------------------
+// Assistência técnica
+// ---------------------------------------------------------------------------
+
+/// Etapas da ordem de serviço, na ordem em que normalmente avançam.
+enum RepairOrderStatus {
+  RECEIVED // Recebido, aguardando análise
+  ANALYZING // Em análise
+  AWAITING_APPROVAL // Orçamento enviado, aguardando aprovação do cliente
+  APPROVED // Cliente aprovou o orçamento
+  IN_REPAIR // Em manutenção
+  AWAITING_PART // Aguardando peça
+  READY // Pronto para retirada
+  DELIVERED // Entregue ao cliente
+  CANCELLED // Cancelado
+}
+
+model RepairOrder {
+  id       String            @id @default(cuid())
+  tenantId String
+  number   Int
+  status   RepairOrderStatus @default(RECEIVED)
+
+  customerId String?
+
+  // Aparelho
+  brand           String
+  model           String
+  color           String?
+  imei            String?
+  passcode        String?
+  turnsOn         Boolean @default(true)
+  condition       String?
+  reportedDefects String?
+
+  // Serviço
+  discount      Decimal   @default(0) @db.Decimal(12, 2)
+  internalNotes String?
+  estimatedAt   DateTime?
+  pickedUpAt    DateTime?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy User               @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
+  items     RepairOrderItem[]
+  photos    RepairOrderPhoto[]
+  events    RepairOrderEvent[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("repair_orders")
+}
+
+/// Serviço a realizar no aparelho (troca de peça, mão de obra etc.).
+model RepairOrderItem {
+  id            String  @id @default(cuid())
+  repairOrderId String
+  description   String
+  unitPrice     Decimal @db.Decimal(10, 2)
+  quantity      Int     @default(1)
+
+  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+
+  @@map("repair_order_items")
+}
+
+model RepairOrderPhoto {
+  id            String @id @default(cuid())
+  repairOrderId String
+  url           String
+  order         Int    @default(0)
+
+  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+
+  @@map("repair_order_photos")
+}
+
+/// Histórico de ações da OS, mostrado na linha do tempo do atendimento.
+model RepairOrderEvent {
+  id            String   @id @default(cuid())
+  repairOrderId String
+  message       String
+  createdAt     DateTime @default(now())
+
+  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+
+  @@map("repair_order_events")
 }
 
 // ---------------------------------------------------------------------------
@@ -365,19 +462,19 @@ enum CashRegisterStatus {
 }
 
 model CashRegister {
-  id            String             @id @default(cuid())
-  tenantId      String
-  status        CashRegisterStatus @default(OPEN)
-  openedById    String
-  openedAt      DateTime           @default(now())
-  openingAmount Decimal            @db.Decimal(12, 2)
-  closedById    String?
-  closedAt      DateTime?
+  id             String             @id @default(cuid())
+  tenantId       String
+  status         CashRegisterStatus @default(OPEN)
+  openedById     String
+  openedAt       DateTime           @default(now())
+  openingAmount  Decimal            @db.Decimal(12, 2)
+  closedById     String?
+  closedAt       DateTime?
   /// Valor efetivamente contado na gaveta no fechamento.
-  countedAmount Decimal?           @db.Decimal(12, 2)
+  countedAmount  Decimal?           @db.Decimal(12, 2)
   /// Valor que o sistema esperava (abertura + vendas em dinheiro + suprimentos - sangrias).
-  expectedAmount Decimal?          @db.Decimal(12, 2)
-  notes         String?
+  expectedAmount Decimal?           @db.Decimal(12, 2)
+  notes          String?
 
   tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   openedBy  User           @relation("CashRegisterOpenedBy", fields: [openedById], references: [id])
@@ -391,7 +488,7 @@ model CashRegister {
 
 enum CashMovementType {
   WITHDRAWAL // sangria
-  SUPPLY     // suprimento
+  SUPPLY // suprimento
 }
 
 model CashMovement {
@@ -458,17 +555,17 @@ model Sale {
 }
 
 model SaleItem {
-  id        String  @id @default(cuid())
-  saleId    String
-  productId String
-  variantId String?
+  id           String  @id @default(cuid())
+  saleId       String
+  productId    String
+  variantId    String?
   /// Nome do produto no momento da venda, para o comprovante histórico
   /// não mudar se o produto for renomeado depois.
   nameSnapshot String
-  quantity  Int
-  unitPrice Decimal @db.Decimal(10, 2)
-  unitCost  Decimal @default(0) @db.Decimal(10, 2)
-  total     Decimal @db.Decimal(12, 2)
+  quantity     Int
+  unitPrice    Decimal @db.Decimal(10, 2)
+  unitCost     Decimal @default(0) @db.Decimal(10, 2)
+  total        Decimal @db.Decimal(12, 2)
 
   sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -501,17 +598,17 @@ model Payment {
 
 /// Etapas do pedido, na ordem em que avançam.
 enum OrderStatus {
-  NEW        // Novo — acabou de chegar
-  CONFIRMED  // Confirmado pela loja
-  PREPARING  // Em separação
-  SHIPPED    // Saiu para entrega
-  COMPLETED  // Concluído (entregue ou retirado)
-  CANCELLED  // Cancelado
+  NEW // Novo — acabou de chegar
+  CONFIRMED // Confirmado pela loja
+  PREPARING // Em separação
+  SHIPPED // Saiu para entrega
+  COMPLETED // Concluído (entregue ou retirado)
+  CANCELLED // Cancelado
 }
 
 enum FulfillmentType {
   DELIVERY // Entrega no endereço do cliente
-  PICKUP   // Retirada na loja
+  PICKUP // Retirada na loja
 }
 
 /// Forma de pagamento combinada no pedido — a cobrança acontece fora do sistema.
@@ -525,20 +622,20 @@ enum OrderPaymentMethod {
 
 /// Faixa de entrega com taxa própria, identificada por bairro e/ou CEP.
 model DeliveryZone {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
   /// Bairro atendido (comparado sem diferenciar maiúsculas/acentos na busca).
   neighborhood String?
   /// Faixa de CEP atendida, apenas dígitos (ex.: 01000000 a 01099999).
-  zipStart  String?
-  zipEnd    String?
-  fee       Decimal  @default(0) @db.Decimal(10, 2)
+  zipStart     String?
+  zipEnd       String?
+  fee          Decimal  @default(0) @db.Decimal(10, 2)
   /// Prazo estimado exibido ao cliente (ex.: "até 2 horas").
-  estimate  String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  estimate     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders Order[]
@@ -555,41 +652,41 @@ model Order {
   status   OrderStatus @default(NEW)
 
   // Dados de contato informados no checkout (o visitante não tem conta).
-  customerName  String
-  customerPhone String
-  customerEmail String?
+  customerName     String
+  customerPhone    String
+  customerEmail    String?
   customerDocument String?
   /// Vinculado quando o telefone casa com um cliente já cadastrado.
-  customerId    String?
+  customerId       String?
 
-  fulfillment   FulfillmentType
-  deliveryZoneId String?
-  addressStreet String?
-  addressNumber String?
-  addressComplement String?
+  fulfillment         FulfillmentType
+  deliveryZoneId      String?
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
   addressNeighborhood String?
-  addressCity   String?
-  addressState  String?
-  addressZip    String?
+  addressCity         String?
+  addressState        String?
+  addressZip          String?
 
   paymentMethod OrderPaymentMethod
   /// Troco pedido pelo cliente quando o pagamento é em dinheiro.
-  changeFor     Decimal? @db.Decimal(12, 2)
+  changeFor     Decimal?           @db.Decimal(12, 2)
 
-  subtotal     Decimal @db.Decimal(12, 2)
-  deliveryFee  Decimal @default(0) @db.Decimal(12, 2)
-  total        Decimal @db.Decimal(12, 2)
+  subtotal    Decimal @db.Decimal(12, 2)
+  deliveryFee Decimal @default(0) @db.Decimal(12, 2)
+  total       Decimal @db.Decimal(12, 2)
   /// Soma do custo dos itens no momento do pedido, para apurar lucro.
-  costTotal    Decimal @default(0) @db.Decimal(12, 2)
+  costTotal   Decimal @default(0) @db.Decimal(12, 2)
 
-  notes        String?
+  notes           String?
   /// Registrado quando o estoque já foi baixado, para não baixar duas vezes
   /// ao avançar o status (ver StockPolicy).
   stockDeductedAt DateTime?
-  cancelReason String?
-  cancelledAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  cancelReason    String?
+  cancelledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -603,17 +700,17 @@ model Order {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  variantId String?
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String
+  variantId    String?
   /// Nome do produto no momento do pedido, para o histórico não mudar
   /// se o produto for renomeado depois.
   nameSnapshot String
-  quantity  Int
-  unitPrice Decimal @db.Decimal(10, 2)
-  unitCost  Decimal @default(0) @db.Decimal(10, 2)
-  total     Decimal @db.Decimal(12, 2)
+  quantity     Int
+  unitPrice    Decimal @db.Decimal(10, 2)
+  unitCost     Decimal @default(0) @db.Decimal(10, 2)
+  total        Decimal @db.Decimal(12, 2)
 
   order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
