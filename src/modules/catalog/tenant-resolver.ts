@@ -64,6 +64,12 @@ export function storeDisplayName(store: Pick<Store, "name" | "tradeName">) {
   return store.tradeName?.trim() || store.name;
 }
 
+/** "Cidade-UF" da loja, ou só a cidade se o estado não estiver cadastrado. */
+export function storeCityLabel(store: Pick<Store, "addressCity" | "addressState">) {
+  if (!store.addressCity) return null;
+  return store.addressState ? `${store.addressCity}-${store.addressState}` : store.addressCity;
+}
+
 /**
  * Busca a empresa por domínio customizado (usado pelo proxy para reescrever a rota).
  * O fluxo completo de cadastro e validação de domínio entra na Fase 7.

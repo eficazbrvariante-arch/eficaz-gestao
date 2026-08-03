@@ -1,4 +1,5 @@
-import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
+import { storeCityLabel, storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
+import { TrustBar } from "./trust-bar";
 
 function whatsappLink(whatsapp: string) {
   const digits = whatsapp.replace(/\D/g, "");
@@ -17,7 +18,9 @@ export function StoreFooter({ store }: { store: Store }) {
   return (
     <footer className="mt-10 border-t border-slate-200 bg-slate-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-        <div className="grid grid-cols-1 gap-6 text-sm sm:grid-cols-2">
+        <TrustBar city={storeCityLabel(store)} />
+
+        <div className="mt-6 grid grid-cols-1 gap-6 text-sm sm:grid-cols-2">
           <div>
             <p className="font-semibold text-slate-900">{name}</p>
             {addressParts.length > 0 && (

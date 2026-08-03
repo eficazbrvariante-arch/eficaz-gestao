@@ -11,7 +11,7 @@ const iconProps = {
   strokeWidth: 1.75,
   strokeLinecap: "round" as const,
   strokeLinejoin: "round" as const,
-  className: "h-5 w-5 shrink-0",
+  className: "h-4 w-4 shrink-0 sm:h-5 sm:w-5",
 };
 
 function ShieldLockIcon() {
@@ -82,15 +82,15 @@ export function TrustBar({ city }: { city?: string | null }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 sm:grid-cols-3 sm:gap-y-3 lg:grid-cols-6 lg:gap-x-2">
+    <div className="grid grid-cols-2 gap-x-2 gap-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3 sm:gap-x-3 sm:gap-y-3 sm:py-4 lg:grid-cols-6 lg:gap-x-2">
       {items.map((item) => (
         <div
           key={item.label}
-          className="flex flex-col items-center gap-1.5 text-center sm:flex-row sm:gap-2 sm:text-left"
+          className="flex flex-col items-center gap-1 text-center sm:flex-row sm:gap-2 sm:text-left"
           style={{ color: "var(--store-primary)" }}
         >
           {item.icon}
-          <span className="text-xs font-medium text-slate-700">{item.label}</span>
+          <span className="text-[11px] font-medium text-slate-700 sm:text-xs">{item.label}</span>
         </div>
       ))}
     </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getStoreBySubdomain,
+  storeCityLabel,
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
 import {
@@ -13,7 +14,6 @@ import {
 } from "@/modules/catalog/catalog-service";
 import { ProductCard, ProductGrid } from "./product-card";
 import { FeaturedCarousel } from "./featured-carousel";
-import { TrustBar } from "./trust-bar";
 
 /** Arredonda para baixo, num número redondo, para um destaque estável (ex.: "mais de 1.700"). */
 function roundedProductCount(total: number) {
@@ -55,10 +55,7 @@ export default async function StoreHomePage({
     .filter((product) => !promoShelfIds.has(product.id))
     .slice(0, 10);
 
-  const city =
-    store.addressCity && store.addressState
-      ? `${store.addressCity}-${store.addressState}`
-      : store.addressCity;
+  const city = storeCityLabel(store);
   const displayedCount = roundedProductCount(totalProducts);
 
   return (
@@ -112,8 +109,6 @@ export default async function StoreHomePage({
           </Link>
         </section>
       </div>
-
-      <TrustBar city={city} />
 
       {featured.length > 0 && (
         <FeaturedCarousel>
