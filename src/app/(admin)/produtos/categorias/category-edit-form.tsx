@@ -3,13 +3,14 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { categorySchema, type CategoryInput } from "@/lib/validations/catalog";
+import { categorySchema, type CategoryInput, type CategoryFormValues } from "@/lib/validations/catalog";
 import { updateCategoryAction } from "../actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CATEGORY_ICON_OPTIONS } from "@/lib/category-icons";
 
 type EditableCategory = {
@@ -17,6 +18,7 @@ type EditableCategory = {
   name: string;
   parentId: string | null;
   icon: string | null;
+  counterOnly: boolean;
 };
 
 export function CategoryEditForm({
@@ -35,12 +37,13 @@ export function CategoryEditForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CategoryInput>({
+  } = useForm<CategoryFormValues, unknown, CategoryInput>({
     resolver: zodResolver(categorySchema),
     defaultValues: {
       name: category.name,
       parentId: category.parentId ?? "",
       icon: category.icon ?? "",
+      counterOnly: category.counterOnly,
     },
   });
 
@@ -89,6 +92,11 @@ export function CategoryEditForm({
           ))}
         </Select>
       </div>
+
+      <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+        <Checkbox {...register("counterOnly")} />
+        Só balcão
+      </label>
 
       <div className="flex gap-2 pb-0.5">
         <Button type="submit" disabled={isPending} fullWidth={false} className="px-4">

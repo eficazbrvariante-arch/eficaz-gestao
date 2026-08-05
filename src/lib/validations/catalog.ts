@@ -4,8 +4,12 @@ export const categorySchema = z.object({
   name: z.string().trim().min(2, "Informe o nome da categoria"),
   parentId: z.string().trim().optional().or(z.literal("")),
   icon: z.string().trim().optional().or(z.literal("")),
+  counterOnly: z.boolean().default(false),
 });
 export type CategoryInput = z.infer<typeof categorySchema>;
+// Tipo "de entrada" (antes da coerção do zod) — usado pelo useForm, já que
+// `counterOnly` tem default e chega opcional do formulário.
+export type CategoryFormValues = z.input<typeof categorySchema>;
 
 export const brandSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome da marca"),

@@ -35,6 +35,7 @@ export default async function CategoriasPage() {
               parentId: category.parentId,
               parentName: category.parent?.name ?? null,
               icon: category.icon,
+              counterOnly: category.counterOnly,
               productCount: category._count.products,
             }))}
             allCategories={categories.map((category) => ({ id: category.id, name: category.name }))}

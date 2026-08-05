@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { categorySchema, type CategoryInput } from "@/lib/validations/catalog";
+import { categorySchema, type CategoryInput, type CategoryFormValues } from "@/lib/validations/catalog";
 import { createCategoryAction } from "../actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CATEGORY_ICON_OPTIONS } from "@/lib/category-icons";
 
 export function CategoryForm({ categories }: { categories: { id: string; name: string }[] }) {
@@ -22,7 +23,10 @@ export function CategoryForm({ categories }: { categories: { id: string; name: s
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CategoryInput>({ resolver: zodResolver(categorySchema) });
+  } = useForm<CategoryFormValues, unknown, CategoryInput>({
+    resolver: zodResolver(categorySchema),
+    defaultValues: { counterOnly: false },
+  });
 
   const onSubmit = (data: CategoryInput) => {
     setFeedback(undefined);
@@ -59,7 +63,7 @@ export function CategoryForm({ categories }: { categories: { id: string; name: s
         </Select>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <Label htmlFor="icon">Ícone na home (opcional)</Label>
         <Select id="icon" {...register("icon")}>
           <option value="">Genérico</option>
@@ -69,6 +73,13 @@ export function CategoryForm({ categories }: { categories: { id: string; name: s
             </option>
           ))}
         </Select>
+      </div>
+
+      <div className="mb-6">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <Checkbox {...register("counterOnly")} />
+          Venda exclusiva no balcão (não aparece no catálogo online)
+        </label>
       </div>
 
       <Button type="submit" disabled={isPending}>

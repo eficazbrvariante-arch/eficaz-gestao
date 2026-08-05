@@ -27,6 +27,7 @@ type CategoryRow = {
   parentId: string | null;
   parentName: string | null;
   icon: string | null;
+  counterOnly: boolean;
   productCount: number;
 };
 
@@ -198,7 +199,14 @@ function CategoryRowItem({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-slate-900">{category.name}</td>
+      <td className="px-4 py-3 text-slate-900">
+        {category.name}
+        {category.counterOnly && (
+          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Só balcão
+          </span>
+        )}
+      </td>
       <td className="px-4 py-3 text-slate-500">{category.parentName ?? "-"}</td>
       <td className="px-4 py-3 text-slate-500">{category.productCount}</td>
       <td className="px-4 py-3 text-right">

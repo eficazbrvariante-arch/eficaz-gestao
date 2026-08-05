@@ -195,18 +195,23 @@ model AuditLog {
 }
 
 model Category {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  parentId  String?
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  parentId    String?
   /// Posição de exibição no catálogo online (menor primeiro). Definida por
   /// arrastar-e-soltar em Produtos → Categorias.
-  order     Int      @default(0)
-  /// Chave de um ícone fixo (ver `src/app/loja/[subdomain]/icons.tsx`), usado
-  /// na grade de categorias da home. Nulo usa o ícone genérico.
-  icon      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  order       Int      @default(0)
+  /// Chave de um ícone fixo (ver `src/app/loja/[subdomain]/icons.tsx`). Não é
+  /// mais exibido em lugar nenhum do catálogo online; mantido para não perder
+  /// o que já foi cadastrado, caso volte a ser usado.
+  icon        String?
+  /// Categoria de venda exclusiva no balcão da loja física (ex.: películas,
+  /// capinhas) — produtos dela nunca aparecem no catálogo online, em nenhuma
+  /// hipótese (listagem, busca, categoria ou link direto do produto).
+  counterOnly Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: SetNull)

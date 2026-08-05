@@ -71,11 +71,6 @@ export function ProductCard({
                 Mais vendido
               </span>
             )}
-            {product.isLowStock && (
-              <span className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
-                Só restam {product.stockQty}
-              </span>
-            )}
           </div>
 
           {product.isFlashDeal && product.promoEndsAt && (
@@ -121,18 +116,13 @@ export function ProductCard({
               </p>
             )}
 
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {product.stockQty > 0 && (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                  Pronta Entrega
-                </span>
-              )}
-              {store.deliveryEnabled && (
+            {store.deliveryEnabled && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                   Entrega Expressa
                 </span>
-              )}
-            </div>
+              </div>
+            )}
 
             {product.soldQty > 0 && (
               <p className="mt-1 text-[11px] text-slate-500">{product.soldQty} vendidos</p>

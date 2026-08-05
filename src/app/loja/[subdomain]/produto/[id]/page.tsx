@@ -109,19 +109,9 @@ export default async function StoreProductPage({
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            {product.stockQty > 0 && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                Pronta Entrega
-              </span>
-            )}
             {commerce.deliveryEnabled && (
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
                 Entrega Expressa
-              </span>
-            )}
-            {product.isLowStock && (
-              <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
-                Só restam {product.stockQty}
               </span>
             )}
             {product.isFlashDeal && product.promoEndsAt && (

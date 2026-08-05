@@ -34,6 +34,7 @@ export async function createCategoryAction(input: CategoryInput) {
       name: parsed.data.name,
       parentId: parsed.data.parentId || null,
       icon: parsed.data.icon || null,
+      counterOnly: parsed.data.counterOnly,
     },
   });
 
@@ -56,6 +57,7 @@ export async function updateCategoryAction(id: string, input: CategoryInput) {
       name: parsed.data.name,
       parentId: parsed.data.parentId || null,
       icon: parsed.data.icon || null,
+      counterOnly: parsed.data.counterOnly,
     },
   });
 

@@ -1,17 +1,22 @@
 import { prisma } from "@/lib/prisma";
 import { getLowestPriceLast30Days } from "@/modules/products/price-history";
 
-/** Abaixo deste tanto em estoque (e maior que zero), o card mostra "Só restam N". */
-const LOW_STOCK_CEILING = 5;
 const LAUNCH_WINDOW_DAYS = 15;
 
 /**
- * Um produto só aparece na loja se estiver ativo e marcado para o catálogo.
- * Esta condição é a base de toda consulta pública — nunca consulte produtos
- * do catálogo sem ela.
+ * Um produto só aparece na loja se estiver ativo, marcado para o catálogo, e
+ * fora de uma categoria exclusiva de balcão (`Category.counterOnly`). Esta
+ * condição é a base de toda consulta pública — nunca consulte produtos do
+ * catálogo sem ela. Cobre listagem, busca, categoria e link direto do
+ * produto, porque `getCatalogProduct` também usa esta mesma função.
  */
 function publicProductWhere(tenantId: string) {
-  return { tenantId, active: true, showInCatalog: true } as const;
+  return {
+    tenantId,
+    active: true,
+    showInCatalog: true,
+    OR: [{ categoryId: null }, { category: { counterOnly: false } }],
+  };
 }
 
 const productCardSelect = {
@@ -21,7 +26,6 @@ const productCardSelect = {
   promoPrice: true,
   promoEndsAt: true,
   stockQty: true,
-  minStock: true,
   avgRating: true,
   reviewCount: true,
   createdAt: true,
@@ -47,7 +51,6 @@ export type CatalogProductCard = {
   /** Menor preço efetivo dos últimos 30 dias — só presente quando maior que o preço atual (Lei do Preço Riscado). */
   strikePrice: number | null;
   discountPercent: number | null;
-  isLowStock: boolean;
   isFlashDeal: boolean;
 };
 
@@ -58,7 +61,6 @@ type RawProductCard = {
   promoPrice: unknown;
   promoEndsAt: Date | null;
   stockQty: number;
-  minStock: number;
   avgRating: unknown;
   reviewCount: number;
   createdAt: Date;
@@ -89,7 +91,6 @@ function toCard(product: RawProductCard): CatalogProductCard {
     soldQty: 0,
     strikePrice: null,
     discountPercent: null,
-    isLowStock: product.stockQty > 0 && product.stockQty <= Math.max(product.minStock, LOW_STOCK_CEILING),
     isFlashDeal,
   };
 }
@@ -444,7 +445,6 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
       promoPrice: true,
       promoEndsAt: true,
       stockQty: true,
-      minStock: true,
       avgRating: true,
       reviewCount: true,
       categoryId: true,
@@ -480,7 +480,6 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
     isFlashDeal: Boolean(
       promoPrice !== null && product.promoEndsAt && product.promoEndsAt.getTime() > Date.now()
     ),
-    isLowStock: product.stockQty > 0 && product.stockQty <= Math.max(product.minStock, LOW_STOCK_CEILING),
     soldQty: soldQuantities.get(product.id) ?? 0,
     strikePrice: hasGenuineStrike ? lowest! : null,
     discountPercent: hasGenuineStrike ? Math.round(((lowest! - current) / lowest!) * 100) : null,
@@ -515,7 +514,7 @@ export async function countCatalogProducts(tenantId: string) {
 /** Marcas que possuem ao menos um produto visível na loja. */
 export async function listCatalogBrands(tenantId: string) {
   return prisma.brand.findMany({
-    where: { tenantId, products: { some: { active: true, showInCatalog: true } } },
+    where: { tenantId, products: { some: publicProductWhere(tenantId) } },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
@@ -524,7 +523,11 @@ export async function listCatalogBrands(tenantId: string) {
 /** Categorias que possuem ao menos um produto visível na loja. */
 export async function listCatalogCategories(tenantId: string) {
   return prisma.category.findMany({
-    where: { tenantId, products: { some: { active: true, showInCatalog: true } } },
+    where: {
+      tenantId,
+      counterOnly: false,
+      products: { some: { active: true, showInCatalog: true } },
+    },
     select: { id: true, name: true, icon: true, _count: { select: { products: true } } },
     orderBy: [{ order: "asc" }, { name: "asc" }],
   });
