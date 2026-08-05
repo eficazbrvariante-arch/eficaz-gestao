@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { toDateTimeLocalValue } from "@/lib/format";
 import { ProductForm } from "../product-form";
 
 export default async function EditarProdutoPage({
@@ -25,7 +27,15 @@ export default async function EditarProdutoPage({
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Editar produto</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold text-slate-900">Editar produto</h1>
+        <Link
+          href={`/produtos/${product.id}/avaliacoes`}
+          className="text-sm text-slate-600 hover:underline"
+        >
+          Avaliações →
+        </Link>
+      </div>
       <div className="max-w-3xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <ProductForm
           productId={product.id}
@@ -43,6 +53,7 @@ export default async function EditarProdutoPage({
             costPrice: Number(product.costPrice),
             salePrice: Number(product.salePrice),
             promoPrice: product.promoPrice ? Number(product.promoPrice) : undefined,
+            promoEndsAt: product.promoEndsAt ? toDateTimeLocalValue(product.promoEndsAt) : "",
             stockQty: product.stockQty,
             minStock: product.minStock,
             active: product.active,

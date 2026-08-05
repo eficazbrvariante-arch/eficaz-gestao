@@ -32,9 +32,12 @@ export default async function CategoriasPage() {
             categories={categories.map((category) => ({
               id: category.id,
               name: category.name,
+              parentId: category.parentId,
               parentName: category.parent?.name ?? null,
+              icon: category.icon,
               productCount: category._count.products,
             }))}
+            allCategories={categories.map((category) => ({ id: category.id, name: category.name }))}
           />
         </div>
       </div>

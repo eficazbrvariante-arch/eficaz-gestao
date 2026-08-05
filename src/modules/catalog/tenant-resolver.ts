@@ -53,11 +53,32 @@ export const getStoreBySubdomain = cache(async (subdomain: string) => {
       bannerUrl: true,
       bannerTitle: true,
       bannerSubtitle: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+      instagramUrl: true,
+      aboutText: true,
+      exchangePolicy: true,
+      warrantyPolicy: true,
+      privacyPolicy: true,
+      businessHours: true,
+      acceptedPaymentMethods: true,
+      maxInstallments: true,
+      minInstallmentValue: true,
     },
   });
 });
 
 export type Store = NonNullable<Awaited<ReturnType<typeof getStoreBySubdomain>>>;
+
+/** Recorte de `Store` que os cards de produto precisam para Pix/parcelamento/badges, já convertido de Decimal para number. */
+export function storeCommerceInfo(store: Store) {
+  return {
+    deliveryEnabled: store.deliveryEnabled,
+    acceptedPaymentMethods: store.acceptedPaymentMethods as string[],
+    maxInstallments: store.maxInstallments,
+    minInstallmentValue: store.minInstallmentValue ? Number(store.minInstallmentValue) : null,
+  };
+}
 
 /** Nome de exibição da loja: prefere o nome fantasia. */
 export function storeDisplayName(store: Pick<Store, "name" | "tradeName">) {
@@ -79,4 +100,61 @@ export async function getStoreByCustomDomain(hostname: string) {
     where: { customDomain: hostname.toLowerCase(), catalogEnabled: true },
     select: { subdomain: true },
   });
+}
+
+/** Uma linha do horário de atendimento, guardada em `Tenant.businessHours` (Json). */
+export type BusinessHourEntry = {
+  /** 0 = domingo … 6 = sábado, mesma convenção de `Date#getDay()`. */
+  day: number;
+  opensAt: string;
+  closesAt: string;
+  closed: boolean;
+};
+
+export function parseBusinessHours(value: unknown): BusinessHourEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is BusinessHourEntry => {
+    if (typeof entry !== "object" || entry === null) return false;
+    const e = entry as Record<string, unknown>;
+    return (
+      typeof e.day === "number" &&
+      e.day >= 0 &&
+      e.day <= 6 &&
+      typeof e.closed === "boolean" &&
+      typeof e.opensAt === "string" &&
+      typeof e.closesAt === "string"
+    );
+  });
+}
+
+const STORE_TIMEZONE = "America/Sao_Paulo";
+const weekdayFormatter = new Intl.DateTimeFormat("en-US", { timeZone: STORE_TIMEZONE, weekday: "short" });
+const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: STORE_TIMEZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/**
+ * Se a loja está aberta agora, a partir do horário configurado em
+ * `businessHours` e do fuso da loja. Retorna `null` quando não há horário
+ * configurado — nesse caso o indicador "Aberto agora" simplesmente não aparece.
+ */
+export function isStoreOpenNow(
+  store: Pick<Store, "businessHours">
+): { open: boolean; today: BusinessHourEntry | null } | null {
+  const hours = parseBusinessHours(store.businessHours);
+  if (hours.length === 0) return null;
+
+  const now = new Date();
+  const day = WEEKDAY_INDEX[weekdayFormatter.format(now)];
+  const currentTime = timeFormatter.format(now);
+
+  const today = hours.find((h) => h.day === day) ?? null;
+  if (!today || today.closed) return { open: false, today };
+
+  const open = currentTime >= today.opensAt && currentTime <= today.closesAt;
+  return { open, today };
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
 import { CartBadge } from "./cart-badge";
 import { StoreSearch } from "./store-search";
@@ -19,10 +20,14 @@ export function StoreHeader({
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6">
         <Link href={base} className="order-1 flex items-center gap-3">
           {store.logoUrl ? (
-            // Imagens vêm de URLs livres cadastradas pela empresa; sem o domínio
-            // conhecido de antemão, next/image não pode otimizá-las.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={store.logoUrl} alt={name} className="h-10 w-auto object-contain" />
+            <Image
+              src={store.logoUrl}
+              alt={name}
+              width={80}
+              height={40}
+              priority
+              className="h-10 w-auto object-contain"
+            />
           ) : (
             <span
               className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold text-white"

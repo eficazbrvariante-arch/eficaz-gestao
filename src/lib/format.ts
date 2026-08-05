@@ -83,3 +83,18 @@ export function formatISODate(iso: string) {
   const [year, month, day] = iso.split("-");
   return `${day}/${month}/${year}`;
 }
+
+/** Valor para um `<input type="datetime-local">`, no fuso da loja: `YYYY-MM-DDTHH:mm`. */
+export function toDateTimeLocalValue(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}

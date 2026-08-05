@@ -19,15 +19,24 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { clsx } from "@/lib/clsx";
 import { updateCategoryOrderAction, deleteCategoryAction } from "../actions";
+import { CategoryEditForm } from "./category-edit-form";
 
 type CategoryRow = {
   id: string;
   name: string;
+  parentId: string | null;
   parentName: string | null;
+  icon: string | null;
   productCount: number;
 };
 
-export function CategoryOrderList({ categories }: { categories: CategoryRow[] }) {
+export function CategoryOrderList({
+  categories,
+  allCategories,
+}: {
+  categories: CategoryRow[];
+  allCategories: { id: string; name: string }[];
+}) {
   const [items, setItems] = useState(categories);
   const [isPending, startTransition] = useTransition();
   const sensors = useSensors(
@@ -76,6 +85,7 @@ export function CategoryOrderList({ categories }: { categories: CategoryRow[] })
                 <CategoryRowItem
                   key={category.id}
                   category={category}
+                  allCategories={allCategories}
                   isFirst={index === 0}
                   isLast={index === items.length - 1}
                   onMoveUp={() => move(index, -1)}
@@ -102,17 +112,20 @@ export function CategoryOrderList({ categories }: { categories: CategoryRow[] })
 
 function CategoryRowItem({
   category,
+  allCategories,
   isFirst,
   isLast,
   onMoveUp,
   onMoveDown,
 }: {
   category: CategoryRow;
+  allCategories: { id: string; name: string }[];
   isFirst: boolean;
   isLast: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
@@ -121,6 +134,20 @@ function CategoryRowItem({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  if (isEditing) {
+    return (
+      <tr ref={setNodeRef} style={style} className="border-b border-slate-100 bg-slate-50 last:border-0">
+        <td colSpan={5} className="px-4 py-3">
+          <CategoryEditForm
+            category={category}
+            categories={allCategories.filter((c) => c.id !== category.id)}
+            onDone={() => setIsEditing(false)}
+          />
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <tr
@@ -175,20 +202,29 @@ function CategoryRowItem({
       <td className="px-4 py-3 text-slate-500">{category.parentName ?? "-"}</td>
       <td className="px-4 py-3 text-slate-500">{category.productCount}</td>
       <td className="px-4 py-3 text-right">
-        <form action={deleteCategoryAction.bind(null, category.id)}>
+        <div className="flex items-center justify-end gap-3">
           <button
-            type="submit"
-            className="text-sm text-red-600 hover:underline"
-            disabled={category.productCount > 0}
-            title={
-              category.productCount > 0
-                ? "Remova os produtos desta categoria antes de excluir"
-                : undefined
-            }
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="text-sm text-slate-600 hover:underline"
           >
-            Excluir
+            Editar
           </button>
-        </form>
+          <form action={deleteCategoryAction.bind(null, category.id)}>
+            <button
+              type="submit"
+              className="text-sm text-red-600 hover:underline"
+              disabled={category.productCount > 0}
+              title={
+                category.productCount > 0
+                  ? "Remova os produtos desta categoria antes de excluir"
+                  : undefined
+              }
+            >
+              Excluir
+            </button>
+          </form>
+        </div>
       </td>
     </tr>
   );

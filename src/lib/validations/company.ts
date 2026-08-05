@@ -6,6 +6,7 @@ export const companySchema = z.object({
   document: z.string().trim().optional().or(z.literal("")),
   phone: z.string().trim().optional().or(z.literal("")),
   whatsapp: z.string().trim().optional().or(z.literal("")),
+  instagramUrl: z.string().trim().optional().or(z.literal("")),
   addressStreet: z.string().trim().optional().or(z.literal("")),
   addressNumber: z.string().trim().optional().or(z.literal("")),
   addressCity: z.string().trim().optional().or(z.literal("")),

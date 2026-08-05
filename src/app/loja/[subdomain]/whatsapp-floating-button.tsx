@@ -30,7 +30,7 @@ export function WhatsappFloatingButton({ whatsapp }: { whatsapp: string }) {
           type="button"
           onClick={() => setVisible(false)}
           aria-label="Fechar"
-          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-slate-800"
+          className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-slate-800"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

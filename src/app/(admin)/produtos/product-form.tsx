@@ -155,6 +155,18 @@ export function ProductForm({
         </div>
       </div>
 
+      {Boolean(watch("promoPrice")) && (
+        <div className="mb-4">
+          <Label htmlFor="promoEndsAt">Fim da oferta relâmpago (opcional)</Label>
+          <Input id="promoEndsAt" type="datetime-local" {...register("promoEndsAt")} />
+          <p className="mt-1 text-xs text-slate-500">
+            Preenchido, o produto aparece na prateleira &quot;Ofertas relâmpago&quot; com contagem
+            regressiva até esse horário. Vazio = promoção comum, sem prazo.
+          </p>
+          <FieldError message={errors.promoEndsAt?.message} />
+        </div>
+      )}
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="stockQty">Quantidade em estoque</Label>

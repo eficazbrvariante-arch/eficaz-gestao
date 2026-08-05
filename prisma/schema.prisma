@@ -12,54 +12,72 @@ datasource db {
 }
 
 model Tenant {
-  id                  String       @id @default(cuid())
-  name                String
-  tradeName           String?
-  document            String?
-  logoUrl             String?
-  primaryColor        String?
-  secondaryColor      String?
-  phone               String?
-  whatsapp            String?
-  addressStreet       String?
-  addressNumber       String?
-  addressCity         String?
-  addressState        String?
-  addressZip          String?
-  subdomain           String       @unique
+  id                     String               @id @default(cuid())
+  name                   String
+  tradeName              String?
+  document               String?
+  logoUrl                String?
+  primaryColor           String?
+  secondaryColor         String?
+  phone                  String?
+  whatsapp               String?
+  addressStreet          String?
+  addressNumber          String?
+  addressCity            String?
+  addressState           String?
+  addressZip             String?
+  subdomain              String               @unique
   // Domínio próprio (Fase 7)
-  customDomain        String?      @unique
-  domainStatus        DomainStatus @default(NONE)
+  customDomain           String?              @unique
+  domainStatus           DomainStatus         @default(NONE)
   /// Valor que a empresa publica num registro TXT para provar que é dona do domínio.
-  domainToken         String?
+  domainToken            String?
   /// Quando a posse do domínio foi confirmada.
-  domainVerifiedAt    DateTime?
+  domainVerifiedAt       DateTime?
   /// Última tentativa de verificação, para mostrar "verificado há X".
-  domainCheckedAt     DateTime?
-  timezone            String       @default("America/Sao_Paulo")
-  currency            String       @default("BRL")
+  domainCheckedAt        DateTime?
+  timezone               String               @default("America/Sao_Paulo")
+  currency               String               @default("BRL")
   // Catálogo online (Fase 4)
-  catalogEnabled      Boolean      @default(true)
-  bannerUrl           String?
-  bannerTitle         String?
-  bannerSubtitle      String?
+  catalogEnabled         Boolean              @default(true)
+  bannerUrl              String?
+  bannerTitle            String?
+  bannerSubtitle         String?
   // Pedidos online (Fase 5)
-  deliveryEnabled     Boolean      @default(true)
-  pickupEnabled       Boolean      @default(true)
+  deliveryEnabled        Boolean              @default(true)
+  pickupEnabled          Boolean              @default(true)
   /// Como o estoque reage a um pedido online (ver enum StockPolicy).
-  stockPolicy         StockPolicy  @default(RESERVE)
+  stockPolicy            StockPolicy          @default(RESERVE)
   /// Instruções mostradas ao cliente na retirada (endereço, horário...).
-  pickupNotes         String?
+  pickupNotes            String?
+  // Vitrine institucional do catálogo (reformulação "premium")
+  instagramUrl           String?
+  /// Texto livre "quem somos", exibido numa página institucional própria.
+  aboutText              String?
+  /// Política de troca — some do rodapé/badges quando não preenchida.
+  exchangePolicy         String?
+  /// Política de garantia — some do rodapé/badges quando não preenchida.
+  warrantyPolicy         String?
+  privacyPolicy          String?
+  /// Horário de atendimento por dia da semana: array de 7 entradas
+  /// `{ day: 0-6, opensAt: "09:00", closesAt: "18:00", closed: boolean }`.
+  businessHours          Json?
+  /// Formas de pagamento que a loja aceita de fato — controla o que aparece
+  /// no rodapé/barra de confiança (nunca uma lista fixa no código).
+  acceptedPaymentMethods OrderPaymentMethod[]
+  /// Parcelamento informativo (sem gateway de cartão integrado). Nulo/0 = desligado.
+  maxInstallments        Int?
+  minInstallmentValue    Decimal?             @db.Decimal(10, 2)
   // Plano contratado (Fase 8). Os limites vêm de PLAN_LIMITS, no código —
   // assim ajustar um plano não exige migração nem atualizar cada empresa.
-  plan                Plan         @default(FREE)
+  plan                   Plan                 @default(FREE)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
-  saleSequence        Int          @default(0)
-  orderSequence       Int          @default(0)
-  repairOrderSequence Int          @default(0)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  saleSequence           Int                  @default(0)
+  orderSequence          Int                  @default(0)
+  repairOrderSequence    Int                  @default(0)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 
   users          User[]
   categories     Category[]
@@ -184,6 +202,9 @@ model Category {
   /// Posição de exibição no catálogo online (menor primeiro). Definida por
   /// arrastar-e-soltar em Produtos → Categorias.
   order     Int      @default(0)
+  /// Chave de um ícone fixo (ver `src/app/loja/[subdomain]/icons.tsx`), usado
+  /// na grade de categorias da home. Nulo usa o ícone genérico.
+  icon      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -228,7 +249,7 @@ model Supplier {
 }
 
 model Product {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   tenantId      String
   name          String
   internalCode  String?
@@ -237,33 +258,83 @@ model Product {
   brandId       String?
   supplierId    String?
   description   String?
-  costPrice     Decimal  @default(0) @db.Decimal(10, 2)
-  salePrice     Decimal  @default(0) @db.Decimal(10, 2)
-  promoPrice    Decimal? @db.Decimal(10, 2)
+  costPrice     Decimal   @default(0) @db.Decimal(10, 2)
+  salePrice     Decimal   @default(0) @db.Decimal(10, 2)
+  promoPrice    Decimal?  @db.Decimal(10, 2)
   /// Preço que o cliente efetivamente paga (promocional quando existe, senão o de venda).
   /// Derivado de salePrice/promoPrice e mantido por `computeCatalogPrice` em toda escrita —
   /// existe para o catálogo poder ordenar e filtrar por preço real no banco.
-  catalogPrice  Decimal  @default(0) @db.Decimal(10, 2)
-  stockQty      Int      @default(0)
-  minStock      Int      @default(0)
-  active        Boolean  @default(true)
-  showInCatalog Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  catalogPrice  Decimal   @default(0) @db.Decimal(10, 2)
+  /// Fim da oferta relâmpago. Só faz sentido junto de `promoPrice`; nulo = promoção comum.
+  promoEndsAt   DateTime?
+  stockQty      Int       @default(0)
+  minStock      Int       @default(0)
+  active        Boolean   @default(true)
+  showInCatalog Boolean   @default(true)
+  /// Média das avaliações lançadas (desnormalizada, ver `ProductReview`) —
+  /// evita agregação por produto em toda renderização de card.
+  avgRating     Decimal?  @db.Decimal(2, 1)
+  reviewCount   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brand          Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  supplier       Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category       Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brand          Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  supplier       Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   images         ProductImage[]
   variants       ProductVariant[]
   stockMovements StockMovement[]
   saleItems      SaleItem[]
   orderItems     OrderItem[]
+  priceHistory   ProductPriceHistory[]
+  reviews        ProductReview[]
 
   @@unique([tenantId, internalCode])
   @@index([tenantId, active, showInCatalog, catalogPrice])
   @@map("products")
+}
+
+/**
+ * Histórico do preço efetivamente praticado, usado para calcular o "de/por"
+ * exigido pela Lei do Preço Riscado (menor preço dos últimos 30 dias).
+ * Uma linha nova só é gravada quando o preço efetivo muda de fato — ver
+ * `recordPriceSnapshotIfChanged` em `src/modules/products/price-history.ts`.
+ */
+model ProductPriceHistory {
+  id             String   @id @default(cuid())
+  tenantId       String
+  productId      String
+  /// `computeCatalogPrice(salePrice, promoPrice)` no momento do registro.
+  effectivePrice Decimal  @db.Decimal(10, 2)
+  recordedAt     DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, productId, recordedAt])
+  @@map("product_price_history")
+}
+
+/**
+ * Avaliação lançada manualmente pelo lojista (sem formulário público nesta
+ * fase) — ex.: comentário recebido no WhatsApp, Google ou na loja física.
+ */
+model ProductReview {
+  id         String   @id @default(cuid())
+  tenantId   String
+  productId  String
+  authorName String
+  /// Nota de 1 a 5.
+  rating     Int
+  comment    String?
+  /// De onde veio a avaliação real (ex.: "WhatsApp", "Google", "Loja física").
+  source     String?
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, productId])
+  @@map("product_reviews")
 }
 
 model ProductImage {

@@ -61,6 +61,12 @@ export const NAV_ITEMS: NavItem[] = [
     visibleTo: canManageSettings,
   },
   {
+    label: "Loja: horário e políticas",
+    href: "/configuracoes/loja",
+    available: true,
+    visibleTo: canManageSettings,
+  },
+  {
     label: "Configurações da empresa",
     href: "/configuracoes/empresa",
     available: true,

@@ -34,6 +34,7 @@ export function CompanyForm({ tenant }: { tenant: TenantModel }) {
       addressState: tenant.addressState ?? "",
       addressZip: tenant.addressZip ?? "",
       primaryColor: tenant.primaryColor ?? "",
+      instagramUrl: tenant.instagramUrl ?? "",
     },
   });
 
@@ -90,6 +91,16 @@ export function CompanyForm({ tenant }: { tenant: TenantModel }) {
           <Input id="whatsapp" placeholder="5511999999999" {...register("whatsapp")} />
           <FieldError message={errors.whatsapp?.message} />
         </div>
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="instagramUrl">Instagram (link do perfil)</Label>
+        <Input
+          id="instagramUrl"
+          placeholder="https://instagram.com/sualoja"
+          {...register("instagramUrl")}
+        />
+        <FieldError message={errors.instagramUrl?.message} />
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { prisma } from "@/lib/prisma";
 import { computeCatalogPrice } from "./catalog-price";
+import { recordPriceSnapshotIfChanged } from "./price-history";
 
 export type ImportResult = {
   created: number;
@@ -115,9 +116,16 @@ export async function importProductsFromCsv(
 
       if (existing) {
         await prisma.product.update({ where: { id: existing.id }, data });
+        await recordPriceSnapshotIfChanged(
+          tenantId,
+          existing.id,
+          data.catalogPrice,
+          Number(existing.catalogPrice)
+        );
         result.updated += 1;
       } else {
-        await prisma.product.create({ data: { tenantId, ...data } });
+        const created = await prisma.product.create({ data: { tenantId, ...data } });
+        await recordPriceSnapshotIfChanged(tenantId, created.id, data.catalogPrice);
         result.created += 1;
       }
     } catch {

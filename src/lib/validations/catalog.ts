@@ -3,6 +3,7 @@ import { z } from "zod";
 export const categorySchema = z.object({
   name: z.string().trim().min(2, "Informe o nome da categoria"),
   parentId: z.string().trim().optional().or(z.literal("")),
+  icon: z.string().trim().optional().or(z.literal("")),
 });
 export type CategoryInput = z.infer<typeof categorySchema>;
 
@@ -49,6 +50,11 @@ export const productSchema = z.object({
   salePrice: z.coerce.number().min(0, "O preço de venda não pode ser negativo"),
   promoPrice: z
     .union([z.literal(""), z.coerce.number().min(0)])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  /// Fim da oferta relâmpago (datetime-local). Só faz sentido junto de `promoPrice`.
+  promoEndsAt: z
+    .union([z.literal(""), z.coerce.date()])
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v)),
   stockQty: z.coerce.number().int("Deve ser um número inteiro").min(0),

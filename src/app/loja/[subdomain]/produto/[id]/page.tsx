@@ -4,15 +4,20 @@ import { notFound } from "next/navigation";
 import {
   getStoreBySubdomain,
   storeDisplayName,
+  storeCommerceInfo,
 } from "@/modules/catalog/tenant-resolver";
 import {
   getCatalogProduct,
   listRelatedProducts,
+  listFrequentlyBoughtWith,
 } from "@/modules/catalog/catalog-service";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatDateTime } from "@/lib/format";
 import { ProductGrid } from "../../product-card";
 import { ProductGallery } from "./product-gallery";
 import { AddToCart } from "./add-to-cart";
+import { StarIcon } from "../../icons";
+import { FlashDealCountdown } from "../../flash-deal-countdown";
+import { RecentlyViewedTracker } from "./recently-viewed-tracker";
 
 export async function generateMetadata({
   params,
@@ -45,14 +50,20 @@ export default async function StoreProductPage({
   if (!product) notFound();
 
   const base = `/loja/${store.subdomain}`;
-  const related = await listRelatedProducts(store.id, product.id, product.categoryId);
+  const [related, boughtTogether] = await Promise.all([
+    listRelatedProducts(store.id, product.id, product.categoryId),
+    listFrequentlyBoughtWith(store.id, product.id),
+  ]);
 
+  const commerce = storeCommerceInfo(store);
   const price = Number(product.salePrice);
   const promoPrice = product.promoPrice === null ? null : Number(product.promoPrice);
   const basePrice = promoPrice ?? price;
+  const acceptsPix = commerce.acceptedPaymentMethods.includes("PIX");
 
   return (
     <div>
+      <RecentlyViewedTracker subdomain={store.subdomain} productId={product.id} />
       <nav className="mb-6 flex flex-wrap items-center gap-1 text-sm text-slate-500">
         <Link href={base} className="hover:underline">
           Início
@@ -79,12 +90,64 @@ export default async function StoreProductPage({
 
         <div>
           {product.brand && (
-            <p className="text-xs uppercase tracking-wide text-slate-400">{product.brand.name}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">{product.brand.name}</p>
           )}
           <h1 className="mt-1 text-2xl font-semibold text-slate-900">{product.name}</h1>
 
-          {promoPrice !== null && (
-            <p className="mt-3 text-sm text-slate-400 line-through">{formatBRL(price)}</p>
+          {product.reviewCount > 0 && product.avgRating !== null && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex text-amber-400">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <StarIcon key={i} filled={i < Math.round(product.avgRating!)} className="h-4 w-4" />
+                ))}
+              </div>
+              <span className="text-sm text-slate-500">
+                {product.avgRating.toFixed(1)} · {product.reviewCount} avaliaç
+                {product.reviewCount === 1 ? "ão" : "ões"}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {product.stockQty > 0 && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                Pronta Entrega
+              </span>
+            )}
+            {commerce.deliveryEnabled && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                Entrega Expressa
+              </span>
+            )}
+            {product.isLowStock && (
+              <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+                Só restam {product.stockQty}
+              </span>
+            )}
+            {product.isFlashDeal && product.promoEndsAt && (
+              <FlashDealCountdown endsAt={product.promoEndsAt} />
+            )}
+          </div>
+
+          <div className="mt-4">
+            {product.strikePrice !== null && (
+              <p className="text-sm text-slate-500 line-through">{formatBRL(product.strikePrice)}</p>
+            )}
+            {promoPrice !== null && product.strikePrice === null && (
+              <p className="text-sm text-slate-500 line-through">{formatBRL(price)}</p>
+            )}
+            {product.discountPercent !== null && (
+              <span className="text-sm font-semibold text-emerald-700">
+                -{product.discountPercent}%
+              </span>
+            )}
+          </div>
+
+          {acceptsPix && (
+            <p className="mt-1 text-sm text-emerald-700">{formatBRL(basePrice)} no Pix</p>
+          )}
+          {product.soldQty > 0 && (
+            <p className="mt-1 text-xs text-slate-500">{product.soldQty} vendidos</p>
           )}
 
           <div className="mt-4">
@@ -112,13 +175,46 @@ export default async function StoreProductPage({
               </p>
             </div>
           )}
+
+          {product.reviews.length > 0 && (
+            <div className="mt-8 border-t border-slate-200 pt-6">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">Avaliações</h2>
+              <div className="space-y-4">
+                {product.reviews.map((review) => (
+                  <div key={review.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex text-amber-400">
+                        {Array.from({ length: 5 }, (_, i) => (
+                          <StarIcon key={i} filled={i < review.rating} className="h-3.5 w-3.5" />
+                        ))}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">{review.authorName}</span>
+                      <span className="text-xs text-slate-500">{formatDateTime(review.createdAt)}</span>
+                    </div>
+                    {review.comment && (
+                      <p className="mt-1 text-sm text-slate-600">{review.comment}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {boughtTogether.length > 0 && (
+        <section className="mt-12">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Quem comprou este item também comprou
+          </h2>
+          <ProductGrid products={boughtTogether} base={base} store={commerce} />
+        </section>
+      )}
 
       {related.length > 0 && (
         <section className="mt-12">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Produtos relacionados</h2>
-          <ProductGrid products={related} base={base} />
+          <ProductGrid products={related} base={base} store={commerce} />
         </section>
       )}
     </div>

@@ -1,91 +1,75 @@
+import { getStoreRatingSummary } from "@/modules/catalog/catalog-service";
+import { storeCityLabel, type Store } from "@/modules/catalog/tenant-resolver";
+import { PAYMENT_METHOD_OPTIONS } from "@/lib/validations/store-settings";
+import { AwardIcon, CardIcon, StarIcon, StorefrontIcon, TruckIcon } from "./icons";
+
 type TrustItem = {
-  label: string;
+  key: string;
   icon: React.ReactNode;
+  label: string;
 };
 
-const iconProps = {
-  xmlns: "http://www.w3.org/2000/svg",
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.75,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  className: "h-4 w-4 shrink-0 sm:h-5 sm:w-5",
-};
+/**
+ * Cada item só aparece se corresponder a uma condição real configurada pela
+ * loja (avaliação real, entrega/retirada ligadas, forma de pagamento
+ * cadastrada, política de garantia escrita) — nunca um badge fixo no código.
+ */
+export async function TrustBar({ store }: { store: Store }) {
+  const ratingSummary = await getStoreRatingSummary(store.id);
+  const city = storeCityLabel(store);
+  const paymentLabels = PAYMENT_METHOD_OPTIONS.filter((option) =>
+    (store.acceptedPaymentMethods as string[]).includes(option.value)
+  ).map((option) => option.label);
 
-function ShieldLockIcon() {
-  return (
-    <svg {...iconProps}>
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
+  const items: TrustItem[] = [];
 
-function TruckIcon() {
-  return (
-    <svg {...iconProps}>
-      <rect x="1" y="3" width="15" height="13" />
-      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
-      <circle cx="5.5" cy="18.5" r="2.5" />
-      <circle cx="18.5" cy="18.5" r="2.5" />
-    </svg>
-  );
-}
+  if (ratingSummary) {
+    items.push({
+      key: "rating",
+      icon: <StarIcon filled className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: `${ratingSummary.avgRating.toFixed(1)} · ${ratingSummary.reviewCount} avaliações`,
+    });
+  }
 
-function StorefrontIcon() {
-  return (
-    <svg {...iconProps}>
-      <path d="M3 9l1-5h16l1 5" />
-      <path d="M4 9v10h16V9" />
-      <path d="M9 21v-6h6v6" />
-    </svg>
-  );
-}
+  if (store.deliveryEnabled) {
+    items.push({
+      key: "delivery",
+      icon: <TruckIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: city ? `Entrega Rápida em ${city}` : "Entrega Rápida",
+    });
+  }
 
-function CardIcon() {
-  return (
-    <svg {...iconProps}>
-      <rect x="1" y="4" width="22" height="16" rx="2" />
-      <line x1="1" y1="10" x2="23" y2="10" />
-    </svg>
-  );
-}
+  if (store.pickupEnabled) {
+    items.push({
+      key: "pickup",
+      icon: <StorefrontIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: "Retire na Loja",
+    });
+  }
 
-function FlagIcon() {
-  return (
-    <svg {...iconProps}>
-      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-      <line x1="4" y1="22" x2="4" y2="15" />
-    </svg>
-  );
-}
+  if (paymentLabels.length > 0) {
+    items.push({
+      key: "payment",
+      icon: <CardIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: paymentLabels.join(" · "),
+    });
+  }
 
-function AwardIcon() {
-  return (
-    <svg {...iconProps}>
-      <circle cx="12" cy="8" r="7" />
-      <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
-    </svg>
-  );
-}
+  if (store.warrantyPolicy) {
+    items.push({
+      key: "warranty",
+      icon: <AwardIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: "Garantia",
+    });
+  }
 
-export function TrustBar({ city }: { city?: string | null }) {
-  const items: TrustItem[] = [
-    { icon: <ShieldLockIcon />, label: "Compra Segura" },
-    { icon: <TruckIcon />, label: city ? `Entrega Rápida em ${city}` : "Entrega Rápida" },
-    { icon: <StorefrontIcon />, label: "Retire na Loja" },
-    { icon: <CardIcon />, label: "Pix e Cartões" },
-    { icon: <AwardIcon />, label: "Garantia de Qualidade" },
-    { icon: <FlagIcon />, label: "Empresa Brasileira" },
-  ];
+  if (items.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-x-2 gap-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3 sm:gap-x-3 sm:gap-y-3 sm:py-4 lg:grid-cols-6 lg:gap-x-2">
+    <div className="grid grid-cols-2 gap-x-2 gap-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3 sm:gap-x-3 sm:gap-y-3 sm:py-4 lg:grid-cols-5 lg:gap-x-2">
       {items.map((item) => (
         <div
-          key={item.label}
+          key={item.key}
           className="flex flex-col items-center gap-1 text-center sm:flex-row sm:gap-2 sm:text-left"
           style={{ color: "var(--store-primary)" }}
         >

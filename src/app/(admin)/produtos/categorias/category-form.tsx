@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { CATEGORY_ICON_OPTIONS } from "@/lib/category-icons";
 
 export function CategoryForm({ categories }: { categories: { id: string; name: string }[] }) {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
@@ -46,13 +47,25 @@ export function CategoryForm({ categories }: { categories: { id: string; name: s
         <FieldError message={errors.name?.message} />
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <Label htmlFor="parentId">Categoria pai (opcional)</Label>
         <Select id="parentId" {...register("parentId")}>
           <option value="">Nenhuma</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div className="mb-6">
+        <Label htmlFor="icon">Ícone na home (opcional)</Label>
+        <Select id="icon" {...register("icon")}>
+          <option value="">Genérico</option>
+          {CATEGORY_ICON_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </Select>

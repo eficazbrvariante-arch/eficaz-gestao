@@ -18,6 +18,7 @@ import {
   type ImportResult,
 } from "@/modules/products/import-service";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
+import { recordPriceSnapshotIfChanged } from "@/modules/products/price-history";
 import { checkLimit } from "@/lib/plans";
 
 // --- Categorias ---
@@ -32,11 +33,40 @@ export async function createCategoryAction(input: CategoryInput) {
       tenantId: user.tenantId,
       name: parsed.data.name,
       parentId: parsed.data.parentId || null,
+      icon: parsed.data.icon || null,
     },
   });
 
   revalidatePath("/produtos/categorias");
   return { success: "Categoria criada." };
+}
+
+export async function updateCategoryAction(id: string, input: CategoryInput) {
+  const user = await requireUser();
+  const parsed = categorySchema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  if (parsed.data.parentId === id) {
+    return { error: "Uma categoria não pode ser pai dela mesma." };
+  }
+
+  await prisma.category.updateMany({
+    where: { id, tenantId: user.tenantId },
+    data: {
+      name: parsed.data.name,
+      parentId: parsed.data.parentId || null,
+      icon: parsed.data.icon || null,
+    },
+  });
+
+  const tenant = await prisma.tenant.findUniqueOrThrow({
+    where: { id: user.tenantId },
+    select: { subdomain: true },
+  });
+
+  revalidatePath("/produtos/categorias");
+  revalidatePath(`/loja/${tenant.subdomain}`, "layout");
+  return { success: "Categoria atualizada." };
 }
 
 export async function deleteCategoryAction(id: string) {
@@ -112,6 +142,8 @@ function normalizeProductData(data: ProductInput) {
     costPrice: data.costPrice,
     salePrice: data.salePrice,
     promoPrice,
+    // Sem preço promocional, não faz sentido guardar um prazo de oferta relâmpago.
+    promoEndsAt: promoPrice !== null ? (data.promoEndsAt ?? null) : null,
     catalogPrice: computeCatalogPrice(data.salePrice, promoPrice),
     stockQty: data.stockQty,
     minStock: data.minStock,
@@ -148,6 +180,8 @@ export async function createProductAction(input: ProductInput) {
       ...normalizeProductData(parsed.data),
     },
   });
+
+  await recordPriceSnapshotIfChanged(user.tenantId, product.id, Number(product.catalogPrice));
 
   if (parsed.data.images.length > 0) {
     await prisma.productImage.createMany({
@@ -208,11 +242,19 @@ export async function updateProductAction(id: string, input: ProductInput) {
   }
 
   const stockDelta = parsed.data.stockQty - current.stockQty;
+  const newCatalogPrice = computeCatalogPrice(parsed.data.salePrice, parsed.data.promoPrice ?? null);
 
   await prisma.product.update({
     where: { id },
     data: normalizeProductData(parsed.data),
   });
+
+  await recordPriceSnapshotIfChanged(
+    user.tenantId,
+    id,
+    newCatalogPrice,
+    Number(current.catalogPrice)
+  );
 
   // Fotos não têm identidade própria fora do produto: mais simples recriar a
   // lista (na nova ordem) do que calcular um diff a cada edição.

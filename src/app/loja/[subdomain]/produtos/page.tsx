@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { clsx } from "@/lib/clsx";
-import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
+import { getStoreBySubdomain, storeCommerceInfo } from "@/modules/catalog/tenant-resolver";
 import {
   listCatalogBrands,
   listCatalogCategories,
@@ -146,7 +146,7 @@ export default async function StoreProductsPage({
         </div>
       ) : (
         <>
-          <ProductGrid products={products} base={base} />
+          <ProductGrid products={products} base={base} store={storeCommerceInfo(store)} />
 
           {totalPages > 1 && (
             <nav
