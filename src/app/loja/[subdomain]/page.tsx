@@ -12,6 +12,7 @@ import {
   countCatalogProducts,
   getStoreRatingSummary,
   listBestSellers,
+  listFeaturedProducts,
   listFlashDeals,
   listLaunches,
   listNewProducts,
@@ -50,6 +51,7 @@ export default async function StoreHomePage({
 
   const SHELF_SIZE = 12;
   const [
+    featuredManual,
     promos,
     bestSellers,
     novelties,
@@ -59,6 +61,7 @@ export default async function StoreHomePage({
     totalProducts,
     ratingSummary,
   ] = await Promise.all([
+    listFeaturedProducts(store.id, 10),
     listPromoProducts(store.id, 20),
     listBestSellers(store.id, 20),
     listNewProducts(store.id, SHELF_SIZE),
@@ -70,16 +73,24 @@ export default async function StoreHomePage({
   ]);
 
   const isEmpty =
-    promos.length === 0 && bestSellers.length === 0 && novelties.length === 0;
+    featuredManual.length === 0 &&
+    promos.length === 0 &&
+    bestSellers.length === 0 &&
+    novelties.length === 0;
 
   // "Destaques" precisa trazer produtos diferentes dos que já aparecem na
   // prateleira "Promoções" logo abaixo — sem isso, os dois mostravam
-  // praticamente a mesma coisa. Prioriza mais vendidos e novidades; só usa o
-  // restante das promoções (fora da prateleira) se sobrar espaço.
+  // praticamente a mesma coisa. Destaque manual (curadoria do lojista) vem
+  // sempre primeiro; o resto do espaço é preenchido organicamente por mais
+  // vendidos e novidades, e só usa o restante das promoções se sobrar espaço.
   const promoShelfIds = new Set(promos.slice(0, SHELF_SIZE).map((p) => p.id));
-  const featured = dedupeById([...bestSellers, ...novelties, ...promos])
-    .filter((product) => !promoShelfIds.has(product.id))
-    .slice(0, 10);
+  const featuredManualIds = new Set(featuredManual.map((p) => p.id));
+  const featured = [
+    ...featuredManual,
+    ...dedupeById([...bestSellers, ...novelties, ...promos]).filter(
+      (product) => !promoShelfIds.has(product.id) && !featuredManualIds.has(product.id)
+    ),
+  ].slice(0, 10);
 
   const bestSellerShelf = bestSellers.slice(0, SHELF_SIZE);
   const bestSellerIds = new Set(bestSellerShelf.map((p) => p.id));

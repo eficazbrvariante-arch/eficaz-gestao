@@ -65,6 +65,7 @@ export const productSchema = z.object({
   minStock: z.coerce.number().int("Deve ser um número inteiro").min(0),
   active: z.boolean().default(true),
   showInCatalog: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
   images: z
     .array(z.string().trim().url("Informe uma URL válida"))
     .max(5, "No máximo 5 fotos por produto")

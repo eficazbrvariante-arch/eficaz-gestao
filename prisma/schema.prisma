@@ -319,6 +319,10 @@ model Product {
   minStock         Int       @default(0)
   active           Boolean   @default(true)
   showInCatalog    Boolean   @default(true)
+  /// Destaque manual — fura a fila na listagem geral do catálogo e entra
+  /// primeiro no carrossel "Destaques" da home, sem misturar com o ranking
+  /// real de vendas (ver `listBestSellers`, que continua 100% orgânico).
+  isFeatured       Boolean   @default(false)
   /// Média das avaliações lançadas (desnormalizada, ver `ProductReview`) —
   /// evita agregação por produto em toda renderização de card.
   avgRating        Decimal?  @db.Decimal(2, 1)

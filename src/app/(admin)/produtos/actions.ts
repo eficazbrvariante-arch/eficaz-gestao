@@ -151,6 +151,7 @@ function normalizeProductData(data: ProductInput) {
     minStock: data.minStock,
     active: data.active,
     showInCatalog: data.showInCatalog,
+    isFeatured: data.isFeatured,
   };
 }
 

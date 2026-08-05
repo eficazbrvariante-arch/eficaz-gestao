@@ -58,6 +58,7 @@ export default async function EditarProdutoPage({
             minStock: product.minStock,
             active: product.active,
             showInCatalog: product.showInCatalog,
+            isFeatured: product.isFeatured,
             images: product.images.map((image) => image.url),
             variants: product.variants.map((v) => ({
               name: v.name,

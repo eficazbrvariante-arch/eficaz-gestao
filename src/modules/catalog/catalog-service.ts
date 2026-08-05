@@ -209,10 +209,10 @@ export async function listCatalogProducts(tenantId: string, filters: ProductFilt
     prisma.product.findMany({
       where,
       select: productCardSelect,
-      // Produtos sem foto vão pro fim da lista (não somem, só perdem prioridade)
-      // até que ganhem uma imagem — a ordenação escolhida pelo cliente decide a
-      // posição dentro de cada grupo (com foto / sem foto).
-      orderBy: [{ images: { _count: "desc" } }, orderBy],
+      // Destaque manual sempre primeiro; dentro dele, produtos sem foto vão pro
+      // fim (não somem, só perdem prioridade) até ganharem uma imagem — a
+      // ordenação escolhida pelo cliente decide a posição dentro de cada grupo.
+      orderBy: [{ isFeatured: "desc" }, { images: { _count: "desc" } }, orderBy],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -293,6 +293,22 @@ export async function listLaunches(tenantId: string, take = 8) {
     },
     select: productCardSelect,
     orderBy: { createdAt: "desc" },
+    take,
+  });
+  return enrichCards(tenantId, products.map(toCard));
+}
+
+/**
+ * Destaques escolhidos manualmente (`Product.isFeatured`) — curadoria do
+ * lojista, sem relação com vendas reais. Fica separado de `listBestSellers`
+ * de propósito: misturar os dois faria "Mais vendidos" deixar de ser um
+ * sinal confiável pro cliente.
+ */
+export async function listFeaturedProducts(tenantId: string, take = 10) {
+  const products = await prisma.product.findMany({
+    where: { ...publicProductWhere(tenantId), isFeatured: true, images: { some: {} } },
+    select: productCardSelect,
+    orderBy: { updatedAt: "desc" },
     take,
   });
   return enrichCards(tenantId, products.map(toCard));

@@ -49,6 +49,7 @@ export function ProductForm({
     defaultValues: {
       active: true,
       showInCatalog: true,
+      isFeatured: false,
       stockQty: 0,
       minStock: 0,
       costPrice: 0,
@@ -191,7 +192,7 @@ export function ProductForm({
         <FieldError message={errors.images?.message} />
       </div>
 
-      <div className="mb-6 flex gap-6">
+      <div className="mb-1 flex flex-wrap gap-6">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <Checkbox {...register("active")} />
           Produto ativo
@@ -200,7 +201,15 @@ export function ProductForm({
           <Checkbox {...register("showInCatalog")} />
           Mostrar no catálogo online
         </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <Checkbox {...register("isFeatured")} />
+          Produto em destaque
+        </label>
       </div>
+      <p className="mb-6 text-xs text-slate-400">
+        &quot;Produto em destaque&quot; fura a fila na listagem do catálogo e aparece primeiro no
+        carrossel de destaques da home — não mexe no ranking real de mais vendidos.
+      </p>
 
       <div className="mb-6">
         <div className="mb-2 flex items-center justify-between">
