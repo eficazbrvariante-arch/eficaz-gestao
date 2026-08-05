@@ -39,6 +39,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: "Relatórios", href: "/relatorios", available: true, visibleTo: canViewReports },
   { label: "Usuários", href: "/usuarios", available: true, visibleTo: canManageSettings },
+  { label: "Dispositivos", href: "/dispositivos", available: true, visibleTo: canManageSettings },
   {
     label: "Plano e uso",
     href: "/configuracoes/plano",

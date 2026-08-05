@@ -36,6 +36,21 @@ export const requireUser = cache(async () => {
     redirect("/sessao-expirada");
   }
 
+  // Revogar um dispositivo em /dispositivos não invalida o JWT já emitido sozinho
+  // (sessão é JWT, sem tabela de Session) — é aqui, reconferindo a cada navegação,
+  // que a revogação passa a valer de fato. Sessões de antes desta feature existir
+  // não têm `deviceId` no token — tratadas como não aprovadas, força um login novo
+  // (que já passa pelo fluxo de aprovação de dispositivo normalmente).
+  const device = sessionUser.deviceId
+    ? await prisma.device.findUnique({
+        where: { id: sessionUser.deviceId },
+        select: { status: true, tenantId: true },
+      })
+    : null;
+  if (!device || device.status !== "APPROVED" || device.tenantId !== user.tenantId) {
+    redirect("/sessao-expirada");
+  }
+
   return user;
 });
 

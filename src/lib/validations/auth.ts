@@ -7,6 +7,14 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Login por seleção de nome (dispositivo já aprovado) — sem digitar e-mail. */
+export const selectUserLoginSchema = z.object({
+  userId: z.string().trim().min(1),
+  password: z.string().min(1, "Informe sua senha"),
+});
+
+export type SelectUserLoginInput = z.infer<typeof selectUserLoginSchema>;
+
 export const requestPasswordResetSchema = z.object({
   email: z.string().trim().toLowerCase().email("Informe um e-mail válido"),
 });

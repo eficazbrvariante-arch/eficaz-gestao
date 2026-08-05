@@ -1,8 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
-import { AuthError } from "next-auth";
+import { AuthError, CredentialsSignin } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { signIn } from "@/lib/auth";
 import { generateResetToken, hashToken } from "@/lib/tokens";
@@ -10,14 +11,80 @@ import {
   loginSchema,
   requestPasswordResetSchema,
   resetPasswordSchema,
+  selectUserLoginSchema,
   signupSchema,
   type LoginInput,
   type RequestPasswordResetInput,
   type ResetPasswordInput,
+  type SelectUserLoginInput,
   type SignupInput,
 } from "@/lib/validations/auth";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+
+const DEVICE_COOKIE = "device_id";
+const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2; // ~2 anos
+
+/**
+ * Único ponto que chama `signIn("credentials", ...)` de verdade — usado tanto pelo
+ * login clássico (e-mail+senha) quanto pela seleção por nome e pelo cadastro de
+ * empresa nova, pra nunca duplicar a verificação de senha/dispositivo em vários
+ * lugares (isso vive dentro de `authorize()`, em `src/lib/auth.ts`).
+ *
+ * O cookie do dispositivo é sempre gravado ANTES de chamar `signIn`, pra sobreviver
+ * tanto ao redirect de sucesso quanto a qualquer erro lançado (dispositivo pendente,
+ * recusado, senha errada...).
+ */
+async function performCredentialsLogin({
+  email,
+  password,
+  callbackUrl,
+}: {
+  email: string;
+  password: string;
+  callbackUrl?: string;
+}) {
+  const cookieStore = await cookies();
+  const deviceId = cookieStore.get(DEVICE_COOKIE)?.value ?? crypto.randomUUID();
+  cookieStore.set(DEVICE_COOKIE, deviceId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: DEVICE_COOKIE_MAX_AGE,
+    path: "/",
+  });
+
+  try {
+    await signIn("credentials", {
+      email,
+      password,
+      deviceId,
+      redirectTo: callbackUrl && callbackUrl.startsWith("/") ? callbackUrl : "/dashboard",
+    });
+  } catch (error) {
+    if (error instanceof CredentialsSignin) {
+      switch (error.code) {
+        case "device_pending":
+          return {
+            error:
+              "Dispositivo aguardando aprovação do administrador. Assim que for aprovado, você poderá entrar normalmente.",
+          };
+        case "device_rejected":
+          return { error: "Este dispositivo foi recusado. Fale com o administrador." };
+        case "device_conflict":
+          return {
+            error: "Este navegador já está vinculado a outra empresa. Use outro navegador ou uma aba anônima.",
+          };
+        default:
+          return { error: "E-mail ou senha inválidos." };
+      }
+    }
+    if (error instanceof AuthError) {
+      return { error: "Não foi possível entrar. Tente novamente." };
+    }
+    throw error;
+  }
+}
 
 export async function loginAction(input: LoginInput, callbackUrl?: string) {
   const parsed = loginSchema.safeParse(input);
@@ -25,23 +92,32 @@ export async function loginAction(input: LoginInput, callbackUrl?: string) {
     return { error: "Dados inválidos." };
   }
 
-  try {
-    await signIn("credentials", {
-      email: parsed.data.email,
-      password: parsed.data.password,
-      redirectTo: callbackUrl && callbackUrl.startsWith("/") ? callbackUrl : "/dashboard",
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      switch (error.type) {
-        case "CredentialsSignin":
-          return { error: "E-mail ou senha inválidos." };
-        default:
-          return { error: "Não foi possível entrar. Tente novamente." };
-      }
-    }
-    throw error;
+  return performCredentialsLogin({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    callbackUrl,
+  });
+}
+
+/** Login por seleção de nome — dispositivo já aprovado, sem digitar e-mail. */
+export async function loginWithSelectedUserAction(input: SelectUserLoginInput, callbackUrl?: string) {
+  const parsed = selectUserLoginSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: "Dados inválidos." };
   }
+
+  const user = await prisma.user.findUnique({
+    where: { id: parsed.data.userId },
+    select: { email: true },
+  });
+  // Mensagem genérica igual à de senha errada — não revela se o usuário existe.
+  if (!user) return { error: "E-mail ou senha inválidos." };
+
+  return performCredentialsLogin({
+    email: user.email,
+    password: parsed.data.password,
+    callbackUrl,
+  });
 }
 
 export async function signupAction(input: SignupInput) {
@@ -80,18 +156,7 @@ export async function signupAction(input: SignupInput) {
     },
   });
 
-  try {
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: "/dashboard",
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return { error: "Empresa criada, mas não foi possível entrar automaticamente. Faça login." };
-    }
-    throw error;
-  }
+  return performCredentialsLogin({ email, password, callbackUrl: "/dashboard" });
 }
 
 export async function requestPasswordResetAction(input: RequestPasswordResetInput) {

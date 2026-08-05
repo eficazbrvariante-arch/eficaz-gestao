@@ -98,6 +98,7 @@ model Tenant {
   auditLogs       AuditLog[]
   repairOrders    RepairOrder[]
   creditMovements CustomerCreditMovement[]
+  devices         Device[]
 
   @@map("tenants")
 }
@@ -159,16 +160,18 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  stockMovements      StockMovement[]
-  cashMovements       CashMovement[]
-  registersOpened     CashRegister[]           @relation("CashRegisterOpenedBy")
-  registersClosed     CashRegister[]           @relation("CashRegisterClosedBy")
-  salesMade           Sale[]                   @relation("SaleSeller")
-  salesCancelled      Sale[]                   @relation("SaleCancelledBy")
-  auditLogs           AuditLog[]
-  repairOrdersCreated RepairOrder[]            @relation("RepairOrderCreatedBy")
-  creditMovements     CustomerCreditMovement[]
+  tenant               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockMovements       StockMovement[]
+  cashMovements        CashMovement[]
+  registersOpened      CashRegister[]           @relation("CashRegisterOpenedBy")
+  registersClosed      CashRegister[]           @relation("CashRegisterClosedBy")
+  salesMade            Sale[]                   @relation("SaleSeller")
+  salesCancelled       Sale[]                   @relation("SaleCancelledBy")
+  auditLogs            AuditLog[]
+  repairOrdersCreated  RepairOrder[]            @relation("RepairOrderCreatedBy")
+  creditMovements      CustomerCreditMovement[]
+  devicesRequested     Device[]                 @relation("DeviceRequestedBy")
+  devicesStatusChanged Device[]                 @relation("DeviceStatusChangedBy")
 
   @@map("users")
 }
@@ -198,6 +201,40 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@map("audit_logs")
+}
+
+/// PENDING: aguardando aprovação do admin. APPROVED: libera login. REJECTED: recusado
+/// ou revogado (mesmo efeito — bloqueado; o texto do log de auditoria diferencia).
+enum DeviceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Um navegador/computador que já tentou logar num tenant. O id desta linha é o
+/// próprio valor guardado no cookie `device_id` do navegador — ver `src/lib/auth.ts`
+/// (`authorize()`) e `src/modules/devices/device-service.ts`.
+model Device {
+  id                String       @id @default(cuid())
+  tenantId          String
+  status            DeviceStatus @default(PENDING)
+  ipAddress         String?
+  userAgent         String?
+  requestedByUserId String?
+  /// Quem/quando mexeu no status por último (aprovar, recusar ou revogar reaproveitam
+  /// estes dois campos — o histórico detalhado de cada ação fica no AuditLog).
+  statusChangedById String?
+  statusChangedAt   DateTime?
+  lastSeenAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy     User?  @relation("DeviceRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  statusChangedBy User?  @relation("DeviceStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@map("devices")
 }
 
 model Category {

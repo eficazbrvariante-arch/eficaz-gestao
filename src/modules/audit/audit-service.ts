@@ -24,7 +24,10 @@ export type AuditAction =
   | "settings.catalog"
   | "settings.delivery"
   | "settings.domain"
-  | "product.delete";
+  | "product.delete"
+  | "device.approve"
+  | "device.reject"
+  | "device.revoke";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -43,6 +46,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "settings.delivery": "Entrega configurada",
   "settings.domain": "Domínio alterado",
   "product.delete": "Produto excluído",
+  "device.approve": "Dispositivo aprovado",
+  "device.reject": "Dispositivo recusado",
+  "device.revoke": "Dispositivo revogado",
 };
 
 export type AuditEntry = {
