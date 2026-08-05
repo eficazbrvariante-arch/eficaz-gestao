@@ -1,21 +1,11 @@
 import Link from "next/link";
-import {
-  isStoreOpenNow,
-  parseBusinessHours,
-  storeDisplayName,
-  type Store,
-} from "@/modules/catalog/tenant-resolver";
-import { PAYMENT_METHOD_OPTIONS, WEEKDAY_LABELS } from "@/lib/validations/store-settings";
+import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
+import { PAYMENT_METHOD_OPTIONS } from "@/lib/validations/store-settings";
 import { TrustBar } from "./trust-bar";
 
 function whatsappLink(whatsapp: string) {
   const digits = whatsapp.replace(/\D/g, "");
   return `https://wa.me/${digits}?text=${encodeURIComponent("Olá, vim pelo catálogo online!")}`;
-}
-
-/** Reordena de domingo-primeiro (convenção de `Store#businessHours`) para segunda-primeiro, mais natural pro rodapé. */
-function weekOrderStartingMonday() {
-  return [1, 2, 3, 4, 5, 6, 0];
 }
 
 const INSTITUTIONAL_LINKS = [
@@ -39,8 +29,6 @@ export function StoreFooter({ store }: { store: Store }) {
   const paymentLabels = PAYMENT_METHOD_OPTIONS.filter((option) =>
     (store.acceptedPaymentMethods as string[]).includes(option.value)
   );
-  const businessHours = parseBusinessHours(store.businessHours);
-  const openStatus = isStoreOpenNow(store);
 
   return (
     <footer className="mt-10 border-t border-slate-200 bg-slate-50">
@@ -89,28 +77,6 @@ export function StoreFooter({ store }: { store: Store }) {
                     </Link>
                   </li>
                 ))}
-              </ul>
-            </div>
-          )}
-
-          {businessHours.length > 0 && (
-            <div>
-              <p className="font-semibold text-slate-900">Horário de atendimento</p>
-              {openStatus && (
-                <p className={`mt-1 text-xs font-medium ${openStatus.open ? "text-emerald-700" : "text-slate-500"}`}>
-                  {openStatus.open ? "Aberto agora" : "Fechado no momento"}
-                </p>
-              )}
-              <ul className="mt-2 space-y-0.5 text-slate-600">
-                {weekOrderStartingMonday().map((day) => {
-                  const entry = businessHours.find((h) => h.day === day);
-                  return (
-                    <li key={day} className="flex justify-between gap-3">
-                      <span>{WEEKDAY_LABELS[day]}</span>
-                      <span>{!entry || entry.closed ? "Fechado" : `${entry.opensAt} – ${entry.closesAt}`}</span>
-                    </li>
-                  );
-                })}
               </ul>
             </div>
           )}

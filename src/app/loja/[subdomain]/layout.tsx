@@ -56,7 +56,9 @@ export default async function StoreLayout({
         <StoreHeader store={store} categories={categories} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
-        {store.whatsapp && <WhatsappFloatingButton whatsapp={store.whatsapp} />}
+        {store.whatsapp && (
+          <WhatsappFloatingButton whatsapp={store.whatsapp} instagramUrl={store.instagramUrl} />
+        )}
       </div>
     </CartProvider>
   );
