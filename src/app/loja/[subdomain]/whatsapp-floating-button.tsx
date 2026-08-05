@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 
 const DEFAULT_MESSAGE = "Olá, vim pelo catálogo online!";
 
@@ -61,23 +62,9 @@ export function WhatsappFloatingButton({
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Ver Instagram"
-          className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-lg transition hover:brightness-95"
-          style={{ background: "linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)" }}
+          className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full shadow-lg transition hover:brightness-95"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-5 w-5"
-          >
-            <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-          </svg>
+          <Image src="/instagram-icon.jpg" alt="" fill sizes="44px" className="object-cover" />
         </a>
       )}
     </div>
