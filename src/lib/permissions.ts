@@ -121,3 +121,11 @@ export function isStockCollaborator(role: UserRole) {
 export function canQuickEditStockQty(role: UserRole) {
   return isStockCollaborator(role) || canManageStock(role);
 }
+
+/**
+ * Reiniciar o ciclo de contagem do Colaborador de Estoque (zera a marcação de
+ * "já conferido" de todos os produtos, enchendo a fila dele de novo).
+ */
+export function canResetStockCheckQueue(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}

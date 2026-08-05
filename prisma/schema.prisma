@@ -260,34 +260,38 @@ model Supplier {
 }
 
 model Product {
-  id            String    @id @default(cuid())
-  tenantId      String
-  name          String
-  internalCode  String?
-  barcode       String?
-  categoryId    String?
-  brandId       String?
-  supplierId    String?
-  description   String?
-  costPrice     Decimal   @default(0) @db.Decimal(10, 2)
-  salePrice     Decimal   @default(0) @db.Decimal(10, 2)
-  promoPrice    Decimal?  @db.Decimal(10, 2)
+  id               String    @id @default(cuid())
+  tenantId         String
+  name             String
+  internalCode     String?
+  barcode          String?
+  categoryId       String?
+  brandId          String?
+  supplierId       String?
+  description      String?
+  costPrice        Decimal   @default(0) @db.Decimal(10, 2)
+  salePrice        Decimal   @default(0) @db.Decimal(10, 2)
+  promoPrice       Decimal?  @db.Decimal(10, 2)
   /// Preço que o cliente efetivamente paga (promocional quando existe, senão o de venda).
   /// Derivado de salePrice/promoPrice e mantido por `computeCatalogPrice` em toda escrita —
   /// existe para o catálogo poder ordenar e filtrar por preço real no banco.
-  catalogPrice  Decimal   @default(0) @db.Decimal(10, 2)
+  catalogPrice     Decimal   @default(0) @db.Decimal(10, 2)
   /// Fim da oferta relâmpago. Só faz sentido junto de `promoPrice`; nulo = promoção comum.
-  promoEndsAt   DateTime?
-  stockQty      Int       @default(0)
-  minStock      Int       @default(0)
-  active        Boolean   @default(true)
-  showInCatalog Boolean   @default(true)
+  promoEndsAt      DateTime?
+  stockQty         Int       @default(0)
+  minStock         Int       @default(0)
+  active           Boolean   @default(true)
+  showInCatalog    Boolean   @default(true)
   /// Média das avaliações lançadas (desnormalizada, ver `ProductReview`) —
   /// evita agregação por produto em toda renderização de card.
-  avgRating     Decimal?  @db.Decimal(2, 1)
-  reviewCount   Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  avgRating        Decimal?  @db.Decimal(2, 1)
+  reviewCount      Int       @default(0)
+  /// Quando o Colaborador de Estoque confirmou esse produto no ciclo de
+  /// contagem atual. Nulo = ainda pendente (aparece na fila dele). Zerado
+  /// em massa quando um novo ciclo de contagem é iniciado.
+  lastStockCheckAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category       Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)

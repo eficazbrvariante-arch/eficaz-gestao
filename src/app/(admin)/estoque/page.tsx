@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
+import { canResetStockCheckQueue } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { needsRestock, stockStatusLabel } from "@/modules/products/stock-status";
+import { ResetStockCheckButton } from "./reset-stock-check-button";
 
 const TYPE_LABELS: Record<string, string> = {
   IN: "Entrada",
@@ -15,8 +17,9 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default async function EstoquePage() {
   const user = await requireUser();
+  const canResetQueue = canResetStockCheckQueue(user.role);
 
-  const [lowStockProducts, movements] = await Promise.all([
+  const [lowStockProducts, movements, pendingStockCheck, totalActive] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: user.tenantId, active: true },
       orderBy: { stockQty: "asc" },
@@ -27,6 +30,14 @@ export default async function EstoquePage() {
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
+    canResetQueue
+      ? prisma.product.count({
+          where: { tenantId: user.tenantId, active: true, lastStockCheckAt: null },
+        })
+      : Promise.resolve(0),
+    canResetQueue
+      ? prisma.product.count({ where: { tenantId: user.tenantId, active: true } })
+      : Promise.resolve(0),
   ]);
 
   const alerts = lowStockProducts.filter(needsRestock);
@@ -55,6 +66,19 @@ export default async function EstoquePage() {
           </Link>
         </div>
       </div>
+
+      {canResetQueue && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-900">Contagem do Colaborador de Estoque</p>
+            <p className="text-sm text-slate-500">
+              {totalActive - pendingStockCheck} de {totalActive} produto(s) já confirmados neste
+              ciclo.
+            </p>
+          </div>
+          <ResetStockCheckButton />
+        </div>
+      )}
 
       {alerts.length > 0 && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">

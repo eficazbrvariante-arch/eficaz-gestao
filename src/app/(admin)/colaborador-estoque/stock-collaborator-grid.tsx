@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { updateStockQtyAction } from "./actions";
+import { ImageUploadField } from "@/components/ui/image-upload-field";
+import { confirmStockCheckAction } from "./actions";
 
 type Product = {
   id: string;
@@ -10,13 +11,15 @@ type Product = {
   imageUrl: string | null;
 };
 
-export function StockCollaboratorGrid({ products }: { products: Product[] }) {
+export function StockCollaboratorGrid({ products: initialProducts }: { products: Product[] }) {
+  const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>(() =>
-    Object.fromEntries(products.map((p) => [p.id, p.stockQty]))
+    Object.fromEntries(initialProducts.map((p) => [p.id, p.stockQty]))
   );
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Record<string, "ok" | "error" | undefined>>({});
+  const [newPhotos, setNewPhotos] = useState<Record<string, string>>({});
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -25,16 +28,34 @@ export function StockCollaboratorGrid({ products }: { products: Product[] }) {
     return products.filter((p) => p.name.toLowerCase().includes(term));
   }, [search, products]);
 
-  function commit(productId: string, quantity: number) {
-    const safeQty = Math.max(0, Math.round(quantity));
-    setQuantities((current) => ({ ...current, [productId]: safeQty }));
-    setSavingId(productId);
-    setFeedback((current) => ({ ...current, [productId]: undefined }));
+  function confirm(product: Product) {
+    const quantity = Math.max(0, Math.round(quantities[product.id] ?? product.stockQty));
+    const photoUrl = newPhotos[product.id];
+
+    if (!product.imageUrl && !photoUrl) {
+      setErrors((current) => ({ ...current, [product.id]: "Adicione uma foto antes de confirmar." }));
+      return;
+    }
+
+    setConfirmingId(product.id);
+    setErrors((current) => ({ ...current, [product.id]: undefined }));
     startTransition(async () => {
-      const result = await updateStockQtyAction(productId, safeQty);
-      setSavingId(null);
-      setFeedback((current) => ({ ...current, [productId]: result?.error ? "error" : "ok" }));
+      const result = await confirmStockCheckAction({ productId: product.id, quantity, photoUrl });
+      setConfirmingId(null);
+      if (result?.error) {
+        setErrors((current) => ({ ...current, [product.id]: result.error }));
+        return;
+      }
+      setProducts((current) => current.filter((p) => p.id !== product.id));
     });
+  }
+
+  if (initialProducts.length === 0) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center text-sm text-emerald-800">
+        Contagem concluída — nenhum produto pendente. 🎉
+      </p>
+    );
   }
 
   return (
@@ -50,33 +71,43 @@ export function StockCollaboratorGrid({ products }: { products: Product[] }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {filtered.map((product) => {
           const qty = quantities[product.id] ?? product.stockQty;
-          const status = feedback[product.id];
-          const isSaving = savingId === product.id;
+          const isConfirming = confirmingId === product.id;
+          const error = errors[product.id];
+          const canConfirm = Boolean(product.imageUrl || newPhotos[product.id]);
+
           return (
             <div key={product.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="mb-2 aspect-square w-full overflow-hidden rounded-md bg-slate-100">
-                {product.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- domínio da imagem não é conhecido em build time
+              {product.imageUrl ? (
+                <div className="mb-2 aspect-square w-full overflow-hidden rounded-md bg-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- domínio da imagem não é conhecido em build time */}
                   <img
                     src={product.imageUrl}
                     alt={product.name}
                     loading="lazy"
                     className="h-full w-full object-cover"
                   />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                    Sem foto
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="mb-2">
+                  <ImageUploadField
+                    value={newPhotos[product.id]}
+                    onChange={(url) => setNewPhotos((current) => ({ ...current, [product.id]: url }))}
+                    disabled={isConfirming}
+                  />
+                </div>
+              )}
+
               <p className="mb-2 line-clamp-2 text-xs font-medium text-slate-900" title={product.name}>
                 {product.name}
               </p>
+
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => commit(product.id, qty - 1)}
-                  disabled={isSaving}
+                  onClick={() =>
+                    setQuantities((current) => ({ ...current, [product.id]: Math.max(0, qty - 1) }))
+                  }
+                  disabled={isConfirming}
                   className="h-8 w-8 shrink-0 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
                   −
@@ -92,23 +123,29 @@ export function StockCollaboratorGrid({ products }: { products: Product[] }) {
                       [product.id]: Number(e.target.value) || 0,
                     }))
                   }
-                  onBlur={(e) => commit(product.id, Number(e.target.value) || 0)}
+                  disabled={isConfirming}
                   className="h-8 w-full min-w-0 rounded border border-slate-300 px-1 text-center text-sm"
                 />
                 <button
                   type="button"
-                  onClick={() => commit(product.id, qty + 1)}
-                  disabled={isSaving}
+                  onClick={() => setQuantities((current) => ({ ...current, [product.id]: qty + 1 }))}
+                  disabled={isConfirming}
                   className="h-8 w-8 shrink-0 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
                   +
                 </button>
               </div>
-              <p className="mt-1 h-4 text-center text-[11px]">
-                {isSaving && <span className="text-slate-400">Salvando...</span>}
-                {!isSaving && status === "ok" && <span className="text-emerald-600">Salvo</span>}
-                {!isSaving && status === "error" && <span className="text-red-600">Erro ao salvar</span>}
-              </p>
+
+              <button
+                type="button"
+                onClick={() => confirm(product)}
+                disabled={isConfirming || !canConfirm}
+                className="mt-2 w-full rounded-md bg-slate-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isConfirming ? "Confirmando..." : "Confirmar"}
+              </button>
+
+              {error && <p className="mt-1 text-center text-[11px] text-red-600">{error}</p>}
             </div>
           );
         })}

@@ -14,6 +14,7 @@ export type AuditAction =
   | "order.cancel"
   | "stock.adjust"
   | "stock.inventory"
+  | "stock.recount_reset"
   | "user.create"
   | "user.role_change"
   | "user.deactivate"
@@ -31,6 +32,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "order.cancel": "Pedido cancelado",
   "stock.adjust": "Estoque ajustado",
   "stock.inventory": "Inventário aplicado",
+  "stock.recount_reset": "Contagem de estoque reiniciada",
   "user.create": "Usuário criado",
   "user.role_change": "Papel de usuário alterado",
   "user.deactivate": "Usuário desativado",

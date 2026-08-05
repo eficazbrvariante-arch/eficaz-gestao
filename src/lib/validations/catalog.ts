@@ -98,3 +98,14 @@ export const quickStockAdjustSchema = z.object({
   quantity: z.coerce.number().int("Deve ser um número inteiro").min(0, "Não pode ser negativo"),
 });
 export type QuickStockAdjustInput = z.infer<typeof quickStockAdjustSchema>;
+
+/**
+ * Confirmação de um item na fila de contagem do Colaborador de Estoque.
+ * `photoUrl` só é usado (e exigido pela action) quando o produto ainda não tem foto.
+ */
+export const confirmStockCheckSchema = z.object({
+  productId: z.string().trim().min(1),
+  quantity: z.coerce.number().int("Deve ser um número inteiro").min(0, "Não pode ser negativo"),
+  photoUrl: z.string().trim().url("Informe uma URL válida").optional().or(z.literal("")),
+});
+export type ConfirmStockCheckInput = z.infer<typeof confirmStockCheckSchema>;
