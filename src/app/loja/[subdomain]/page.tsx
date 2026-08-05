@@ -162,7 +162,7 @@ export default async function StoreHomePage({
               className="inline-block rounded-md px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
               style={{ backgroundColor: "var(--store-primary)" }}
             >
-              Comprar agora
+              Ver todos
             </Link>
             {/* "Compra segura" só aparece quando há avaliações reais que sustentem a frase — nunca fixo. */}
             {ratingSummary && (
