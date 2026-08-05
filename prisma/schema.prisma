@@ -71,6 +71,10 @@ model Tenant {
   // Plano contratado (Fase 8). Os limites vêm de PLAN_LIMITS, no código —
   // assim ajustar um plano não exige migração nem atualizar cada empresa.
   plan                   Plan                 @default(FREE)
+  /// Liga a impressão automática do comprovante (window.print()) assim que a
+  /// venda é finalizada, na tela do comprovante. O botão manual "Imprimir"
+  /// funciona sempre, independente deste campo.
+  autoPrintReceipt       Boolean              @default(false)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
   saleSequence           Int                  @default(0)

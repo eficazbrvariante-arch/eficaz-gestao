@@ -67,6 +67,12 @@ export const NAV_ITEMS: NavItem[] = [
     visibleTo: canManageSettings,
   },
   {
+    label: "PDV: impressão",
+    href: "/configuracoes/pdv",
+    available: true,
+    visibleTo: canManageSettings,
+  },
+  {
     label: "Configurações da empresa",
     href: "/configuracoes/empresa",
     available: true,

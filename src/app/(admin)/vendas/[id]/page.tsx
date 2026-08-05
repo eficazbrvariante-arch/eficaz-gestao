@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { canCancelSale } from "@/lib/permissions";
 import { SaleActions } from "./sale-controls";
+import { AutoPrint } from "./auto-print";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Dinheiro",
@@ -41,8 +42,12 @@ export default async function ComprovantePage({
 
   const isCancelled = sale.status === "CANCELLED";
 
+  const shouldAutoPrint = nova === "1" && !isCancelled && tenant.autoPrintReceipt;
+
   return (
     <div>
+      <AutoPrint enabled={shouldAutoPrint} />
+
       {nova === "1" && !isCancelled && (
         <div className="mb-4 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800 print:hidden">
           Venda #{sale.number} registrada com sucesso.
@@ -62,7 +67,10 @@ export default async function ComprovantePage({
       </div>
 
       {/* Comprovante */}
-      <div className="max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm print:max-w-none print:border-0 print:shadow-none">
+      <div
+        id="recibo"
+        className="max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm print:max-w-none print:border-0 print:shadow-none"
+      >
         <div className="mb-4 border-b border-dashed border-slate-300 pb-4 text-center">
           <h2 className="text-base font-semibold text-slate-900">
             {tenant.tradeName || tenant.name}
@@ -102,10 +110,6 @@ export default async function ComprovantePage({
             <span>Vendedor</span>
             <span>{sale.seller.name}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Cliente</span>
-            <span>{sale.customer?.name ?? "Consumidor final"}</span>
-          </div>
         </div>
 
         <table className="mb-4 w-full border-t border-dashed border-slate-300 pt-2 text-xs">
@@ -140,7 +144,7 @@ export default async function ComprovantePage({
               <span>-{formatBRL(sale.discount)}</span>
             </div>
           )}
-          <div className="flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-slate-900">
+          <div className="receipt-total flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-slate-900">
             <span>Total</span>
             <span>{formatBRL(sale.total)}</span>
           </div>
@@ -166,6 +170,17 @@ export default async function ComprovantePage({
             </>
           )}
         </div>
+
+        {sale.customer && (
+          <div className="mt-3 space-y-0.5 border-t border-dashed border-slate-300 pt-3 text-xs text-slate-600">
+            <p className="font-medium text-slate-900">{sale.customer.name}</p>
+            {sale.customer.document && <p>CPF: {sale.customer.document}</p>}
+            {(sale.customer.phone || sale.customer.whatsapp) && (
+              <p>Contato: {sale.customer.phone || sale.customer.whatsapp}</p>
+            )}
+            {sale.customer.notes && <p>Obs.: {sale.customer.notes}</p>}
+          </div>
+        )}
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Documento sem valor fiscal · Obrigado pela preferência!
