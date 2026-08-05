@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { prisma } from "@/lib/prisma";
 import {
   getStoreBySubdomain,
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
+import { listCatalogCategories } from "@/modules/catalog/catalog-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
@@ -37,14 +37,9 @@ export default async function StoreLayout({
   const store = await getStoreBySubdomain(subdomain);
   if (!store) notFound();
 
-  const categories = await prisma.category.findMany({
-    where: {
-      tenantId: store.id,
-      products: { some: { active: true, showInCatalog: true } },
-    },
-    select: { id: true, name: true },
-    orderBy: [{ order: "asc" }, { name: "asc" }],
-  });
+  // Mesma consulta usada na grade de categorias e no filtro de /produtos —
+  // já exclui categorias exclusivas de balcão (`Category.counterOnly`).
+  const categories = await listCatalogCategories(store.id);
 
   // A cor da empresa entra como variável CSS para os componentes da loja usarem
   // sem precisar receber a cor por prop em cada nível.

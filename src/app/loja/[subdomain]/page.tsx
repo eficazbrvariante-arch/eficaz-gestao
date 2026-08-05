@@ -12,7 +12,6 @@ import {
   countCatalogProducts,
   getStoreRatingSummary,
   listBestSellers,
-  listCatalogCategories,
   listFlashDeals,
   listLaunches,
   listNewProducts,
@@ -23,7 +22,6 @@ import {
 import { recentlyViewedCookieName, parseRecentlyViewed } from "@/lib/recently-viewed";
 import { ProductCard, ProductGrid } from "./product-card";
 import { FeaturedCarousel } from "./featured-carousel";
-import { CategoryGrid } from "./category-grid";
 
 /** Arredonda para baixo, num número redondo, para um destaque estável (ex.: "mais de 1.700"). */
 function roundedProductCount(total: number) {
@@ -58,7 +56,6 @@ export default async function StoreHomePage({
     flashDeals,
     launches,
     recommended,
-    categories,
     totalProducts,
     ratingSummary,
   ] = await Promise.all([
@@ -68,7 +65,6 @@ export default async function StoreHomePage({
     listFlashDeals(store.id, SHELF_SIZE),
     listLaunches(store.id, SHELF_SIZE),
     listRecommendedFor(store.id, recentlyViewedIds, SHELF_SIZE),
-    listCatalogCategories(store.id),
     countCatalogProducts(store.id),
     getStoreRatingSummary(store.id),
   ]);
@@ -123,8 +119,6 @@ export default async function StoreHomePage({
   return (
     <div className="space-y-10">
       <div className="space-y-3">
-        <CategoryGrid base={base} categories={categories} />
-
         {/* Banner */}
         <section>
           <div
