@@ -6,6 +6,7 @@ import {
   canManageStock,
   canSell,
   canViewAllSales,
+  canViewDashboard,
   canViewReports,
   isStockCollaborator,
 } from "@/lib/permissions";
@@ -20,7 +21,7 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", available: true },
+  { label: "Dashboard", href: "/dashboard", available: true, visibleTo: canViewDashboard },
   { label: "PDV", href: "/pdv", available: true, visibleTo: canSell },
   { label: "Caixa", href: "/caixa", available: true, visibleTo: canSell },
   { label: "Vendas", href: "/vendas", available: true, visibleTo: canViewAllSales },

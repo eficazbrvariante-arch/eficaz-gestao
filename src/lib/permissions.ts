@@ -22,6 +22,15 @@ export function canSell(role: UserRole) {
 }
 
 /**
+ * Ver o Dashboard (resumo do dia, indicadores, produtos a repor).
+ * Vendedor não vê — o trabalho dele começa e termina no PDV/Troca, sem
+ * precisar dos números gerais da empresa.
+ */
+export function canViewDashboard(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "STOCKIST";
+}
+
+/**
  * Conceder desconto numa venda.
  * Vendedores não podem — evita desconto sem autorização no balcão.
  */

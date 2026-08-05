@@ -1,13 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, todayRange } from "@/lib/format";
-import { canViewReports } from "@/lib/permissions";
+import { canViewDashboard, canViewReports } from "@/lib/permissions";
 import { needsRestock, stockStatusLabel } from "@/modules/products/stock-status";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  if (!canViewDashboard(user.role)) redirect("/pdv");
+
   const { start, end } = todayRange();
   const showFinancials = canViewReports(user.role);
 
