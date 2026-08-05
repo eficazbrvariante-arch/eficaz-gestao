@@ -29,8 +29,22 @@ export function canApplyDiscount(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
 
-/** Cancelar uma venda já concluída (devolve o estoque). */
+/**
+ * Cancelar uma venda já concluída (devolve o estoque).
+ * Vendedor também pode — é o caminho pra processar uma troca (cancela a
+ * venda original e lança uma nova no PDV). Fica rastreado no registro de
+ * atividades, então dá pra auditar sem travar o balcão numa aprovação.
+ */
 export function canCancelSale(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
+}
+
+/**
+ * Ver a listagem geral de vendas (histórico completo, qualquer data).
+ * Vendedor não tem esse acesso — pra achar uma venda antiga (ex.: pra
+ * trocar um produto) ele usa a busca por número do cupom em /vendas/buscar.
+ */
+export function canViewAllSales(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
 

@@ -28,3 +28,8 @@ export const cancelSaleSchema = z.object({
 });
 export type CancelSaleInput = z.infer<typeof cancelSaleSchema>;
 export type CancelSaleFormValues = z.input<typeof cancelSaleSchema>;
+
+export const findSaleByNumberSchema = z.object({
+  number: z.coerce.number().int().positive("Informe um número de cupom válido"),
+});
+export type FindSaleByNumberInput = z.infer<typeof findSaleByNumberSchema>;

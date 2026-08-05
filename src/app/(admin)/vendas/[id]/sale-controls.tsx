@@ -31,11 +31,13 @@ export function PrintButton() {
 export function SaleActions({
   saleId,
   canCancel,
+  canViewAllSales,
   isCancelled,
   openCancelForm = false,
 }: {
   saleId: string;
   canCancel: boolean;
+  canViewAllSales: boolean;
   isCancelled: boolean;
   /** Abre o formulário de cancelamento já expandido (link direto da lista de vendas). */
   openCancelForm?: boolean;
@@ -71,12 +73,21 @@ export function SaleActions({
         >
           Nova venda
         </Link>
-        <Link
-          href="/vendas"
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Ver todas as vendas
-        </Link>
+        {canViewAllSales ? (
+          <Link
+            href="/vendas"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Ver todas as vendas
+          </Link>
+        ) : (
+          <Link
+            href="/vendas/buscar"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Buscar outra venda
+          </Link>
+        )}
         {canCancel && !isCancelled && (
           <button
             type="button"

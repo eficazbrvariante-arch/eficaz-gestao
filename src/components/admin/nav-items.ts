@@ -5,6 +5,7 @@ import {
   canManageSettings,
   canManageStock,
   canSell,
+  canViewAllSales,
   canViewReports,
   isStockCollaborator,
 } from "@/lib/permissions";
@@ -22,7 +23,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", available: true },
   { label: "PDV", href: "/pdv", available: true, visibleTo: canSell },
   { label: "Caixa", href: "/caixa", available: true, visibleTo: canSell },
-  { label: "Vendas", href: "/vendas", available: true, visibleTo: canSell },
+  { label: "Vendas", href: "/vendas", available: true, visibleTo: canViewAllSales },
+  { label: "Troca", href: "/vendas/buscar", available: true, visibleTo: canSell },
   { label: "Produtos", href: "/produtos", available: true, visibleTo: canManageProducts },
   { label: "Estoque", href: "/estoque", available: true, visibleTo: canManageStock },
   { label: "Clientes", href: "/clientes", available: true },

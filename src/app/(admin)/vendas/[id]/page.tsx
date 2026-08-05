@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canCancelSale } from "@/lib/permissions";
+import { canCancelSale, canViewAllSales } from "@/lib/permissions";
 import { SaleActions } from "./sale-controls";
 import { AutoPrint } from "./auto-print";
 
@@ -61,6 +61,7 @@ export default async function ComprovantePage({
         <SaleActions
           saleId={sale.id}
           canCancel={canCancelSale(user.role)}
+          canViewAllSales={canViewAllSales(user.role)}
           isCancelled={isCancelled}
           openCancelForm={cancelar === "1"}
         />

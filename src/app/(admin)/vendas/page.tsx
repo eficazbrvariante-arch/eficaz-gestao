@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canCancelSale } from "@/lib/permissions";
+import { canCancelSale, canViewAllSales } from "@/lib/permissions";
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "" },
@@ -17,6 +18,8 @@ export default async function VendasPage({
 }) {
   const { status } = await searchParams;
   const user = await requireUser();
+
+  if (!canViewAllSales(user.role)) redirect("/vendas/buscar");
 
   const sales = await prisma.sale.findMany({
     where: {

@@ -6,7 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { canCancelSale } from "@/lib/permissions";
 import { cancelSale } from "@/modules/sales/sale-service";
 import { recordAudit } from "@/modules/audit/audit-service";
-import { cancelSaleSchema, type CancelSaleInput } from "@/lib/validations/sale";
+import {
+  cancelSaleSchema,
+  findSaleByNumberSchema,
+  type CancelSaleInput,
+  type FindSaleByNumberInput,
+} from "@/lib/validations/sale";
 
 export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
   const user = await requireUser();
@@ -44,4 +49,30 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
   revalidatePath("/dashboard");
 
   return { success: "Venda cancelada e estoque devolvido." };
+}
+
+/**
+ * Localiza uma venda pelo número do cupom (não pelo id interno) — é o que o
+ * cliente tem em mãos pra pedir uma troca. Qualquer papel que vende pode
+ * usar: não abre acesso a mais nada além do que já era possível abrindo o
+ * link direto do comprovante (/vendas/{id}), que nunca teve trava por papel.
+ */
+export async function findSaleByNumberAction(input: FindSaleByNumberInput) {
+  const user = await requireUser();
+
+  const parsed = findSaleByNumberSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Informe um número de cupom válido." };
+  }
+
+  const sale = await prisma.sale.findUnique({
+    where: { tenantId_number: { tenantId: user.tenantId, number: parsed.data.number } },
+    select: { id: true },
+  });
+
+  if (!sale) {
+    return { error: `Nenhuma venda encontrada com o número #${parsed.data.number}.` };
+  }
+
+  return { saleId: sale.id };
 }
