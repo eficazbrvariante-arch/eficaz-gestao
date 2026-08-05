@@ -24,37 +24,50 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Comprovante de venda na impressora térmica (bobina 80mm, área útil 74mm).
+/* Comprovante de venda na impressora térmica (bobina 80mm, área útil 72mm).
    Escopado só ao #recibo via página nomeada — as demais impressões do painel
    (ex.: ordem de serviço da assistência técnica) continuam no tamanho padrão
    do navegador, sem serem afetadas por essa regra. */
 @media print {
-  @page thermal-80mm {
-    size: 80mm auto;
+  @page thermal-72mm {
+    size: 72mm auto;
     margin: 0;
   }
 
   #recibo {
-    page: thermal-80mm;
-    width: 74mm;
-    max-width: 74mm;
+    page: thermal-72mm;
+    box-sizing: border-box;
+    width: 72mm;
+    max-width: 72mm;
     margin: 0;
-    padding: 2mm;
+    padding: 0 2mm;
     font-family: "Courier New", Courier, monospace;
     font-size: 12px;
     line-height: 1.3;
+    font-weight: bold;
     color: #000;
   }
 
+  /* Força o mesmo peso/fonte/cor em toda a árvore do recibo, sobrepondo as
+     classes utilitárias (Tailwind) de cada elemento — a especificidade de
+     #recibo * (id) vence qualquer combinação de classes. */
   #recibo * {
+    box-sizing: border-box;
     font-family: inherit;
     font-size: inherit;
     line-height: inherit;
+    font-weight: inherit;
     color: inherit;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  #recibo table {
+    width: 100%;
   }
 
   #recibo .receipt-total {
     font-size: 14px;
-    font-weight: 700;
   }
 }
