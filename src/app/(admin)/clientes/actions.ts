@@ -70,7 +70,7 @@ export async function searchCustomersAction(query: string) {
   const term = query.trim();
   if (term.length < 2) return [];
 
-  return prisma.customer.findMany({
+  const customers = await prisma.customer.findMany({
     where: {
       tenantId: user.tenantId,
       OR: [
@@ -79,8 +79,10 @@ export async function searchCustomersAction(query: string) {
         { phone: { contains: term, mode: "insensitive" } },
       ],
     },
-    select: { id: true, name: true, document: true, phone: true },
+    select: { id: true, name: true, document: true, phone: true, creditBalance: true },
     orderBy: { name: "asc" },
     take: 10,
   });
+
+  return customers.map((c) => ({ ...c, creditBalance: Number(c.creditBalance) }));
 }

@@ -83,20 +83,21 @@ model Tenant {
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
-  users          User[]
-  categories     Category[]
-  brands         Brand[]
-  suppliers      Supplier[]
-  products       Product[]
-  stockMovements StockMovement[]
-  customers      Customer[]
-  cashRegisters  CashRegister[]
-  cashMovements  CashMovement[]
-  sales          Sale[]
-  orders         Order[]
-  deliveryZones  DeliveryZone[]
-  auditLogs      AuditLog[]
-  repairOrders   RepairOrder[]
+  users           User[]
+  categories      Category[]
+  brands          Brand[]
+  suppliers       Supplier[]
+  products        Product[]
+  stockMovements  StockMovement[]
+  customers       Customer[]
+  cashRegisters   CashRegister[]
+  cashMovements   CashMovement[]
+  sales           Sale[]
+  orders          Order[]
+  deliveryZones   DeliveryZone[]
+  auditLogs       AuditLog[]
+  repairOrders    RepairOrder[]
+  creditMovements CustomerCreditMovement[]
 
   @@map("tenants")
 }
@@ -158,15 +159,16 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   stockMovements      StockMovement[]
   cashMovements       CashMovement[]
-  registersOpened     CashRegister[]  @relation("CashRegisterOpenedBy")
-  registersClosed     CashRegister[]  @relation("CashRegisterClosedBy")
-  salesMade           Sale[]          @relation("SaleSeller")
-  salesCancelled      Sale[]          @relation("SaleCancelledBy")
+  registersOpened     CashRegister[]           @relation("CashRegisterOpenedBy")
+  registersClosed     CashRegister[]           @relation("CashRegisterClosedBy")
+  salesMade           Sale[]                   @relation("SaleSeller")
+  salesCancelled      Sale[]                   @relation("SaleCancelledBy")
   auditLogs           AuditLog[]
-  repairOrdersCreated RepairOrder[]   @relation("RepairOrderCreatedBy")
+  repairOrdersCreated RepairOrder[]            @relation("RepairOrderCreatedBy")
+  creditMovements     CustomerCreditMovement[]
 
   @@map("users")
 }
@@ -431,16 +433,44 @@ model Customer {
   // para evitar recalcular a cada listagem.
   totalSpent     Decimal   @default(0) @db.Decimal(12, 2)
   lastPurchaseAt DateTime?
+  /// Saldo de crédito de loja (gerado por cancelamento, usável como forma de
+  /// pagamento numa venda futura). Mantido pela mesma transação que gera ou
+  /// resgata o crédito — nunca recalculado a partir do histórico.
+  creditBalance  Decimal   @default(0) @db.Decimal(12, 2)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sales        Sale[]
-  orders       Order[]
-  repairOrders RepairOrder[]
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales           Sale[]
+  orders          Order[]
+  creditMovements CustomerCreditMovement[]
+  repairOrders    RepairOrder[]
 
   @@index([tenantId, name])
   @@map("customers")
+}
+
+/// Extrato de crédito de loja por cliente — cada linha soma (GRANTED) ou
+/// subtrai (REDEEMED) de `Customer.creditBalance`. `saleId` aponta pra venda
+/// que originou o crédito (cancelamento) ou pra venda onde ele foi usado.
+model CustomerCreditMovement {
+  id         String             @id @default(cuid())
+  tenantId   String
+  customerId String
+  type       CreditMovementType
+  amount     Decimal            @db.Decimal(12, 2)
+  saleId     String?
+  userId     String?
+  reason     String?
+  createdAt  DateTime           @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale     Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, customerId, createdAt])
+  @@map("customer_credit_movements")
 }
 
 // ---------------------------------------------------------------------------
@@ -634,14 +664,15 @@ model Sale {
   cancelledById  String?
   cancelReason   String?
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  cashRegister   CashRegister    @relation(fields: [cashRegisterId], references: [id])
-  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  seller         User            @relation("SaleSeller", fields: [sellerId], references: [id])
-  cancelledBy    User?           @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
-  items          SaleItem[]
-  payments       Payment[]
-  stockMovements StockMovement[]
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashRegister    CashRegister             @relation(fields: [cashRegisterId], references: [id])
+  customer        Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  seller          User                     @relation("SaleSeller", fields: [sellerId], references: [id])
+  cancelledBy     User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+  items           SaleItem[]
+  payments        Payment[]
+  stockMovements  StockMovement[]
+  creditMovements CustomerCreditMovement[]
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -673,6 +704,16 @@ enum PaymentMethod {
   PIX
   DEBIT
   CREDIT
+  /// Crédito de loja (saldo do cliente, gerado por cancelamento de venda).
+  STORE_CREDIT
+}
+
+/// GRANTED: crédito gerado (ex.: cancelamento de venda). REDEEMED: usado como
+/// forma de pagamento numa venda nova. O valor em `CustomerCreditMovement.amount`
+/// é sempre positivo — o sinal é implícito pelo tipo.
+enum CreditMovementType {
+  GRANTED
+  REDEEMED
 }
 
 model Payment {

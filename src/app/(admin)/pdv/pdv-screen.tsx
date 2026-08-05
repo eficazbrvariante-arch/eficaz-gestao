@@ -23,13 +23,14 @@ type CartLine = {
   stockQty: number;
 };
 
-type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT";
+type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Dinheiro",
   PIX: "PIX",
   DEBIT: "Cartão de débito",
   CREDIT: "Cartão de crédito",
+  STORE_CREDIT: "Crédito de loja",
 };
 
 type PaymentLine = { id: number; method: PaymentMethod; amount: number };
@@ -39,6 +40,7 @@ type CustomerOption = {
   name: string;
   document: string | null;
   phone: string | null;
+  creditBalance: number;
 };
 
 function round2(value: number) {
@@ -119,8 +121,17 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
       .filter((p) => p.method === "CASH")
       .reduce((sum, p) => sum + (p.amount || 0), 0)
   );
+  const storeCreditPortion = round2(
+    effectivePayments
+      .filter((p) => p.method === "STORE_CREDIT")
+      .reduce((sum, p) => sum + (p.amount || 0), 0)
+  );
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
+
+  const availableMethods = (Object.keys(METHOD_LABELS) as PaymentMethod[]).filter(
+    (method) => method !== "STORE_CREDIT" || (customer && customer.creditBalance > 0)
+  );
 
   function addToCart(product: PdvProduct, variantId: string | null) {
     const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
@@ -239,6 +250,12 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     }
     if (cashPortion > 0 && cashReceived !== "" && Number(cashReceived) < cashPortion) {
       setError("O valor recebido em dinheiro é menor que a parcela em espécie.");
+      return;
+    }
+    if (storeCreditPortion > 0 && (!customer || storeCreditPortion > customer.creditBalance + 0.005)) {
+      setError(
+        `Crédito de loja insuficiente. Saldo disponível: ${formatBRL(customer?.creditBalance ?? 0)}.`
+      );
       return;
     }
 
@@ -466,10 +483,20 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                   <p className="text-xs text-slate-400">
                     {customer.document ?? customer.phone ?? "sem documento"}
                   </p>
+                  {customer.creditBalance > 0 && (
+                    <p className="text-xs font-medium text-emerald-700">
+                      Crédito disponível: {formatBRL(customer.creditBalance)}
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
-                  onClick={() => setCustomer(null)}
+                  onClick={() => {
+                    setCustomer(null);
+                    setPayments((current) =>
+                      current.map((p) => (p.method === "STORE_CREDIT" ? { ...p, method: "CASH" } : p))
+                    );
+                  }}
                   className="text-xs text-red-600 hover:underline"
                 >
                   Remover
@@ -580,7 +607,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                       updatePayment(payment.id, { method: e.target.value as PaymentMethod })
                     }
                   >
-                    {(Object.keys(METHOD_LABELS) as PaymentMethod[]).map((method) => (
+                    {availableMethods.map((method) => (
                       <option key={method} value={method}>
                         {METHOD_LABELS[method]}
                       </option>

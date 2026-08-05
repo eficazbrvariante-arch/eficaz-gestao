@@ -24,7 +24,13 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
     return { error: parsed.error.issues[0]?.message ?? "Informe o motivo do cancelamento." };
   }
 
-  const result = await cancelSale(user.tenantId, saleId, user.id, parsed.data.reason);
+  const result = await cancelSale(
+    user.tenantId,
+    saleId,
+    user.id,
+    parsed.data.reason,
+    parsed.data.customerId || null
+  );
   if (!result.ok) return { error: result.error };
 
   const sale = await prisma.sale.findUnique({
@@ -47,8 +53,9 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
   revalidatePath("/produtos");
   revalidatePath("/estoque");
   revalidatePath("/dashboard");
+  revalidatePath("/clientes");
 
-  return { success: "Venda cancelada e estoque devolvido." };
+  return { success: "Venda cancelada e crédito gerado para o cliente." };
 }
 
 /**

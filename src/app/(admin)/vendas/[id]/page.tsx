@@ -11,6 +11,7 @@ const METHOD_LABELS: Record<string, string> = {
   PIX: "PIX",
   DEBIT: "Cartão de débito",
   CREDIT: "Cartão de crédito",
+  STORE_CREDIT: "Crédito de loja",
 };
 
 export default async function ComprovantePage({
@@ -60,6 +61,8 @@ export default async function ComprovantePage({
       <div className="mb-4 print:hidden">
         <SaleActions
           saleId={sale.id}
+          saleTotal={Number(sale.total)}
+          existingCustomer={sale.customer ? { id: sale.customer.id, name: sale.customer.name } : null}
           canCancel={canCancelSale(user.role)}
           canViewAllSales={canViewAllSales(user.role)}
           isCancelled={isCancelled}

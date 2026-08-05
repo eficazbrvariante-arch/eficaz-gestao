@@ -21,9 +21,19 @@ export default async function FichaClientePage({
         orderBy: { createdAt: "desc" },
         take: 20,
       },
+      creditMovements: {
+        include: { sale: { select: { number: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
     },
   });
   if (!customer) notFound();
+
+  const CREDIT_MOVEMENT_LABELS: Record<string, string> = {
+    GRANTED: "Crédito gerado",
+    REDEEMED: "Usado em compra",
+  };
 
   return (
     <div>
@@ -34,7 +44,7 @@ export default async function FichaClientePage({
         <h1 className="mt-2 text-xl font-semibold text-slate-900">{customer.name}</h1>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Total gasto</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">
@@ -49,6 +59,12 @@ export default async function FichaClientePage({
           <p className="text-sm text-slate-500">Última compra</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">
             {customer.lastPurchaseAt ? formatDateTime(customer.lastPurchaseAt) : "-"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm text-slate-500">Crédito disponível</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-700">
+            {formatBRL(customer.creditBalance)}
           </p>
         </div>
       </div>
@@ -100,6 +116,60 @@ export default async function FichaClientePage({
               <tr>
                 <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                   Este cliente ainda não realizou compras.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+          Extrato de crédito de loja
+        </div>
+        <table className="w-full text-sm">
+          <thead className="border-b border-slate-200 text-left text-slate-500">
+            <tr>
+              <th className="px-4 py-3 font-medium">Data</th>
+              <th className="px-4 py-3 font-medium">Movimento</th>
+              <th className="px-4 py-3 font-medium">Venda</th>
+              <th className="px-4 py-3 font-medium">Motivo</th>
+              <th className="px-4 py-3 font-medium">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {customer.creditMovements.map((movement) => (
+              <tr key={movement.id} className="border-b border-slate-100 last:border-0">
+                <td className="px-4 py-3 text-slate-500">{formatDateTime(movement.createdAt)}</td>
+                <td className="px-4 py-3 text-slate-900">
+                  {CREDIT_MOVEMENT_LABELS[movement.type] ?? movement.type}
+                </td>
+                <td className="px-4 py-3 text-slate-500">
+                  {movement.sale ? (
+                    <Link href={`/vendas/${movement.saleId}`} className="hover:underline">
+                      #{movement.sale.number}
+                    </Link>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td className="px-4 py-3 text-slate-500">{movement.reason ?? "-"}</td>
+                <td
+                  className={
+                    movement.type === "GRANTED"
+                      ? "px-4 py-3 font-medium text-emerald-700"
+                      : "px-4 py-3 font-medium text-red-600"
+                  }
+                >
+                  {movement.type === "GRANTED" ? "+" : "-"}
+                  {formatBRL(movement.amount)}
+                </td>
+              </tr>
+            ))}
+            {customer.creditMovements.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                  Nenhuma movimentação de crédito ainda.
                 </td>
               </tr>
             )}

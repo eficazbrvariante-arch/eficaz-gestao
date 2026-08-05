@@ -7,7 +7,7 @@ export const saleItemSchema = z.object({
 });
 
 export const salePaymentSchema = z.object({
-  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT"]),
+  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT", "STORE_CREDIT"]),
   amount: z.coerce.number().positive(),
 });
 
@@ -25,6 +25,8 @@ export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
 export const cancelSaleSchema = z.object({
   reason: z.string().trim().min(3, "Descreva o motivo do cancelamento"),
+  /** Só é obrigatório quando a venda ainda não tem cliente vinculado. */
+  customerId: z.string().trim().optional().or(z.literal("")),
 });
 export type CancelSaleInput = z.infer<typeof cancelSaleSchema>;
 export type CancelSaleFormValues = z.input<typeof cancelSaleSchema>;

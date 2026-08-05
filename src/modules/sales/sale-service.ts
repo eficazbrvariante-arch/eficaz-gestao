@@ -132,12 +132,30 @@ export async function createSale(
   }
 
   const customerId = input.customerId || null;
+  const storeCreditAmount = round2(
+    input.payments.filter((p) => p.method === "STORE_CREDIT").reduce((sum, p) => sum + p.amount, 0)
+  );
+
+  let customerCreditBalance = 0;
   if (customerId) {
     const customer = await prisma.customer.findFirst({
       where: { id: customerId, tenantId: ctx.tenantId },
-      select: { id: true },
+      select: { id: true, creditBalance: true },
     });
     if (!customer) return { ok: false, error: "Cliente não encontrado." };
+    customerCreditBalance = Number(customer.creditBalance);
+  }
+
+  if (storeCreditAmount > 0) {
+    if (!customerId) {
+      return { ok: false, error: "Selecione um cliente para usar crédito de loja." };
+    }
+    if (storeCreditAmount > customerCreditBalance + CENT) {
+      return {
+        ok: false,
+        error: `Crédito de loja insuficiente. Saldo disponível: ${customerCreditBalance.toFixed(2)}.`,
+      };
+    }
   }
 
   try {
@@ -222,6 +240,24 @@ export async function createSale(
         });
       }
 
+      if (storeCreditAmount > 0 && customerId) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { creditBalance: { decrement: storeCreditAmount } },
+        });
+        await tx.customerCreditMovement.create({
+          data: {
+            tenantId: ctx.tenantId,
+            customerId,
+            type: "REDEEMED",
+            amount: storeCreditAmount,
+            saleId: created.id,
+            userId: ctx.sellerId,
+            reason: `Usado como pagamento na venda #${created.number}`,
+          },
+        });
+      }
+
       return created;
     });
 
@@ -241,7 +277,10 @@ export async function cancelSale(
   tenantId: string,
   saleId: string,
   userId: string,
-  reason: string
+  reason: string,
+  /** Só é usado quando a venda ainda não tem cliente vinculado — obrigatório
+   *  nesse caso, pois é pra ele que o crédito do cancelamento é gerado. */
+  creditCustomerId?: string | null
 ): Promise<CancelSaleResult> {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId },
@@ -249,6 +288,22 @@ export async function cancelSale(
   });
   if (!sale) return { ok: false, error: "Venda não encontrada." };
   if (sale.status === "CANCELLED") return { ok: false, error: "Esta venda já está cancelada." };
+
+  const customerId = sale.customerId ?? creditCustomerId ?? null;
+  if (!customerId) {
+    return {
+      ok: false,
+      error: "Selecione o cliente da venda para gerar o crédito do cancelamento.",
+    };
+  }
+
+  if (!sale.customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Cliente não encontrado." };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -259,6 +314,9 @@ export async function cancelSale(
           cancelledAt: new Date(),
           cancelledById: userId,
           cancelReason: reason,
+          // Se a venda era de "consumidor final", o cliente escolhido agora pra
+          // receber o crédito fica registrado retroativamente na própria venda.
+          ...(sale.customerId ? {} : { customerId }),
         },
       });
 
@@ -300,6 +358,22 @@ export async function cancelSale(
           data: { totalSpent: { decrement: sale.total } },
         });
       }
+
+      await tx.customer.update({
+        where: { id: customerId },
+        data: { creditBalance: { increment: sale.total } },
+      });
+      await tx.customerCreditMovement.create({
+        data: {
+          tenantId,
+          customerId,
+          type: "GRANTED",
+          amount: sale.total,
+          saleId: sale.id,
+          userId,
+          reason: `Cancelamento da venda #${sale.number}`,
+        },
+      });
     });
 
     return { ok: true };
