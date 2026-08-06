@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import {
   getStoreBySubdomain,
+  storeCityLabel,
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
 import { listCatalogCategories } from "@/modules/catalog/catalog-service";
@@ -70,7 +71,17 @@ export default async function StoreLayout({
           <WhatsappFloatingButton whatsapp={store.whatsapp} instagramUrl={store.instagramUrl} />
         )}
         {flashDeal && (
-          <FlashSalePopup subdomain={store.subdomain} base={`/loja/${store.subdomain}`} deal={flashDeal} />
+          <FlashSalePopup
+            subdomain={store.subdomain}
+            base={`/loja/${store.subdomain}`}
+            deal={flashDeal}
+            trust={{
+              cityLabel: storeCityLabel(store),
+              deliveryEnabled: store.deliveryEnabled,
+              hasWarranty: Boolean(store.warrantyPolicy),
+              storeName: storeDisplayName(store),
+            }}
+          />
         )}
       </div>
     </CartProvider>
