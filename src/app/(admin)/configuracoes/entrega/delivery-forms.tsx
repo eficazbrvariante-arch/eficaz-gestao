@@ -171,6 +171,18 @@ export function DeliveryZoneForm() {
         </div>
       </div>
 
+      <div className="mb-4">
+        <Label htmlFor="freeShippingMin">Frete grátis a partir de (R$)</Label>
+        <Input
+          id="freeShippingMin"
+          type="number"
+          step="0.01"
+          placeholder="Deixe vazio para nunca liberar frete grátis"
+          {...register("freeShippingMin")}
+        />
+        <FieldError message={errors.freeShippingMin?.message} />
+      </div>
+
       <label className="mb-6 flex items-center gap-2 text-sm text-slate-700">
         <Checkbox {...register("active")} />
         Faixa ativa

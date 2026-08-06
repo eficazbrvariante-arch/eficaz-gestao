@@ -60,6 +60,7 @@ export default async function ConfiguracoesEntregaPage() {
                   <th className="px-4 py-3 font-medium">Faixa</th>
                   <th className="px-4 py-3 font-medium">Bairro / CEP</th>
                   <th className="px-4 py-3 font-medium">Taxa</th>
+                  <th className="px-4 py-3 font-medium">Frete grátis acima de</th>
                   <th className="px-4 py-3 font-medium">Prazo</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -82,6 +83,9 @@ export default async function ConfiguracoesEntregaPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-900">{formatBRL(zone.fee)}</td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {zone.freeShippingMin ? formatBRL(zone.freeShippingMin) : "-"}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{zone.estimate ?? "-"}</td>
                     <td className="px-4 py-3 text-right">
                       <form action={deleteDeliveryZoneAction.bind(null, zone.id)}>
@@ -94,7 +98,7 @@ export default async function ConfiguracoesEntregaPage() {
                 ))}
                 {zones.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                       Nenhuma faixa cadastrada. Sem faixas, os pedidos com entrega ficam com
                       taxa zero e a loja combina o valor com o cliente.
                     </td>

@@ -113,6 +113,10 @@ export const deliveryZoneSchema = z.object({
   zipStart: z.string().trim().optional().or(z.literal("")),
   zipEnd: z.string().trim().optional().or(z.literal("")),
   fee: z.coerce.number().min(0, "A taxa não pode ser negativa"),
+  freeShippingMin: z
+    .union([z.coerce.number().min(0, "O valor não pode ser negativo"), z.literal("")])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
   estimate: z.string().trim().optional().or(z.literal("")),
   active: z.boolean().default(true),
 });

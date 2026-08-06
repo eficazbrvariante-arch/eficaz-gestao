@@ -71,6 +71,7 @@ export async function createDeliveryZoneAction(input: DeliveryZoneInput) {
       zipStart: zipStart ? onlyDigits(zipStart) : null,
       zipEnd: zipEnd ? onlyDigits(zipEnd) : null,
       fee: parsed.data.fee,
+      freeShippingMin: parsed.data.freeShippingMin ?? null,
       estimate: parsed.data.estimate || null,
       active: parsed.data.active,
     },

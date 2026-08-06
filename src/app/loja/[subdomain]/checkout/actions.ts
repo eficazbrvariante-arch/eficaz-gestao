@@ -13,22 +13,27 @@ import { checkoutSchema, type CheckoutInput } from "@/lib/validations/order";
 export async function quoteDeliveryFeeAction(
   subdomain: string,
   neighborhood: string,
-  zip: string
+  zip: string,
+  subtotal: number
 ) {
   const tenant = await prisma.tenant.findFirst({
     where: { subdomain: subdomain.toLowerCase(), catalogEnabled: true },
     select: { id: true },
   });
-  if (!tenant) return { fee: 0, zoneName: null, estimate: null, found: false };
+  if (!tenant) return { fee: 0, zoneName: null, estimate: null, found: false, free: false };
 
   const zone = await findDeliveryZone(tenant.id, neighborhood || undefined, zip || undefined);
-  if (!zone) return { fee: 0, zoneName: null, estimate: null, found: false };
+  if (!zone) return { fee: 0, zoneName: null, estimate: null, found: false, free: false };
+
+  const freeShippingMin = zone.freeShippingMin ? Number(zone.freeShippingMin) : null;
+  const free = freeShippingMin !== null && subtotal >= freeShippingMin;
 
   return {
-    fee: Number(zone.fee),
+    fee: free ? 0 : Number(zone.fee),
     zoneName: zone.name,
     estimate: zone.estimate,
     found: true,
+    free,
   };
 }
 

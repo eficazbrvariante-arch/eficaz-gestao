@@ -172,7 +172,8 @@ export async function createOrder(
     );
     if (zone) {
       deliveryZoneId = zone.id;
-      deliveryFee = Number(zone.fee);
+      const freeShippingMin = zone.freeShippingMin ? Number(zone.freeShippingMin) : null;
+      deliveryFee = freeShippingMin !== null && subtotal >= freeShippingMin ? 0 : Number(zone.fee);
     }
   }
 

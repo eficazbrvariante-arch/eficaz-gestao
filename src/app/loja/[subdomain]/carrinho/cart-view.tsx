@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useCart } from "@/modules/catalog/cart-context";
 import { formatBRL } from "@/lib/format";
 
+const BRUSQUE_DELIVERY_FEE = 15;
+const BRUSQUE_FREE_SHIPPING_MIN = 50;
+
 export function CartView({ base }: { base: string }) {
   const {
     items,
@@ -168,8 +171,26 @@ export function CartView({ base }: { base: string }) {
             </div>
           </div>
 
-          <p className="mt-4 text-xs text-slate-500">
-            A taxa de entrega é calculada na próxima etapa, conforme a sua região.
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <p className="font-medium text-slate-700">Entrega em Brusque-SC</p>
+            <p className="mt-1">
+              Taxa de {formatBRL(BRUSQUE_DELIVERY_FEE)} · grátis em compras acima de{" "}
+              {formatBRL(BRUSQUE_FREE_SHIPPING_MIN)}.
+            </p>
+            {subtotal >= BRUSQUE_FREE_SHIPPING_MIN ? (
+              <p className="mt-1 font-medium text-emerald-700">
+                Sua compra já tem direito a entrega grátis em Brusque-SC!
+              </p>
+            ) : (
+              <p className="mt-1">
+                Faltam {formatBRL(BRUSQUE_FREE_SHIPPING_MIN - subtotal)} para a entrega grátis em
+                Brusque-SC.
+              </p>
+            )}
+          </div>
+
+          <p className="mt-3 text-xs text-slate-500">
+            Para outras regiões, a taxa de entrega é calculada na próxima etapa.
           </p>
 
           <Link
