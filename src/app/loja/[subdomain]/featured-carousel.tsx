@@ -16,7 +16,7 @@ export function FeaturedCarousel({ children }: { children: ReactNode }) {
       <div className="mb-4 flex items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Destaques</h2>
-          <p className="text-sm text-slate-500">Promoções e mais vendidos</p>
+          <p className="text-sm text-slate-500">Selecionados pela loja</p>
         </div>
         <div className="hidden gap-2 sm:flex">
           <button

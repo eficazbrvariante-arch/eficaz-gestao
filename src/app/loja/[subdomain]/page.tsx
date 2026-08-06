@@ -61,7 +61,9 @@ export default async function StoreHomePage({
     totalProducts,
     ratingSummary,
   ] = await Promise.all([
-    listFeaturedProducts(store.id, 10),
+    // Limite alto de propósito: destaque manual nunca deveria ser "cortado"
+    // silenciosamente por causa de outros produtos marcados depois.
+    listFeaturedProducts(store.id, 40),
     listPromoProducts(store.id, 20),
     listBestSellers(store.id, 20),
     listNewProducts(store.id, SHELF_SIZE),
@@ -85,12 +87,14 @@ export default async function StoreHomePage({
   // vendidos e novidades, e só usa o restante das promoções se sobrar espaço.
   const promoShelfIds = new Set(promos.slice(0, SHELF_SIZE).map((p) => p.id));
   const featuredManualIds = new Set(featuredManual.map((p) => p.id));
+  // O destaque manual nunca é cortado (o lojista escolheu, mostra tudo); o
+  // orgânico só entra pra completar até 10, se sobrar espaço.
   const featured = [
     ...featuredManual,
     ...dedupeById([...bestSellers, ...novelties, ...promos]).filter(
       (product) => !promoShelfIds.has(product.id) && !featuredManualIds.has(product.id)
     ),
-  ].slice(0, 10);
+  ].slice(0, Math.max(10, featuredManual.length));
 
   const bestSellerShelf = bestSellers.slice(0, SHELF_SIZE);
   const bestSellerIds = new Set(bestSellerShelf.map((p) => p.id));
