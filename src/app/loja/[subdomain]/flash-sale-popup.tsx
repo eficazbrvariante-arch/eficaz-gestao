@@ -8,6 +8,7 @@ import { FlashDealIcon, ShieldLockIcon, TruckIcon, AwardIcon } from "./icons";
 import { FlashDealCountdown } from "./flash-deal-countdown";
 import type { ResolvedFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { readFlashPopupState, markFlashPopupClosed } from "./flash-deal-popup-storage";
+import { trackEvent } from "@/modules/analytics/track-client";
 
 const CLOSE_COOLDOWN_MS = 5 * 60 * 1000;
 const FIRST_SHOW_DELAY_MS = 2500;
@@ -80,6 +81,7 @@ export function FlashSalePopup({
       setEntrance(kind);
       setVisible(true);
       if (kind === "hard" && deal.soundEnabled) playDing();
+      trackEvent(subdomain, { type: "FLASH_VIEW", productId: deal.productId });
     }
 
     if (stored?.dealKey === deal.productId && stored.closedAt) {
@@ -109,6 +111,7 @@ export function FlashSalePopup({
   }
 
   function handleBuyNow() {
+    trackEvent(subdomain, { type: "FLASH_CLICK", productId: deal.productId });
     if (deal.hasVariants) {
       router.push(`${base}/produto/${deal.productId}`);
       return;

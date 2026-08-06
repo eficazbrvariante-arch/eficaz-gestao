@@ -12,6 +12,7 @@ import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
 import { WhatsappFloatingButton } from "./whatsapp-floating-button";
 import { FlashSalePopup } from "./flash-sale-popup";
+import { StoreTracker } from "./store-tracker";
 
 export async function generateMetadata({
   params,
@@ -64,6 +65,7 @@ export default async function StoreLayout({
         style={themeStyle}
         className="flex min-h-screen flex-col bg-white [--store-primary:#0f172a]"
       >
+        <StoreTracker subdomain={store.subdomain} />
         <StoreHeader store={store} categories={categories} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />

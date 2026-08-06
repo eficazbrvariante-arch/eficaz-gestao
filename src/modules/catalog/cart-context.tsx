@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import { getCartStore, type CartItem } from "./cart-store";
+import { trackEvent } from "@/modules/analytics/track-client";
 
 export type { CartItem };
 
@@ -68,10 +69,14 @@ export function useCart() {
       );
       const allowed = Math.max(0, flashDeal.orderLimit - used);
       const finalQty = Math.min(quantity, allowed);
-      if (finalQty > 0) store.addItem(item, finalQty);
+      if (finalQty > 0) {
+        store.addItem(item, finalQty);
+        trackEvent(subdomain, { type: "ADD_TO_CART", productId: item.productId });
+      }
       return { capped: finalQty < quantity };
     }
     store.addItem(item, quantity);
+    trackEvent(subdomain, { type: "ADD_TO_CART", productId: item.productId });
     return { capped: false };
   }
 

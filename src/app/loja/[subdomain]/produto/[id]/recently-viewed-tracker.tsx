@@ -6,6 +6,7 @@ import {
   parseRecentlyViewed,
   RECENTLY_VIEWED_MAX_ENTRIES,
 } from "@/lib/recently-viewed";
+import { trackEvent } from "@/modules/analytics/track-client";
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
@@ -28,6 +29,8 @@ export function RecentlyViewedTracker({
     );
 
     document.cookie = `${name}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=${MAX_AGE_SECONDS}; samesite=lax`;
+
+    trackEvent(subdomain, { type: "PRODUCT_VIEW", productId });
   }, [subdomain, productId]);
 
   return null;

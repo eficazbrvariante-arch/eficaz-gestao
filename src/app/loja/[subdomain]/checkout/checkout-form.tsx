@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -14,6 +14,7 @@ import { useCart } from "@/modules/catalog/cart-context";
 import { formatBRL } from "@/lib/format";
 import { lookupAddressByZip } from "@/lib/viacep";
 import { markFlashDealPurchased } from "../flash-deal-popup-storage";
+import { trackEvent } from "@/modules/analytics/track-client";
 import { submitOrderAction, quoteDeliveryFeeAction } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
 
-type Quote = { fee: number; zoneName: string | null; estimate: string | null; found: boolean };
+type Quote = {
+  fee: number;
+  zoneName: string | null;
+  estimate: string | null;
+  found: boolean;
+  free: boolean;
+};
 
 export function CheckoutForm({
   subdomain,
@@ -38,10 +45,17 @@ export function CheckoutForm({
   pickupNotes: string | null;
 }) {
   const router = useRouter();
-  const { items, subtotal, ready, clear } = useCart();
+  const { items, subtotal, ready, clear, flashDealProductId } = useCart();
   const [serverError, setServerError] = useState<string>();
   const [quote, setQuote] = useState<Quote>();
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (ready && items.length > 0) {
+      trackEvent(subdomain, { type: "CHECKOUT_START" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subdomain, ready]);
 
   const [zipStatus, setZipStatus] = useState<"idle" | "loading" | "notFound">("idle");
 
@@ -79,7 +93,8 @@ export function CheckoutForm({
         await quoteDeliveryFeeAction(
           subdomain,
           values.addressNeighborhood ?? "",
-          values.addressZip ?? ""
+          values.addressZip ?? "",
+          subtotal
         )
       );
     });
@@ -150,6 +165,12 @@ export function CheckoutForm({
         return;
       }
       if ("orderId" in result) {
+        const hasFlashItem = items.some((line) => line.productId === flashDealProductId);
+        trackEvent(subdomain, {
+          type: "PURCHASE",
+          orderId: result.orderId,
+          ...(hasFlashItem && flashDealProductId ? { productId: flashDealProductId } : {}),
+        });
         markFlashDealPurchased(subdomain);
         clear();
         router.push(`${base}/pedido/${result.orderId}`);
@@ -323,7 +344,9 @@ export function CheckoutForm({
                     }
                   >
                     {quote.found
-                      ? `Entrega em ${quote.zoneName}: ${formatBRL(quote.fee)}${quote.estimate ? ` · ${quote.estimate}` : ""}`
+                      ? quote.free
+                        ? `Entrega grátis em ${quote.zoneName}!${quote.estimate ? ` · ${quote.estimate}` : ""}`
+                        : `Entrega em ${quote.zoneName}: ${formatBRL(quote.fee)}${quote.estimate ? ` · ${quote.estimate}` : ""}`
                       : "Não encontramos uma taxa cadastrada para esta região. A loja vai combinar o valor da entrega com você."}
                   </p>
                 )}

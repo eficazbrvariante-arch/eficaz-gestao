@@ -104,6 +104,8 @@ model Tenant {
   repairOrders    RepairOrder[]
   creditMovements CustomerCreditMovement[]
   devices         Device[]
+  visitorSessions VisitorSession[]
+  analyticsEvents AnalyticsEvent[]
 
   @@map("tenants")
 }
@@ -816,6 +818,9 @@ model DeliveryZone {
   zipStart     String?
   zipEnd       String?
   fee          Decimal  @default(0) @db.Decimal(10, 2)
+  /// Subtotal do pedido a partir do qual a entrega fica grátis nesta faixa.
+  /// Nulo = sem frete grátis.
+  freeShippingMin Decimal? @db.Decimal(10, 2)
   /// Prazo estimado exibido ao cliente (ex.: "até 2 horas").
   estimate     String?
   active       Boolean  @default(true)
@@ -902,4 +907,98 @@ model OrderItem {
   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@map("order_items")
+}
+
+/// Como o visitante chegou na loja, categorizado a partir do `document.referrer`
+/// (capturado uma única vez, na criação da sessão — navegação interna nunca muda o
+/// referrer). OTHER cobre qualquer referrer real que não bata com as categorias
+/// nomeadas; DIRECT é referrer vazio (digitou o endereço, favoritos, apps).
+enum TrafficSource {
+  GOOGLE
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  DIRECT
+  OTHER
+}
+
+enum DeviceType {
+  MOBILE
+  TABLET
+  DESKTOP
+}
+
+/// Cada etapa do funil de conversão da loja, mais os dois passos específicos do
+/// popup da Oferta Relâmpago (FLASH_VIEW/FLASH_CLICK). `isFlashDeal` em
+/// `AnalyticsEvent` marca quando PRODUCT_VIEW/ADD_TO_CART/PURCHASE também contam
+/// pro funil da oferta do dia.
+enum AnalyticsEventType {
+  PAGE_VIEW
+  PRODUCT_VIEW
+  ADD_TO_CART
+  CHECKOUT_START
+  PURCHASE
+  FLASH_VIEW
+  FLASH_CLICK
+}
+
+/// Uma visita (aba do navegador) na loja pública. O id é o próprio identificador
+/// gerado no cliente (sessionStorage) — mesma convenção de `Device.id` guardar o
+/// valor do cookie. Linha de longa duração, atualizada a cada evento/heartbeat;
+/// os eventos em si ficam em `AnalyticsEvent`.
+model VisitorSession {
+  id            String        @id
+  tenantId      String
+  /// Identidade de longo prazo do navegador (localStorage) — usada para contar
+  /// "visitantes únicos", diferente desta sessão que expira com a aba.
+  visitorId     String
+  deviceType    DeviceType    @default(DESKTOP)
+  trafficSource TrafficSource @default(DIRECT)
+  /// Hostname bruto do referrer (ex.: "l.instagram.com"), só para auditar o
+  /// balde "Outro" quando a categorização não reconhece a origem.
+  referrerHost  String?
+  geoCity       String?
+  geoState      String?
+  geoCountry    String?
+  userAgent     String?
+  pageViewCount Int           @default(0)
+  firstSeenAt   DateTime      @default(now())
+  lastSeenAt    DateTime      @default(now())
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events AnalyticsEvent[]
+
+  @@index([tenantId, firstSeenAt, visitorId])
+  @@index([tenantId, lastSeenAt])
+  @@index([tenantId, trafficSource, firstSeenAt])
+  @@index([tenantId, deviceType, firstSeenAt])
+  @@map("visitor_sessions")
+}
+
+/// Um evento do funil de conversão. Tabela de altíssimo volume de escrita (dispara
+/// a cada página vista) — de propósito sem FK em `productId`/`orderId`: excluir um
+/// produto ou pedido nunca pode travar, nem precisar reescrever, histórico de
+/// analytics. Resolvido com busca em lote na leitura (mesmo padrão do "Produto
+/// removido" em `report-service.ts`).
+model AnalyticsEvent {
+  id          String             @id @default(cuid())
+  tenantId    String
+  sessionId   String
+  type        AnalyticsEventType
+  path        String?
+  productId   String?
+  orderId     String?
+  /// Se este evento é do produto que é a Oferta Relâmpago do dia — calculado no
+  /// servidor (nunca confiado do cliente) contra `flashDealSchedule` no momento
+  /// do evento. Existe desde já porque esse fato é irrecuperável depois que o
+  /// dia passa (o dia seguinte tem outra oferta).
+  isFlashDeal Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type, createdAt])
+  @@index([sessionId, type])
+  @@map("analytics_events")
 }
