@@ -38,7 +38,9 @@ yarn-error.log*
 
 # configuração e documentação de assistentes de IA — específicas da máquina,
 # instaladas por ferramentas (ex.: `prisma init`). Não fazem parte do projeto.
-.claude/
+# (comandos customizados em .claude/commands/ são versionados, o resto não)
+.claude/*
+!.claude/commands/
 .agents/
 .windsurf/
 skills-lock.json
