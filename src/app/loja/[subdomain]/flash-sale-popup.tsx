@@ -191,20 +191,20 @@ export function FlashSalePopup({
         </button>
 
         <div className="flex items-center gap-2 pr-6">
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold uppercase tracking-wide">
+            {deal.badgeText || "Oferta Relâmpago"}
+          </p>
           <span
             className="flash-badge-glow flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
             style={{ backgroundColor: deal.accentColor, "--flash-glow": deal.accentColor } as React.CSSProperties}
           >
             <FlashDealIcon icon={deal.icon} className="h-5 w-5 text-white" />
           </span>
-          <p className="truncate text-sm font-semibold uppercase tracking-wide">
-            {deal.badgeText || "Oferta Relâmpago"}
-          </p>
         </div>
 
         <div className="mt-3 flex gap-3">
           {deal.imageUrl && (
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-white/10">
+            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-white/10">
               {/* URL cadastrada pela empresa; domínio desconhecido em build time. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
