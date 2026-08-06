@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type ProductOption = { id: string; name: string; salePrice: number };
 
@@ -36,11 +37,17 @@ export function FlashDealScheduleForm({
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<FlashDealScheduleFormValues, unknown, FlashDealScheduleInput>({
     resolver: zodResolver(flashDealScheduleSchema),
     defaultValues,
   });
+
+  const productOptions = products.map((p) => ({
+    value: p.id,
+    label: `${p.name} (${formatBRL(p.salePrice)})`,
+  }));
 
   const onSubmit = (data: FlashDealScheduleInput) => {
     setFeedback(undefined);
@@ -88,14 +95,15 @@ export function FlashDealScheduleForm({
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Label htmlFor={`schedule.${index}.productId`}>Produto</Label>
-                  <Select id={`schedule.${index}.productId`} {...register(`schedule.${index}.productId`)}>
-                    <option value="">Selecione um produto</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({formatBRL(p.salePrice)})
-                      </option>
-                    ))}
-                  </Select>
+                  <SearchableSelect
+                    id={`schedule.${index}.productId`}
+                    value={watch(`schedule.${index}.productId`) ?? ""}
+                    onChange={(productId) =>
+                      setValue(`schedule.${index}.productId`, productId, { shouldDirty: true })
+                    }
+                    options={productOptions}
+                    placeholder="Buscar produto por nome..."
+                  />
                   <FieldError message={dayErrors?.productId?.message} />
                 </div>
 

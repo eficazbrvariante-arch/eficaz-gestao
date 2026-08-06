@@ -25,9 +25,19 @@ export async function updateFlashDealScheduleAction(input: FlashDealScheduleInpu
     select: { subdomain: true },
   });
 
+  // O schema transforma "vazio" em `undefined` (pra poder revalidar o próprio
+  // resultado sem quebrar `.optional()`) — aqui, na escrita, vira `null`, que
+  // é o formato que `flashDealSchedule` (Json) e `parseFlashDealSchedule`
+  // esperam. `undefined` sumiria da chave ao serializar o JSON.
+  const schedule = parsed.data.schedule.map((entry) => ({
+    ...entry,
+    productId: entry.productId ?? null,
+    promoPrice: entry.promoPrice ?? null,
+  }));
+
   await prisma.tenant.update({
     where: { id: user.tenantId },
-    data: { flashDealSchedule: parsed.data.schedule },
+    data: { flashDealSchedule: schedule },
   });
 
   revalidatePath("/configuracoes/oferta-relampago");

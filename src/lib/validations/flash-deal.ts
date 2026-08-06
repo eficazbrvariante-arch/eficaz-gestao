@@ -7,17 +7,23 @@ const ICON_VALUES = FLASH_DEAL_ICON_OPTIONS.map((o) => o.value) as [
   ...FlashDealIconKey[],
 ];
 
+// Transformam para `undefined` (nunca `null`) de propósito: a Server Action
+// roda este mesmo schema DE NOVO sobre o resultado já transformado (validação
+// client-side com `zodResolver` + revalidação no servidor) — `.optional()` só
+// aceita `undefined` de volta, `null` quebraria essa segunda passada com um
+// "Invalid input" genérico. A conversão para `null` (formato de armazenamento
+// em `Tenant.flashDealSchedule`) acontece só na Server Action, antes de salvar.
 const optionalProductId = z
   .string()
   .trim()
   .optional()
   .or(z.literal(""))
-  .transform((v) => (v ? v : null));
+  .transform((v) => (v ? v : undefined));
 
 const optionalPromoPrice = z
   .union([z.literal(""), z.coerce.number().positive("O preço promocional deve ser maior que zero")])
   .optional()
-  .transform((v) => (v === "" || v === undefined ? null : v));
+  .transform((v) => (v === "" ? undefined : v));
 
 export const flashDealDayEntrySchema = z
   .object({
@@ -32,7 +38,7 @@ export const flashDealDayEntrySchema = z
     accentColor: z.string().regex(HEX_COLOR, "Cor inválida").default("#fbbf24"),
     soundEnabled: z.boolean().default(false),
   })
-  .refine((data) => !data.active || (data.productId !== null && data.promoPrice !== null), {
+  .refine((data) => !data.active || (data.productId !== undefined && data.promoPrice !== undefined), {
     message: "Selecione um produto e informe o preço promocional para ativar a oferta do dia",
     path: ["productId"],
   });
