@@ -1,12 +1,15 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
 import { clsx } from "@/lib/clsx";
 
-type ButtonVariant = "primary" | "secondary" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "brand" | "danger";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary: "bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400",
   secondary: "bg-white text-slate-900 border border-slate-300 hover:bg-slate-50",
   ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
+  /** CTA principal com a cor da marca (ex.: "Novo produto"). */
+  brand: "bg-brand text-white hover:bg-brand-hover disabled:bg-slate-400",
+  danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-slate-400",
 };
 
 /**

@@ -27,6 +27,7 @@
     "csv-parse": "^7.0.1",
     "csv-stringify": "^6.8.1",
     "dotenv": "^17.4.2",
+    "lucide-react": "^1.29.0",
     "next": "16.2.12",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.22.0",
