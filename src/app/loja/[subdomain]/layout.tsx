@@ -5,10 +5,12 @@ import {
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
 import { listCatalogCategories } from "@/modules/catalog/catalog-service";
+import { getTodayFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
 import { WhatsappFloatingButton } from "./whatsapp-floating-button";
+import { FlashSalePopup } from "./flash-sale-popup";
 
 export async function generateMetadata({
   params,
@@ -39,7 +41,10 @@ export default async function StoreLayout({
 
   // Mesma consulta usada na grade de categorias e no filtro de /produtos —
   // já exclui categorias exclusivas de balcão (`Category.counterOnly`).
-  const categories = await listCatalogCategories(store.id);
+  const [categories, flashDeal] = await Promise.all([
+    listCatalogCategories(store.id),
+    getTodayFlashDeal(store.id),
+  ]);
 
   // A cor da empresa entra como variável CSS para os componentes da loja usarem
   // sem precisar receber a cor por prop em cada nível.
@@ -48,7 +53,12 @@ export default async function StoreLayout({
     : undefined;
 
   return (
-    <CartProvider subdomain={store.subdomain}>
+    <CartProvider
+      subdomain={store.subdomain}
+      flashDeal={
+        flashDeal ? { productId: flashDeal.productId, orderLimit: flashDeal.orderLimit } : null
+      }
+    >
       <div
         style={themeStyle}
         className="flex min-h-screen flex-col bg-white [--store-primary:#0f172a]"
@@ -58,6 +68,9 @@ export default async function StoreLayout({
         <StoreFooter store={store} />
         {store.whatsapp && (
           <WhatsappFloatingButton whatsapp={store.whatsapp} instagramUrl={store.instagramUrl} />
+        )}
+        {flashDeal && (
+          <FlashSalePopup subdomain={store.subdomain} base={`/loja/${store.subdomain}`} deal={flashDeal} />
         )}
       </div>
     </CartProvider>

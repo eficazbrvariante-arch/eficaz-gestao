@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 import type { CategoryIconKey } from "@/lib/category-icons";
+import type { FlashDealIconKey } from "@/lib/flash-deal-icons";
 
 const baseProps = {
   xmlns: "http://www.w3.org/2000/svg",
@@ -210,5 +211,59 @@ const CATEGORY_ICON_MAP: Record<CategoryIconKey, (props: IconProps) => React.JSX
 export function CategoryIcon({ icon, ...props }: IconProps & { icon: string | null }) {
   const Component =
     icon && icon in CATEGORY_ICON_MAP ? CATEGORY_ICON_MAP[icon as CategoryIconKey] : GenericTagIcon;
+  return <Component {...props} />;
+}
+
+// --- Ícones da Oferta Relâmpago ---
+
+export function LightningIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <polygon points="13 2 3 14 11 14 10 22 21 9 13 9 13 2" />
+    </svg>
+  );
+}
+
+export function GiftIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <rect x="3" y="8" width="18" height="13" rx="1" />
+      <path d="M3 12h18M12 8v13M8 8a2.5 2.5 0 0 1 0-5C10 3 12 5 12 8c0-3 2-5 4-5a2.5 2.5 0 0 1 0 5" />
+    </svg>
+  );
+}
+
+export function BagIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M6 8h12l-1 13H7z" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+    </svg>
+  );
+}
+
+export function TargetIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
+    </svg>
+  );
+}
+
+const FLASH_DEAL_ICON_MAP: Record<FlashDealIconKey, (props: IconProps) => React.JSX.Element> = {
+  lightning: LightningIcon,
+  fire: FlameIcon,
+  gift: GiftIcon,
+  clock: ClockIcon,
+  bag: BagIcon,
+  target: TargetIcon,
+};
+
+/** Ícone da Oferta Relâmpago (chave configurada pelo lojista); sem chave reconhecida, usa o raio. */
+export function FlashDealIcon({ icon, ...props }: IconProps & { icon: string }) {
+  const Component =
+    icon in FLASH_DEAL_ICON_MAP ? FLASH_DEAL_ICON_MAP[icon as FlashDealIconKey] : LightningIcon;
   return <Component {...props} />;
 }

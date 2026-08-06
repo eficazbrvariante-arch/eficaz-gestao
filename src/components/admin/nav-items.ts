@@ -53,6 +53,12 @@ export const NAV_ITEMS: NavItem[] = [
     visibleTo: canManageSettings,
   },
   {
+    label: "Oferta Relâmpago",
+    href: "/configuracoes/oferta-relampago",
+    available: true,
+    visibleTo: canManageSettings,
+  },
+  {
     label: "Entrega e retirada",
     href: "/configuracoes/entrega",
     available: true,

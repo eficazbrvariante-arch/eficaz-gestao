@@ -13,6 +13,7 @@ import {
 import { useCart } from "@/modules/catalog/cart-context";
 import { formatBRL } from "@/lib/format";
 import { lookupAddressByZip } from "@/lib/viacep";
+import { markFlashDealPurchased } from "../flash-deal-popup-storage";
 import { submitOrderAction, quoteDeliveryFeeAction } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -149,6 +150,7 @@ export function CheckoutForm({
         return;
       }
       if ("orderId" in result) {
+        markFlashDealPurchased(subdomain);
         clear();
         router.push(`${base}/pedido/${result.orderId}`);
       }

@@ -2,6 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { normalizeText } from "@/lib/text";
 import { onlyDigits, type CheckoutInput } from "@/lib/validations/order";
 import type { OrderStatus } from "@/generated/prisma/enums";
+import {
+  parseFlashDealSchedule,
+  todayFlashDealEntry,
+  flashPriceOverrideFor,
+} from "@/modules/catalog/flash-deal-service";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -69,6 +74,7 @@ export async function createOrder(
       deliveryEnabled: true,
       pickupEnabled: true,
       catalogEnabled: true,
+      flashDealSchedule: true,
     },
   });
   if (!tenant || !tenant.catalogEnabled) {
@@ -102,6 +108,14 @@ export async function createOrder(
   let subtotal = 0;
   let costTotal = 0;
 
+  // Oferta Relâmpago do dia (agendada por tenant, ver flash-deal-service.ts): o
+  // preço cobrado e a quantidade permitida nunca confiam no carrinho do cliente —
+  // são recalculados aqui a partir da agenda, igual ao preço normal do produto logo
+  // abaixo. `flashQtyUsed` soma entre linhas (ex.: duas variações do mesmo produto)
+  // para o limite valer por produto, não por linha.
+  const flashEntry = todayFlashDealEntry(parseFlashDealSchedule(tenant.flashDealSchedule));
+  let flashQtyUsed = 0;
+
   for (const item of input.items) {
     const product = productMap.get(item.productId);
     if (!product) {
@@ -115,22 +129,36 @@ export async function createOrder(
       return { ok: false, error: `Opção indisponível para "${product.name}".` };
     }
 
-    const basePrice = Number(product.promoPrice ?? product.salePrice);
+    const flashOverride = flashPriceOverrideFor(flashEntry, {
+      id: product.id,
+      salePrice: Number(product.salePrice),
+    });
+
+    let quantity = item.quantity;
+    let basePrice = Number(product.promoPrice ?? product.salePrice);
+    if (flashOverride) {
+      const remaining = Math.max(0, flashEntry!.orderLimit - flashQtyUsed);
+      quantity = Math.min(item.quantity, remaining);
+      if (quantity === 0) continue;
+      flashQtyUsed += quantity;
+      basePrice = flashOverride.promoPrice;
+    }
+
     const unitPrice = round2(basePrice + Number(variant?.priceAdjustment ?? 0));
-    const total = round2(unitPrice * item.quantity);
+    const total = round2(unitPrice * quantity);
 
     resolvedItems.push({
       productId: product.id,
       variantId: variant?.id ?? null,
       nameSnapshot: variant ? `${product.name} (${variant.name})` : product.name,
-      quantity: item.quantity,
+      quantity,
       unitPrice,
       unitCost: Number(product.costPrice),
       total,
     });
 
     subtotal = round2(subtotal + total);
-    costTotal = round2(costTotal + Number(product.costPrice) * item.quantity);
+    costTotal = round2(costTotal + Number(product.costPrice) * quantity);
   }
 
   // Taxa de entrega vem sempre da faixa cadastrada, nunca do formulário.

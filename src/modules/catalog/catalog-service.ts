@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getLowestPriceLast30Days } from "@/modules/products/price-history";
+import {
+  getFlashDealSchedule,
+  todayFlashDealEntry,
+  flashPriceOverrideFor,
+} from "./flash-deal-service";
 
 const LAUNCH_WINDOW_DAYS = 15;
 
@@ -142,13 +147,24 @@ async function enrichCards(
 ): Promise<CatalogProductCard[]> {
   if (cards.length === 0) return cards;
 
-  const ids = cards.map((c) => c.id);
+  // A Oferta Relâmpago (agendada por dia da semana, ver flash-deal-service.ts) é um
+  // sistema à parte do promoPrice/promoEndsAt "evergreen" do produto — quando o card
+  // do dia bate com o produto, o preço exibido/considerado no desconto vira o da
+  // oferta, sem nunca escrever no registro do produto.
+  const flashEntry = todayFlashDealEntry(await getFlashDealSchedule(tenantId));
+  const pricedCards = cards.map((card) => {
+    const override = flashPriceOverrideFor(flashEntry, { id: card.id, salePrice: card.price });
+    if (!override) return card;
+    return { ...card, promoPrice: override.promoPrice, promoEndsAt: override.endsAt, isFlashDeal: true };
+  });
+
+  const ids = pricedCards.map((c) => c.id);
   const [lowestPrices, soldQuantities] = await Promise.all([
     getLowestPriceLast30Days(tenantId, ids),
     sumSoldQuantities(tenantId, ids),
   ]);
 
-  return cards.map((card) => {
+  return pricedCards.map((card) => {
     const current = effectivePrice(card);
     const lowest = lowestPrices.get(card.id);
     const hasGenuineStrike = lowest !== undefined && lowest > current;
@@ -480,7 +496,13 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
   if (!product) return null;
 
   const price = Number(product.salePrice);
-  const promoPrice = product.promoPrice === null ? null : Number(product.promoPrice);
+  const rawPromoPrice = product.promoPrice === null ? null : Number(product.promoPrice);
+
+  const flashEntry = todayFlashDealEntry(await getFlashDealSchedule(tenantId));
+  const flashOverride = flashPriceOverrideFor(flashEntry, { id: product.id, salePrice: price });
+
+  const promoPrice = flashOverride ? flashOverride.promoPrice : rawPromoPrice;
+  const promoEndsAt = flashOverride ? flashOverride.endsAt : product.promoEndsAt;
   const current = promoPrice ?? price;
 
   const [lowestPrices, soldQuantities] = await Promise.all([
@@ -492,10 +514,12 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
 
   return {
     ...product,
+    promoPrice,
+    promoEndsAt,
     avgRating: product.avgRating === null ? null : Number(product.avgRating),
-    isFlashDeal: Boolean(
-      promoPrice !== null && product.promoEndsAt && product.promoEndsAt.getTime() > Date.now()
-    ),
+    isFlashDeal:
+      Boolean(flashOverride) ||
+      Boolean(rawPromoPrice !== null && product.promoEndsAt && product.promoEndsAt.getTime() > Date.now()),
     soldQty: soldQuantities.get(product.id) ?? 0,
     strikePrice: hasGenuineStrike ? lowest! : null,
     discountPercent: hasGenuineStrike ? Math.round(((lowest! - current) / lowest!) * 100) : null,

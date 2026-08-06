@@ -29,21 +29,24 @@ export function AddToCart({
   variants: Variant[];
   cartHref: string;
 }) {
-  const { addItem } = useCart();
+  const { addItem, flashDealProductId, flashDealOrderLimit } = useCart();
   const hasVariants = variants.length > 0;
+  const isFlashDeal = flashDealProductId === productId;
+  const maxQuantity = isFlashDeal ? flashDealOrderLimit! : Infinity;
 
   const [variantId, setVariantId] = useState<string | null>(
     hasVariants ? variants[0].id : null
   );
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+  const [capped, setCapped] = useState(false);
 
   const variant = variants.find((v) => v.id === variantId) ?? null;
   const unitPrice = Math.round((basePrice + (variant?.priceAdjustment ?? 0)) * 100) / 100;
   const available = variant ? variant.stockQty : stockQty;
 
   function handleAdd() {
-    addItem(
+    const result = addItem(
       {
         productId,
         variantId: variant?.id ?? null,
@@ -56,6 +59,7 @@ export function AddToCart({
       quantity
     );
     setAdded(true);
+    setCapped(result.capped);
   }
 
   return (
@@ -74,6 +78,7 @@ export function AddToCart({
                     setVariantId(v.id);
                     setQuantity(1);
                     setAdded(false);
+                    setCapped(false);
                   }}
                   className={[
                     "rounded-md border px-3 py-2 text-sm",
@@ -108,6 +113,7 @@ export function AddToCart({
             onClick={() => {
               setQuantity((q) => Math.max(1, q - 1));
               setAdded(false);
+              setCapped(false);
             }}
             className="h-9 w-9 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
             aria-label="Diminuir quantidade"
@@ -120,24 +126,34 @@ export function AddToCart({
             value={quantity}
             onChange={(e) => {
               const next = Number(e.target.value);
-              setQuantity(Math.max(1, next || 1));
+              setQuantity(Math.min(maxQuantity, Math.max(1, next || 1)));
               setAdded(false);
+              setCapped(false);
             }}
             className="h-9 w-16 rounded border border-slate-300 px-2 text-center text-sm"
           />
           <button
             type="button"
             onClick={() => {
-              setQuantity((q) => q + 1);
+              setQuantity((q) => Math.min(maxQuantity, q + 1));
               setAdded(false);
+              setCapped(false);
             }}
-            className="h-9 w-9 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+            disabled={quantity >= maxQuantity}
+            className="h-9 w-9 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Aumentar quantidade"
           >
             +
           </button>
         </div>
       </div>
+
+      {isFlashDeal && (
+        <p className="mb-3 text-xs text-slate-500">
+          Oferta relâmpago: limite de {flashDealOrderLimit} unidade
+          {flashDealOrderLimit === 1 ? "" : "s"} por pedido.
+        </p>
+      )}
 
       <button
         type="button"
@@ -147,6 +163,12 @@ export function AddToCart({
       >
         Adicionar ao carrinho
       </button>
+
+      {capped && (
+        <p className="mt-3 text-sm font-medium text-amber-700">
+          Limite de {flashDealOrderLimit} unidade{flashDealOrderLimit === 1 ? "" : "s"} por oferta.
+        </p>
+      )}
 
       {added && (
         <p className="mt-3 text-sm text-emerald-700">

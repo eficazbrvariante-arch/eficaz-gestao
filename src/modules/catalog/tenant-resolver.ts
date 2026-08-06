@@ -137,6 +137,11 @@ const timeFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
+/** Dia da semana "de hoje" no fuso da loja (0 = domingo … 6 = sábado, convenção de `Date#getDay()`). */
+export function todayWeekday(now = new Date()): number {
+  return WEEKDAY_INDEX[weekdayFormatter.format(now)];
+}
+
 /**
  * Se a loja está aberta agora, a partir do horário configurado em
  * `businessHours` e do fuso da loja. Retorna `null` quando não há horário
@@ -149,7 +154,7 @@ export function isStoreOpenNow(
   if (hours.length === 0) return null;
 
   const now = new Date();
-  const day = WEEKDAY_INDEX[weekdayFormatter.format(now)];
+  const day = todayWeekday(now);
   const currentTime = timeFormatter.format(now);
 
   const today = hours.find((h) => h.day === day) ?? null;
