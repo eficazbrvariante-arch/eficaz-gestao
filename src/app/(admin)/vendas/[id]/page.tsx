@@ -117,11 +117,19 @@ export default async function ComprovantePage({
         </div>
 
         <table className="mb-4 w-full border-t border-dashed border-slate-300 pt-2 text-xs">
+          <colgroup>
+            <col className="col-item" />
+            <col className="col-qty" />
+            <col className="col-unit" />
+            <col className="col-gap" />
+            <col className="col-total" />
+          </colgroup>
           <thead>
             <tr className="text-left text-slate-500">
               <th className="py-2 font-medium">Item</th>
               <th className="py-2 text-center font-medium">Qtd</th>
               <th className="py-2 text-right font-medium">Unit.</th>
+              <th className="py-2"></th>
               <th className="py-2 text-right font-medium">Total</th>
             </tr>
           </thead>
@@ -131,6 +139,7 @@ export default async function ComprovantePage({
                 <td className="py-1.5 text-slate-900">{item.nameSnapshot}</td>
                 <td className="py-1.5 text-center text-slate-600">{item.quantity}</td>
                 <td className="py-1.5 text-right text-slate-600">{formatBRL(item.unitPrice)}</td>
+                <td className="py-1.5"></td>
                 <td className="py-1.5 text-right text-slate-900">{formatBRL(item.total)}</td>
               </tr>
             ))}
