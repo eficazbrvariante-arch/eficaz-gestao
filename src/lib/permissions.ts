@@ -87,6 +87,15 @@ export function canManageSettings(role: UserRole) {
   return role === "ADMIN";
 }
 
+/**
+ * Configurar a Oferta Relâmpago (dia, produto, preço, ativação). Gerente
+ * também pode, diferente do restante de "Configurações" — é uma decisão
+ * comercial do dia a dia, não uma configuração estrutural da empresa.
+ */
+export function canManageFlashDeals(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
 /** Registrar e acompanhar ordens de serviço de assistência técnica. */
 export function canManageRepairOrders(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER" || role === "SELLER";

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageSettings } from "@/lib/permissions";
+import { canManageFlashDeals } from "@/lib/permissions";
 import {
   flashDealScheduleSchema,
   type FlashDealScheduleInput,
@@ -11,8 +11,8 @@ import {
 
 export async function updateFlashDealScheduleAction(input: FlashDealScheduleInput) {
   const user = await requireUser();
-  if (!canManageSettings(user.role)) {
-    return { error: "Seu perfil não tem permissão para alterar as configurações." };
+  if (!canManageFlashDeals(user.role)) {
+    return { error: "Seu perfil não tem permissão para alterar a Oferta Relâmpago." };
   }
 
   const parsed = flashDealScheduleSchema.safeParse(input);

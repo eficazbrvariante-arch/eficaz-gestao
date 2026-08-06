@@ -1,5 +1,6 @@
 import type { UserRole } from "@/generated/prisma/enums";
 import {
+  canManageFlashDeals,
   canManageProducts,
   canManageRepairOrders,
   canManageSettings,
@@ -56,7 +57,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Oferta Relâmpago",
     href: "/configuracoes/oferta-relampago",
     available: true,
-    visibleTo: canManageSettings,
+    visibleTo: canManageFlashDeals,
   },
   {
     label: "Entrega e retirada",
