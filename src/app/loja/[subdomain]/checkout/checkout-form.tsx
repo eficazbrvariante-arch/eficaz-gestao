@@ -337,7 +337,15 @@ export function CheckoutForm({
                     </span>
                     <Input
                       id="authUsername"
-                      autoComplete={authTab === "register" ? "username" : "username"}
+                      // "off" no cadastro: com "username" o Safari às vezes
+                      // preenche esse campo com o mesmo valor do e-mail
+                      // (autofill de conta), sobrescrevendo o @usuário digitado.
+                      // No login é "username" mesmo -- ali é uma conta já
+                      // existente, o autofill correto ajuda.
+                      autoComplete={authTab === "register" ? "off" : "username"}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className="pl-7"
                       {...usernameField}
                     />

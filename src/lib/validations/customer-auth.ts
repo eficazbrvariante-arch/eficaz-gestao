@@ -15,6 +15,9 @@ export const usernameSchema = z
   .pipe(
     z
       .string()
+      // Checado antes do min(3): sem isso, campo vazio cairia direto no erro
+      // de "mínimo de 3 caracteres" em vez de avisar que é obrigatório.
+      .min(1, "Campo obrigatório")
       .min(3, "Use pelo menos 3 caracteres")
       .max(20, "Use no máximo 20 caracteres")
       .regex(/^[a-z0-9_]+$/, "Use só letras minúsculas, números ou _")

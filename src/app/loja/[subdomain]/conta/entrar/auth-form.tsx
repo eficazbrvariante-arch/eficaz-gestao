@@ -126,7 +126,13 @@ function RegisterPanel({ subdomain, returnTo }: { subdomain: string; returnTo: s
           <Input
             id="username"
             className="pl-7"
-            autoComplete="username"
+            // "off": com "username" o Safari às vezes preenche esse campo com
+            // o mesmo valor do e-mail (autofill de conta), sobrescrevendo o
+            // @usuário digitado -- aqui é sempre cadastro de conta nova.
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             {...usernameField}
             onChange={(e) => {
               usernameField.onChange(e);

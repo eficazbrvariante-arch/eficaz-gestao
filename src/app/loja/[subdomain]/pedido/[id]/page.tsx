@@ -11,12 +11,14 @@ import {
   ORDER_PAYMENT_LABELS,
   ORDER_STATUS_LABELS,
 } from "@/modules/orders/order-status";
+import { listFreeShippingZones } from "@/modules/orders/order-service";
 import {
   buildWhatsappLink,
   buildWhatsappMessage,
   formatAddress,
   type WhatsappOrder,
 } from "@/modules/orders/whatsapp-message";
+import { FreeShippingNotice } from "../../free-shipping-notice";
 
 export default async function OrderConfirmationPage({
   params,
@@ -29,13 +31,14 @@ export default async function OrderConfirmationPage({
   const store = await getStoreBySubdomain(subdomain);
   if (!store) notFound();
 
-  const [order, session, { t }] = await Promise.all([
+  const [order, session, { t }, freeShippingZones] = await Promise.all([
     prisma.order.findFirst({
       where: { id, tenantId: store.id },
       include: { items: true, deliveryZone: true },
     }),
     getCustomerSession(store.id),
     searchParams,
+    listFreeShippingZones(store.id),
   ]);
   if (!order) notFound();
 
@@ -139,11 +142,19 @@ export default async function OrderConfirmationPage({
             <div className="flex justify-between text-slate-600">
               <span>Entrega{order.deliveryZone ? ` (${order.deliveryZone.name})` : ""}</span>
               <span>
-                {Number(order.deliveryFee) > 0
-                  ? formatBRL(order.deliveryFee)
-                  : "a combinar com a loja"}
+                {/* Zona bateu e frete zerado = frete grátis de verdade (faixa
+                    atingiu freeShippingMin); só "a combinar" quando não achou
+                    nenhuma faixa pro endereço -- distinção que faltava aqui. */}
+                {!order.deliveryZone
+                  ? "a combinar com a loja"
+                  : Number(order.deliveryFee) > 0
+                    ? formatBRL(order.deliveryFee)
+                    : "Grátis"}
               </span>
             </div>
+          )}
+          {order.fulfillment === "DELIVERY" && !order.deliveryZone && (
+            <FreeShippingNotice zones={freeShippingZones} />
           )}
           <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-900">
             <span>Total</span>

@@ -51,6 +51,21 @@ export async function findDeliveryZone(
   );
 }
 
+/**
+ * Faixas de entrega ativas com frete grátis a partir de um valor — só para o
+ * aviso informativo no carrinho e na confirmação do pedido (ex.: "Entregas em
+ * Brusque-SC grátis a partir de R$ 50,00"). O cálculo do frete em si nunca
+ * usa isto: sempre `findDeliveryZone`, recalculado no servidor a cada pedido.
+ */
+export async function listFreeShippingZones(tenantId: string) {
+  const zones = await prisma.deliveryZone.findMany({
+    where: { tenantId, active: true, freeShippingMin: { not: null } },
+    select: { name: true, freeShippingMin: true },
+    orderBy: { freeShippingMin: "asc" },
+  });
+  return zones.map((zone) => ({ name: zone.name, freeShippingMin: Number(zone.freeShippingMin) }));
+}
+
 export type CreateOrderResult =
   | { ok: true; orderId: string; number: number; publicAccessToken: string; customerId: string }
   | { ok: false; error: string; field?: "username" };

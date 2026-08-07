@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getStoreBySubdomain, storeCityLabel } from "@/modules/catalog/tenant-resolver";
+import { listFreeShippingZones } from "@/modules/orders/order-service";
 import { CartView } from "./cart-view";
 
 export default async function StoreCartPage({
@@ -11,10 +12,16 @@ export default async function StoreCartPage({
   const store = await getStoreBySubdomain(subdomain);
   if (!store) notFound();
 
+  const freeShippingZones = await listFreeShippingZones(store.id);
+
   return (
     <div>
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Seu carrinho</h1>
-      <CartView base={`/loja/${store.subdomain}`} city={storeCityLabel(store)} />
+      <CartView
+        base={`/loja/${store.subdomain}`}
+        city={storeCityLabel(store)}
+        freeShippingZones={freeShippingZones}
+      />
     </div>
   );
 }

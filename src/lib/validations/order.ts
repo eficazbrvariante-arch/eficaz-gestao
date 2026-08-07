@@ -121,7 +121,7 @@ export const checkoutFormSchema = z
     path: ["customerPhone"],
   })
   .refine(requiredWhenNotSession("username"), {
-    message: "Escolha um @usuário",
+    message: "Campo obrigatório",
     path: ["auth", "username"],
   })
   .refine(requiredWhenNotSession("password"), {

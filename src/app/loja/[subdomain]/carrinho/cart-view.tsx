@@ -4,8 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/modules/catalog/cart-context";
 import { formatBRL } from "@/lib/format";
+import { FreeShippingNotice } from "../free-shipping-notice";
 
-export function CartView({ base, city }: { base: string; city: string | null }) {
+export function CartView({
+  base,
+  city,
+  freeShippingZones,
+}: {
+  base: string;
+  city: string | null;
+  freeShippingZones: { name: string; freeShippingMin: number }[];
+}) {
   const {
     items,
     subtotal,
@@ -168,13 +177,12 @@ export function CartView({ base, city }: { base: string; city: string | null }) 
             </div>
           </div>
 
-          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          <div className="mt-4 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
             <p className="font-medium text-slate-700">
               {city ? `Entrega em ${city}` : "Entrega"}
             </p>
-            <p className="mt-1">
-              O frete é calculado automaticamente na próxima etapa, de acordo com sua região.
-            </p>
+            <p>O frete é calculado automaticamente na próxima etapa, de acordo com sua região.</p>
+            <FreeShippingNotice zones={freeShippingZones} />
           </div>
 
           <Link
