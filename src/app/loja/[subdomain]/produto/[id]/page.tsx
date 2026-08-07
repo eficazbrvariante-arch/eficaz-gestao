@@ -5,6 +5,7 @@ import {
   getStoreBySubdomain,
   storeDisplayName,
   storeCommerceInfo,
+  storeOrigin,
 } from "@/modules/catalog/tenant-resolver";
 import {
   getCatalogProduct,
@@ -15,6 +16,7 @@ import { formatBRL, formatDateTime } from "@/lib/format";
 import { ProductGrid } from "../../product-card";
 import { ProductGallery } from "./product-gallery";
 import { AddToCart } from "./add-to-cart";
+import { WhatsappProductCta } from "./whatsapp-product-cta";
 import { StarIcon } from "../../icons";
 import { FlashDealCountdown } from "../../flash-deal-countdown";
 import { RecentlyViewedTracker } from "./recently-viewed-tracker";
@@ -31,9 +33,16 @@ export async function generateMetadata({
   const product = await getCatalogProduct(store.id, id);
   if (!product) return { title: "Produto não encontrado" };
 
+  const imageUrl = product.images[0]?.url;
+
   return {
     title: `${product.name} — ${storeDisplayName(store)}`,
     description: product.description ?? undefined,
+    openGraph: {
+      title: product.name,
+      description: product.description ?? undefined,
+      images: imageUrl ? [{ url: imageUrl }] : undefined,
+    },
   };
 }
 
@@ -61,8 +70,30 @@ export default async function StoreProductPage({
   const basePrice = promoPrice ?? price;
   const acceptsPix = commerce.acceptedPaymentMethods.includes("PIX");
 
+  // Dado estruturado (schema.org/Product) pra busca e compartilhamento —
+  // escapa "</" pra uma descrição não conseguir fechar a tag <script> cedo.
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    image: product.images.map((image) => image.url),
+    description: product.description ?? undefined,
+    offers: {
+      "@type": "Offer",
+      price: basePrice.toFixed(2),
+      priceCurrency: "BRL",
+      availability:
+        product.stockQty > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: `${storeOrigin(store)}${base}/produto/${product.id}`,
+    },
+  };
+
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd).replace(/</g, "\\u003c") }}
+      />
       <RecentlyViewedTracker subdomain={store.subdomain} productId={product.id} />
       <nav className="mb-6 flex flex-wrap items-center gap-1 text-sm text-slate-500">
         <Link href={base} className="hover:underline">
@@ -139,6 +170,11 @@ export default async function StoreProductPage({
           {product.soldQty > 0 && (
             <p className="mt-1 text-xs text-slate-500">{product.soldQty} vendidos</p>
           )}
+          {product.promoRemaining !== null && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              Restam {product.promoRemaining} na promoção
+            </p>
+          )}
 
           <div className="mt-4">
             <AddToCart
@@ -155,6 +191,14 @@ export default async function StoreProductPage({
               }))}
               cartHref={`${base}/carrinho`}
             />
+            {store.whatsapp && (
+              <WhatsappProductCta
+                whatsapp={store.whatsapp}
+                productName={product.name}
+                priceLabel={formatBRL(basePrice)}
+                productUrl={`${storeOrigin(store)}${base}/produto/${product.id}`}
+              />
+            )}
           </div>
 
           {product.description && (

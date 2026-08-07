@@ -1,12 +1,8 @@
 import Link from "next/link";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
 import { PAYMENT_METHOD_OPTIONS } from "@/lib/validations/store-settings";
+import { buildWhatsappLink } from "@/lib/whatsapp";
 import { TrustBar } from "./trust-bar";
-
-function whatsappLink(whatsapp: string) {
-  const digits = whatsapp.replace(/\D/g, "");
-  return `https://wa.me/${digits}?text=${encodeURIComponent("Olá, vim pelo catálogo online!")}`;
-}
 
 const INSTITUTIONAL_LINKS = [
   { field: "aboutText", slug: "sobre", label: "Quem somos" },
@@ -45,7 +41,7 @@ export function StoreFooter({ store }: { store: Store }) {
             <div className="mt-2 flex flex-col gap-1">
               {store.whatsapp && (
                 <a
-                  href={whatsappLink(store.whatsapp)}
+                  href={buildWhatsappLink(store.whatsapp, "Olá, vim pelo catálogo online!")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-slate-900 hover:underline"

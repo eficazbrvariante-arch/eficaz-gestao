@@ -11,18 +11,24 @@ import {
 import {
   countCatalogProducts,
   getStoreRatingSummary,
+  groupCategoriesByParent,
+  hasRelevantSalesVolume,
   listBestSellers,
+  listCatalogCategories,
   listFeaturedProducts,
   listFlashDeals,
   listLaunches,
   listNewProducts,
   listPromoProducts,
   listRecommendedFor,
+  MIN_RELEVANT_SOLD_QTY,
   type CatalogProductCard,
 } from "@/modules/catalog/catalog-service";
 import { recentlyViewedCookieName, parseRecentlyViewed } from "@/lib/recently-viewed";
 import { ProductCard, ProductGrid } from "./product-card";
 import { FeaturedCarousel } from "./featured-carousel";
+import { ExpressDeliveryBanner } from "./express-delivery-banner";
+import { MacroCategoryRow } from "./macro-category-row";
 
 /** Arredonda para baixo, num número redondo, para um destaque estável (ex.: "mais de 1.700"). */
 function roundedProductCount(total: number) {
@@ -50,6 +56,9 @@ export default async function StoreHomePage({
   );
 
   const SHELF_SIZE = 12;
+  // "Evitar poluição visual": a Oferta Relâmpago é uma vitrine de urgência,
+  // não mais uma prateleira comum — poucos itens de propósito.
+  const FLASH_DEAL_SHELF_SIZE = 3;
   const [
     featuredManual,
     promos,
@@ -60,6 +69,7 @@ export default async function StoreHomePage({
     recommended,
     totalProducts,
     ratingSummary,
+    categories,
   ] = await Promise.all([
     // Limite alto de propósito: destaque manual nunca deveria ser "cortado"
     // silenciosamente por causa de outros produtos marcados depois.
@@ -67,12 +77,14 @@ export default async function StoreHomePage({
     listPromoProducts(store.id, 20),
     listBestSellers(store.id, 20),
     listNewProducts(store.id, SHELF_SIZE),
-    listFlashDeals(store.id, SHELF_SIZE),
+    listFlashDeals(store.id, FLASH_DEAL_SHELF_SIZE),
     listLaunches(store.id, SHELF_SIZE),
     listRecommendedFor(store.id, recentlyViewedIds, SHELF_SIZE),
     countCatalogProducts(store.id),
     getStoreRatingSummary(store.id),
+    listCatalogCategories(store.id),
   ]);
+  const categoryGroups = groupCategoriesByParent(categories);
 
   const isEmpty =
     featuredManual.length === 0 &&
@@ -94,10 +106,22 @@ export default async function StoreHomePage({
     ...dedupeById([...bestSellers, ...novelties, ...promos]).filter(
       (product) => !promoShelfIds.has(product.id) && !featuredManualIds.has(product.id)
     ),
-  ].slice(0, Math.max(10, featuredManual.length));
+  ].slice(0, Math.max(8, featuredManual.length));
 
   const bestSellerShelf = bestSellers.slice(0, SHELF_SIZE);
   const bestSellerIds = new Set(bestSellerShelf.map((p) => p.id));
+  // Só entra como "Mais vendido" quem de fato vendeu uma quantidade relevante
+  // — sem isso, o badge (e o rótulo "Mais vendidos" da prateleira, ver abaixo)
+  // apareceriam mesmo quando só 1 unidade foi vendida, o que enfraquece a
+  // prova social em vez de reforçar. Continua um subconjunto de
+  // `bestSellerIds` — o dedupe entre prateleiras (`shown`, logo abaixo)
+  // precisa da lista completa, não só de quem ganha o selo.
+  const bestSellerBadgeIds = new Set(
+    bestSellerShelf.filter((p) => p.soldQty >= MIN_RELEVANT_SOLD_QTY).map((p) => p.id)
+  );
+  const bestSellerShelfTitle = hasRelevantSalesVolume(bestSellerShelf)
+    ? "Mais vendidos"
+    : "Mais procurados";
 
   // Cada prateleira nomeada abaixo só mostra produtos que ainda não
   // apareceram numa prateleira nomeada anterior — sem isso, catálogos
@@ -197,6 +221,9 @@ export default async function StoreHomePage({
         </section>
       </div>
 
+      <ExpressDeliveryBanner store={store} />
+      <MacroCategoryRow groups={categoryGroups} base={base} />
+
       {featured.length > 0 && (
         <FeaturedCarousel>
           {featured.map((product) => (
@@ -218,17 +245,6 @@ export default async function StoreHomePage({
         </section>
       )}
 
-      {bestSellerShelf.length > 0 && (
-        <ShelfSection
-          title="Mais vendidos"
-          href={`${base}/produtos`}
-          products={bestSellerShelf}
-          base={base}
-          store={commerce}
-          bestSellerIds={bestSellerIds}
-        />
-      )}
-
       {flashDealShelf.length > 0 && (
         <ShelfSection
           title="Ofertas relâmpago"
@@ -237,6 +253,17 @@ export default async function StoreHomePage({
           products={flashDealShelf}
           base={base}
           store={commerce}
+        />
+      )}
+
+      {bestSellerShelf.length > 0 && (
+        <ShelfSection
+          title={bestSellerShelfTitle}
+          href={`${base}/produtos`}
+          products={bestSellerShelf}
+          base={base}
+          store={commerce}
+          bestSellerIds={bestSellerBadgeIds}
         />
       )}
 

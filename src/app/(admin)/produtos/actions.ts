@@ -173,14 +173,19 @@ function normalizeProductData(data: ProductInput) {
     costPrice: data.costPrice,
     salePrice: data.salePrice,
     promoPrice,
-    // Sem preço promocional, não faz sentido guardar um prazo de oferta relâmpago.
+    // Sem preço promocional, não faz sentido guardar prazo/início/limite de oferta relâmpago.
+    promoStartedAt: promoPrice !== null ? (data.promoStartedAt ?? null) : null,
     promoEndsAt: promoPrice !== null ? (data.promoEndsAt ?? null) : null,
+    promoStockLimit: promoPrice !== null ? (data.promoStockLimit ?? null) : null,
     catalogPrice: computeCatalogPrice(data.salePrice, promoPrice),
     stockQty: data.stockQty,
     minStock: data.minStock,
     active: data.active,
     showInCatalog: data.showInCatalog,
     isFeatured: data.isFeatured,
+    // Sem destaque manual, ordem/período de destaque não fazem sentido.
+    featuredOrder: data.isFeatured ? (data.featuredOrder ?? null) : null,
+    featuredUntil: data.isFeatured ? (data.featuredUntil ?? null) : null,
   };
 }
 

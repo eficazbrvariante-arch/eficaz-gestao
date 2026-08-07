@@ -3,17 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { clsx } from "@/lib/clsx";
+import type { CategoryGroup } from "@/modules/catalog/catalog-service";
 
-export function CategoryMenu({
-  base,
-  categories,
-}: {
-  base: string;
-  categories: { id: string; name: string }[];
-}) {
+export function CategoryMenu({ base, groups }: { base: string; groups: CategoryGroup[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  if (categories.length === 0) return null;
+  if (groups.length === 0) return null;
 
   return (
     <div>
@@ -91,17 +86,44 @@ export function CategoryMenu({
               Todos os produtos
             </Link>
           </li>
-          {categories.map((category) => (
-            <li key={category.id}>
-              <Link
-                href={`${base}/produtos?categoria=${category.id}`}
-                onClick={() => setIsOpen(false)}
-                className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-50"
-              >
-                {category.name}
-              </Link>
-            </li>
-          ))}
+          {groups.map((group) =>
+            group.children.length > 0 ? (
+              // Macrocategoria: cabeçalho clicável (filtra ela + todas as filhas,
+              // ver `resolveCategoryFilterIds`) seguido das subcategorias reais.
+              <li key={group.id} className="pt-2 first:pt-0">
+                <Link
+                  href={`${base}/produtos?categoria=${group.id}`}
+                  onClick={() => setIsOpen(false)}
+                  className="block rounded-md px-3 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase hover:bg-slate-50"
+                >
+                  {group.name}
+                </Link>
+                <ul className="ml-3 space-y-1 border-l border-slate-100 pl-2">
+                  {group.children.map((child) => (
+                    <li key={child.id}>
+                      <Link
+                        href={`${base}/produtos?categoria=${child.id}`}
+                        onClick={() => setIsOpen(false)}
+                        className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-50"
+                      >
+                        {child.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ) : (
+              <li key={group.id}>
+                <Link
+                  href={`${base}/produtos?categoria=${group.id}`}
+                  onClick={() => setIsOpen(false)}
+                  className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-50"
+                >
+                  {group.name}
+                </Link>
+              </li>
+            )
+          )}
         </ul>
       </div>
     </div>

@@ -5,7 +5,7 @@ import {
   storeCityLabel,
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
-import { listCatalogCategories } from "@/modules/catalog/catalog-service";
+import { listCatalogCategories, groupCategoriesByParent } from "@/modules/catalog/catalog-service";
 import { getTodayFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { StoreHeader } from "./store-header";
@@ -24,9 +24,15 @@ export async function generateMetadata({
   if (!store) return { title: "Loja não encontrada" };
 
   const name = storeDisplayName(store);
+  const description = `Confira os produtos disponíveis na ${name}.`;
   return {
     title: `${name} — Catálogo online`,
-    description: `Confira os produtos disponíveis na ${name}.`,
+    description,
+    openGraph: {
+      title: name,
+      description,
+      images: store.logoUrl ? [{ url: store.logoUrl }] : undefined,
+    },
   };
 }
 
@@ -47,6 +53,7 @@ export default async function StoreLayout({
     listCatalogCategories(store.id),
     getTodayFlashDeal(store.id),
   ]);
+  const categoryGroups = groupCategoriesByParent(categories);
 
   // A cor da empresa entra como variável CSS para os componentes da loja usarem
   // sem precisar receber a cor por prop em cada nível.
@@ -66,7 +73,7 @@ export default async function StoreLayout({
         className="flex min-h-screen flex-col bg-white [--store-primary:#0f172a]"
       >
         <StoreTracker subdomain={store.subdomain} />
-        <StoreHeader store={store} categories={categories} />
+        <StoreHeader store={store} categoryGroups={categoryGroups} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
         {store.whatsapp && (

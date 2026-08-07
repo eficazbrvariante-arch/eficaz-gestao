@@ -7,6 +7,7 @@ import {
   todayFlashDealEntry,
   flashPriceOverrideFor,
 } from "@/modules/catalog/flash-deal-service";
+import { isPromoActive } from "@/modules/products/catalog-price";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -134,8 +135,19 @@ export async function createOrder(
       salePrice: Number(product.salePrice),
     });
 
+    // A promoção do produto (diferente da Oferta Relâmpago por dia acima) só
+    // é cobrada se ainda estiver dentro da janela — sem isso, uma promoção já
+    // expirada (que a vitrine já parou de mostrar como ativa) continuaria
+    // sendo cobrada com o preço promocional pra sempre, já que `promoPrice`
+    // nunca é limpo automaticamente do produto.
+    const promoActive = isPromoActive(
+      product.promoPrice === null ? null : Number(product.promoPrice),
+      product.promoStartedAt,
+      product.promoEndsAt
+    );
+
     let quantity = item.quantity;
-    let basePrice = Number(product.promoPrice ?? product.salePrice);
+    let basePrice = Number(promoActive ? product.promoPrice : product.salePrice);
     if (flashOverride) {
       const remaining = Math.max(0, flashEntry!.orderLimit - flashQtyUsed);
       quantity = Math.min(item.quantity, remaining);

@@ -1,6 +1,7 @@
 import { formatBRL } from "@/lib/format";
-import { onlyDigits } from "@/lib/validations/order";
 import { ORDER_PAYMENT_LABELS } from "./order-status";
+
+export { buildWhatsappLink } from "@/lib/whatsapp";
 
 export type WhatsappOrder = {
   number: number;
@@ -90,10 +91,4 @@ export function buildWhatsappMessage(order: WhatsappOrder, storeName: string) {
   }
 
   return lines.join("\n");
-}
-
-/** Link que abre o WhatsApp da loja já com a mensagem preenchida. */
-export function buildWhatsappLink(storeWhatsapp: string, message: string) {
-  const digits = onlyDigits(storeWhatsapp);
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }

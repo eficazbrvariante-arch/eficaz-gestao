@@ -81,6 +81,10 @@ export function ProductForm({
       <div className="mb-4">
         <Label htmlFor="name">Nome do produto</Label>
         <Input id="name" {...register("name")} />
+        <p className="mt-1 text-xs text-slate-500">
+          Padrão recomendado: Marca + Produto + Modelo + característica principal. Ex.: &quot;Fone
+          Bluetooth P9 — Headphone sem fio com microfone&quot;.
+        </p>
         <FieldError message={errors.name?.message} />
       </div>
 
@@ -157,14 +161,30 @@ export function ProductForm({
       </div>
 
       {Boolean(watch("promoPrice")) && (
-        <div className="mb-4">
-          <Label htmlFor="promoEndsAt">Fim da oferta relâmpago (opcional)</Label>
-          <Input id="promoEndsAt" type="datetime-local" {...register("promoEndsAt")} />
-          <p className="mt-1 text-xs text-slate-500">
-            Preenchido, o produto aparece na prateleira &quot;Ofertas relâmpago&quot; com contagem
-            regressiva até esse horário. Vazio = promoção comum, sem prazo.
-          </p>
-          <FieldError message={errors.promoEndsAt?.message} />
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="promoStartedAt">Início da promoção (opcional)</Label>
+            <Input id="promoStartedAt" type="datetime-local" {...register("promoStartedAt")} />
+            <p className="mt-1 text-xs text-slate-500">Vazio = já vale a partir de agora.</p>
+            <FieldError message={errors.promoStartedAt?.message} />
+          </div>
+          <div>
+            <Label htmlFor="promoEndsAt">Fim da oferta relâmpago (opcional)</Label>
+            <Input id="promoEndsAt" type="datetime-local" {...register("promoEndsAt")} />
+            <p className="mt-1 text-xs text-slate-500">
+              Preenchido, o produto aparece na prateleira &quot;Ofertas relâmpago&quot; com contagem
+              regressiva até esse horário. Vazio = promoção comum, sem prazo.
+            </p>
+            <FieldError message={errors.promoEndsAt?.message} />
+          </div>
+          <div>
+            <Label htmlFor="promoStockLimit">Quantidade disponível na promoção (opcional)</Label>
+            <Input id="promoStockLimit" type="number" step="1" {...register("promoStockLimit")} />
+            <p className="mt-1 text-xs text-slate-500">
+              Vazio = limitado só pelo estoque normal do produto.
+            </p>
+            <FieldError message={errors.promoStockLimit?.message} />
+          </div>
         </div>
       )}
 
@@ -206,10 +226,29 @@ export function ProductForm({
           Produto em destaque
         </label>
       </div>
-      <p className="mb-6 text-xs text-slate-400">
+      <p className="mb-2 text-xs text-slate-400">
         &quot;Produto em destaque&quot; fura a fila na listagem do catálogo e aparece primeiro no
         carrossel de destaques da home — não mexe no ranking real de mais vendidos.
       </p>
+
+      {watch("isFeatured") && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="featuredOrder">Ordem no carrossel de destaques (opcional)</Label>
+            <Input id="featuredOrder" type="number" step="1" {...register("featuredOrder")} />
+            <p className="mt-1 text-xs text-slate-500">Menor número aparece primeiro.</p>
+            <FieldError message={errors.featuredOrder?.message} />
+          </div>
+          <div>
+            <Label htmlFor="featuredUntil">Destaque até (opcional)</Label>
+            <Input id="featuredUntil" type="datetime-local" {...register("featuredUntil")} />
+            <p className="mt-1 text-xs text-slate-500">
+              Vazio = fica em destaque até desmarcar manualmente.
+            </p>
+            <FieldError message={errors.featuredUntil?.message} />
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <div className="mb-2 flex items-center justify-between">

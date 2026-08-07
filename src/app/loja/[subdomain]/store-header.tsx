@@ -1,16 +1,17 @@
 import Link from "next/link";
 import Image from "next/image";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
+import type { CategoryGroup } from "@/modules/catalog/catalog-service";
 import { CartBadge } from "./cart-badge";
 import { StoreSearch } from "./store-search";
 import { CategoryMenu } from "./category-menu";
 
 export function StoreHeader({
   store,
-  categories,
+  categoryGroups,
 }: {
   store: Store;
-  categories: { id: string; name: string }[];
+  categoryGroups: CategoryGroup[];
 }) {
   const base = `/loja/${store.subdomain}`;
   const name = storeDisplayName(store);
@@ -40,7 +41,7 @@ export function StoreHeader({
         </Link>
 
         <div className="order-3 sm:order-2">
-          <CategoryMenu base={base} categories={categories} />
+          <CategoryMenu base={base} groups={categoryGroups} />
         </div>
 
         <div className="order-4 w-full sm:order-3 sm:w-auto sm:flex-1">

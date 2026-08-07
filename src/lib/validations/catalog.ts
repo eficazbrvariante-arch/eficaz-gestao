@@ -56,9 +56,19 @@ export const productSchema = z.object({
     .union([z.literal(""), z.coerce.number().min(0)])
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  /// Início agendado da oferta relâmpago (datetime-local, opcional). Só faz sentido junto de `promoPrice`.
+  promoStartedAt: z
+    .union([z.literal(""), z.coerce.date()])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
   /// Fim da oferta relâmpago (datetime-local). Só faz sentido junto de `promoPrice`.
   promoEndsAt: z
     .union([z.literal(""), z.coerce.date()])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  /// Quantidade disponível só na promoção (opcional). Limitado ao estoque real na exibição.
+  promoStockLimit: z
+    .union([z.literal(""), z.coerce.number().int("Deve ser um número inteiro").min(0)])
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v)),
   stockQty: z.coerce.number().int("Deve ser um número inteiro").min(0),
@@ -66,6 +76,16 @@ export const productSchema = z.object({
   active: z.boolean().default(true),
   showInCatalog: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
+  /// Posição manual entre os destaques (opcional, menor aparece primeiro).
+  featuredOrder: z
+    .union([z.literal(""), z.coerce.number().int("Deve ser um número inteiro")])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  /// Fim opcional do período de destaque (datetime-local).
+  featuredUntil: z
+    .union([z.literal(""), z.coerce.date()])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
   images: z
     .array(z.string().trim().url("Informe uma URL válida"))
     .max(5, "No máximo 5 fotos por produto")

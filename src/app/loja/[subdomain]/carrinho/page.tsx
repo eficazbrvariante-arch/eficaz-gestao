@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
+import { getStoreBySubdomain, storeCityLabel } from "@/modules/catalog/tenant-resolver";
 import { CartView } from "./cart-view";
 
 export default async function StoreCartPage({
@@ -14,7 +14,7 @@ export default async function StoreCartPage({
   return (
     <div>
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Seu carrinho</h1>
-      <CartView base={`/loja/${store.subdomain}`} />
+      <CartView base={`/loja/${store.subdomain}`} city={storeCityLabel(store)} />
     </div>
   );
 }

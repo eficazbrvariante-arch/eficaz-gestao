@@ -15,3 +15,22 @@ export function computeCatalogPrice(
 ): number {
   return promoPrice ?? salePrice;
 }
+
+/**
+ * Se a promoção do produto (`promoPrice`/`promoStartedAt`/`promoEndsAt`) vale
+ * agora. Única regra de janela de promoção do sistema — usada tanto pra
+ * decidir o que mostrar na vitrine quanto pra decidir o que cobrar no
+ * checkout, pra nunca cobrar (ou exibir) um preço promocional que já
+ * expirou ou ainda não começou.
+ */
+export function isPromoActive(
+  promoPrice: number | null | undefined,
+  promoStartedAt: Date | null | undefined,
+  promoEndsAt: Date | null | undefined,
+  now: Date = new Date()
+): boolean {
+  if (promoPrice === null || promoPrice === undefined) return false;
+  if (promoStartedAt && promoStartedAt.getTime() > now.getTime()) return false;
+  if (promoEndsAt && promoEndsAt.getTime() <= now.getTime()) return false;
+  return true;
+}

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import { formatBRL } from "@/lib/format";
-import { effectivePrice, type CatalogProductCard } from "@/modules/catalog/catalog-service";
+import {
+  effectivePrice,
+  MIN_RELEVANT_SOLD_QTY,
+  type CatalogProductCard,
+} from "@/modules/catalog/catalog-service";
 import { AddToCartQuickButton } from "./add-to-cart-quick-button";
 import { FlashDealCountdown } from "./flash-deal-countdown";
 import { StarIcon } from "./icons";
@@ -124,8 +128,14 @@ export function ProductCard({
               </div>
             )}
 
-            {product.soldQty > 0 && (
+            {/* Abaixo do limiar, "N vendidos" enfraquece mais do que ajuda (ver `MIN_RELEVANT_SOLD_QTY`). */}
+            {product.soldQty >= MIN_RELEVANT_SOLD_QTY && (
               <p className="mt-1 text-[11px] text-slate-500">{product.soldQty} vendidos</p>
+            )}
+            {product.promoRemaining !== null && (
+              <p className="mt-1 text-[11px] font-medium text-amber-700">
+                Restam {product.promoRemaining} na promoção
+              </p>
             )}
           </div>
         </div>

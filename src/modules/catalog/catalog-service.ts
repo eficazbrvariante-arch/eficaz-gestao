@@ -1,5 +1,8 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { getLowestPriceLast30Days } from "@/modules/products/price-history";
+import { isPromoActive } from "@/modules/products/catalog-price";
 import {
   getFlashDealSchedule,
   todayFlashDealEntry,
@@ -29,7 +32,9 @@ const productCardSelect = {
   name: true,
   salePrice: true,
   promoPrice: true,
+  promoStartedAt: true,
   promoEndsAt: true,
+  promoStockLimit: true,
   stockQty: true,
   avgRating: true,
   reviewCount: true,
@@ -44,7 +49,10 @@ export type CatalogProductCard = {
   name: string;
   price: number;
   promoPrice: number | null;
+  promoStartedAt: Date | null;
   promoEndsAt: Date | null;
+  /** Quantidade restante só na promoção (`min(promoStockLimit, stockQty)`) — `null` quando não há teto configurado. */
+  promoRemaining: number | null;
   stockQty: number;
   categoryName: string | null;
   brandName: string | null;
@@ -64,7 +72,9 @@ type RawProductCard = {
   name: string;
   salePrice: unknown;
   promoPrice: unknown;
+  promoStartedAt: Date | null;
   promoEndsAt: Date | null;
+  promoStockLimit: number | null;
   stockQty: number;
   avgRating: unknown;
   reviewCount: number;
@@ -77,16 +87,21 @@ type RawProductCard = {
 function toCard(product: RawProductCard): CatalogProductCard {
   const price = Number(product.salePrice);
   const promoPrice = product.promoPrice === null ? null : Number(product.promoPrice);
-  const isFlashDeal = Boolean(
-    promoPrice !== null && product.promoEndsAt && product.promoEndsAt.getTime() > Date.now()
-  );
+  const isFlashDeal =
+    Boolean(product.promoEndsAt) &&
+    isPromoActive(promoPrice, product.promoStartedAt, product.promoEndsAt);
 
   return {
     id: product.id,
     name: product.name,
     price,
     promoPrice,
+    promoStartedAt: product.promoStartedAt,
     promoEndsAt: product.promoEndsAt,
+    promoRemaining:
+      product.promoStockLimit !== null
+        ? Math.min(product.promoStockLimit, product.stockQty)
+        : null,
     stockQty: product.stockQty,
     categoryName: product.category?.name ?? null,
     brandName: product.brand?.name ?? null,
@@ -188,23 +203,48 @@ export type ProductFilters = {
 
 const PAGE_SIZE = 12;
 
+/**
+ * Uma categoria "macrocategoria" (com subcategorias, ver `groupCategoriesByParent`)
+ * filtra também os produtos das filhas — sem isso, escolher a macro no menu
+ * mostraria uma vitrine vazia, já que produto nunca é vinculado à categoria-pai
+ * diretamente. Categoria comum (sem filhos) devolve só o próprio id.
+ */
+async function resolveCategoryFilterIds(tenantId: string, categoryId: string): Promise<string[]> {
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, tenantId },
+    select: { id: true, children: { select: { id: true } } },
+  });
+  if (!category) return [categoryId];
+  return category.children.length > 0
+    ? [category.id, ...category.children.map((child) => child.id)]
+    : [category.id];
+}
+
 export async function listCatalogProducts(tenantId: string, filters: ProductFilters) {
   const page = Math.max(1, filters.pagina ?? 1);
+  const categoryIds = filters.categoria
+    ? await resolveCategoryFilterIds(tenantId, filters.categoria)
+    : null;
 
-  const where = {
+  // `publicProductWhere` já contribui um `OR` (regra de visibilidade); a busca
+  // por texto entra via `AND` em vez de outro `OR` no mesmo nível — dois `OR`
+  // no mesmo objeto colidiriam (o segundo apagaria o primeiro no spread).
+  const where: Prisma.ProductWhereInput = {
     ...publicProductWhere(tenantId),
-    ...(filters.q
-      ? {
-          OR: [
-            { name: { contains: filters.q, mode: "insensitive" as const } },
-            { description: { contains: filters.q, mode: "insensitive" as const } },
-            { barcode: filters.q },
-          ],
-        }
-      : {}),
-    ...(filters.categoria ? { categoryId: filters.categoria } : {}),
+    ...(categoryIds ? { categoryId: { in: categoryIds } } : {}),
     ...(filters.marca ? { brandId: filters.marca } : {}),
   };
+  if (filters.q) {
+    where.AND = [
+      {
+        OR: [
+          { name: { contains: filters.q, mode: "insensitive" as const } },
+          { description: { contains: filters.q, mode: "insensitive" as const } },
+          { barcode: filters.q },
+        ],
+      },
+    ];
+  }
 
   // Ordena pelo preço que o cliente paga (coluna derivada `catalogPrice`),
   // para as promoções entrarem na ordenação corretamente.
@@ -266,15 +306,18 @@ export async function listPromoProducts(tenantId: string, take = 4) {
 
 /**
  * Ofertas relâmpago: promoção com prazo definido (`promoEndsAt`) ainda no
- * futuro. Diferente de `listPromoProducts`, que cobre promoções sem prazo.
+ * futuro, e já iniciada (sem `promoStartedAt` no futuro). Diferente de
+ * `listPromoProducts`, que cobre promoções sem prazo.
  */
 export async function listFlashDeals(tenantId: string, take = 8) {
+  const now = new Date();
   const products = await prisma.product.findMany({
     where: {
       ...publicProductWhere(tenantId),
       promoPrice: { not: null },
-      promoEndsAt: { gt: new Date() },
+      promoEndsAt: { gt: now },
       images: { some: {} },
+      AND: [{ OR: [{ promoStartedAt: null }, { promoStartedAt: { lte: now } }] }],
     },
     select: productCardSelect,
     orderBy: { promoEndsAt: "asc" },
@@ -321,10 +364,19 @@ export async function listLaunches(tenantId: string, take = 8) {
  * sinal confiável pro cliente.
  */
 export async function listFeaturedProducts(tenantId: string, take = 10) {
+  const now = new Date();
   const products = await prisma.product.findMany({
-    where: { ...publicProductWhere(tenantId), isFeatured: true, images: { some: {} } },
+    where: {
+      ...publicProductWhere(tenantId),
+      isFeatured: true,
+      images: { some: {} },
+      AND: [{ OR: [{ featuredUntil: null }, { featuredUntil: { gt: now } }] }],
+    },
     select: productCardSelect,
-    orderBy: { updatedAt: "desc" },
+    // Quem definiu uma ordem manual (`featuredOrder`) aparece primeiro, nessa
+    // ordem; o Postgres já põe NULL por último num ASC, então quem não
+    // definiu cai pro fim, ordenado por edição mais recente.
+    orderBy: [{ featuredOrder: "asc" }, { updatedAt: "desc" }],
     take,
   });
   return enrichCards(tenantId, products.map(toCard));
@@ -336,6 +388,19 @@ export async function listFeaturedProducts(tenantId: string, take = 10) {
  * Produtos que saíram do catálogo ou não têm foto são descartados do ranking
  * (ver nota em `listPromoProducts`).
  */
+/**
+ * Abaixo desta quantidade vendida, o sinal de prova social vira ruído (ex.:
+ * badge "Mais vendido" ao lado de "1 vendido" enfraquece em vez de reforçar
+ * confiança) — usado tanto pro rótulo da prateleira quanto pro que aparece
+ * em cada card. Nunca inventa número, só decide quando é honesto exibir o
+ * que já é real.
+ */
+export const MIN_RELEVANT_SOLD_QTY = 3;
+
+export function hasRelevantSalesVolume(cards: { soldQty: number }[]): boolean {
+  return cards.some((card) => card.soldQty >= MIN_RELEVANT_SOLD_QTY);
+}
+
 export async function listBestSellers(tenantId: string, take = 4) {
   const totals = await sumSoldQuantities(tenantId);
   if (totals.size === 0) return [];
@@ -475,7 +540,9 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
       description: true,
       salePrice: true,
       promoPrice: true,
+      promoStartedAt: true,
       promoEndsAt: true,
+      promoStockLimit: true,
       stockQty: true,
       avgRating: true,
       reviewCount: true,
@@ -516,10 +583,15 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
     ...product,
     promoPrice,
     promoEndsAt,
+    promoRemaining:
+      product.promoStockLimit !== null
+        ? Math.min(product.promoStockLimit, product.stockQty)
+        : null,
     avgRating: product.avgRating === null ? null : Number(product.avgRating),
     isFlashDeal:
       Boolean(flashOverride) ||
-      Boolean(rawPromoPrice !== null && product.promoEndsAt && product.promoEndsAt.getTime() > Date.now()),
+      (Boolean(product.promoEndsAt) &&
+        isPromoActive(rawPromoPrice, product.promoStartedAt, product.promoEndsAt)),
     soldQty: soldQuantities.get(product.id) ?? 0,
     strikePrice: hasGenuineStrike ? lowest! : null,
     discountPercent: hasGenuineStrike ? Math.round(((lowest! - current) / lowest!) * 100) : null,
@@ -560,17 +632,64 @@ export async function listCatalogBrands(tenantId: string) {
   });
 }
 
-/** Categorias que possuem ao menos um produto visível na loja. */
-export async function listCatalogCategories(tenantId: string) {
+/**
+ * Categorias que possuem ao menos um produto visível na loja — direto, ou
+ * (pra uma categoria-pai/macrocategoria) através de uma categoria filha.
+ * Uma macrocategoria sem produto próprio nenhum ainda aparece aqui, contanto
+ * que alguma filha tenha produto — senão ela sumiria da navegação mesmo
+ * agrupando categorias com produtos de verdade.
+ */
+export const listCatalogCategories = cache(async (tenantId: string) => {
+  const visibleProduct = { active: true, showInCatalog: true };
   return prisma.category.findMany({
     where: {
       tenantId,
       counterOnly: false,
-      products: { some: { active: true, showInCatalog: true } },
+      OR: [
+        { products: { some: visibleProduct } },
+        { children: { some: { products: { some: visibleProduct } } } },
+      ],
     },
-    select: { id: true, name: true, icon: true, _count: { select: { products: true } } },
+    select: {
+      id: true,
+      name: true,
+      icon: true,
+      parentId: true,
+      _count: { select: { products: true } },
+    },
     orderBy: [{ order: "asc" }, { name: "asc" }],
   });
+});
+
+export type CategoryGroup = {
+  id: string;
+  name: string;
+  children: { id: string; name: string }[];
+};
+
+/**
+ * Agrupa a lista flat de `listCatalogCategories` por categoria-pai, sem
+ * query extra. Categoria sem filhos vira um grupo de item único (link
+ * direto) — a navegação continua funcionando igual pra quem não usa
+ * macrocategoria, só quem tem `parentId` configurado ganha o agrupamento.
+ */
+export function groupCategoriesByParent(
+  categories: { id: string; name: string; parentId: string | null }[]
+): CategoryGroup[] {
+  const byParent = new Map<string, { id: string; name: string }[]>();
+  for (const category of categories) {
+    if (!category.parentId) continue;
+    const list = byParent.get(category.parentId) ?? [];
+    list.push({ id: category.id, name: category.name });
+    byParent.set(category.parentId, list);
+  }
+  return categories
+    .filter((category) => !category.parentId)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      children: byParent.get(category.id) ?? [],
+    }));
 }
 
 /** Nota média geral da loja e nº de avaliações, para o indicador de confiança do topo. Some se não houver nenhuma. */

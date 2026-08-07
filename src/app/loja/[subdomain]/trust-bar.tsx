@@ -1,7 +1,7 @@
 import { getStoreRatingSummary } from "@/modules/catalog/catalog-service";
 import { storeCityLabel, type Store } from "@/modules/catalog/tenant-resolver";
 import { PAYMENT_METHOD_OPTIONS } from "@/lib/validations/store-settings";
-import { AwardIcon, CardIcon, StarIcon, StorefrontIcon, TruckIcon } from "./icons";
+import { AwardIcon, CardIcon, StarIcon, StorefrontIcon, TruckIcon, WhatsappIcon } from "./icons";
 
 type TrustItem = {
   key: string;
@@ -60,6 +60,14 @@ export async function TrustBar({ store }: { store: Store }) {
       key: "warranty",
       icon: <AwardIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
       label: "Garantia",
+    });
+  }
+
+  if (store.whatsapp) {
+    items.push({
+      key: "whatsapp",
+      icon: <WhatsappIcon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />,
+      label: "Atendimento pelo WhatsApp",
     });
   }
 

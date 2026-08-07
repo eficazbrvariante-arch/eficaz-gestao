@@ -53,12 +53,18 @@ export default async function EditarProdutoPage({
             costPrice: Number(product.costPrice),
             salePrice: Number(product.salePrice),
             promoPrice: product.promoPrice ? Number(product.promoPrice) : undefined,
+            promoStartedAt: product.promoStartedAt
+              ? toDateTimeLocalValue(product.promoStartedAt)
+              : "",
             promoEndsAt: product.promoEndsAt ? toDateTimeLocalValue(product.promoEndsAt) : "",
+            promoStockLimit: product.promoStockLimit ?? undefined,
             stockQty: product.stockQty,
             minStock: product.minStock,
             active: product.active,
             showInCatalog: product.showInCatalog,
             isFeatured: product.isFeatured,
+            featuredOrder: product.featuredOrder ?? undefined,
+            featuredUntil: product.featuredUntil ? toDateTimeLocalValue(product.featuredUntil) : "",
             images: product.images.map((image) => image.url),
             variants: product.variants.map((v) => ({
               name: v.name,

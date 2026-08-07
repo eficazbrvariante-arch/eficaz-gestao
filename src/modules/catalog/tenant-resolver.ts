@@ -42,6 +42,8 @@ export const getStoreBySubdomain = cache(async (subdomain: string) => {
       name: true,
       tradeName: true,
       subdomain: true,
+      customDomain: true,
+      domainStatus: true,
       logoUrl: true,
       primaryColor: true,
       phone: true,
@@ -89,6 +91,18 @@ export function storeDisplayName(store: Pick<Store, "name" | "tradeName">) {
 export function storeCityLabel(store: Pick<Store, "addressCity" | "addressState">) {
   if (!store.addressCity) return null;
   return store.addressState ? `${store.addressCity}-${store.addressState}` : store.addressCity;
+}
+
+/**
+ * URL pública absoluta da loja (domínio próprio verificado, senão o
+ * subdomínio da plataforma) — usada em links enviados fora do navegador
+ * (ex.: mensagem de WhatsApp), onde uma URL relativa não funciona.
+ */
+export function storeOrigin(store: Pick<Store, "subdomain" | "customDomain" | "domainStatus">) {
+  const host =
+    store.customDomain && store.domainStatus === "ACTIVE" ? store.customDomain : `${store.subdomain}.${ROOT_DOMAIN}`;
+  const protocol = ROOT_DOMAIN === "localhost" ? "http" : "https";
+  return `${protocol}://${host}`;
 }
 
 /**
