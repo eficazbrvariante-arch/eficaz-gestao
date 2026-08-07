@@ -66,6 +66,19 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Cadastro fora do checkout (botão "Cadastrar" do cabeçalho) — mesmos dados pedidos na aba "Criar conta" do checkout, sem pedido nenhum junto. */
+export const registerCustomerSchema = z.object({
+  name: z.string().trim().min(3, "Informe seu nome completo"),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => v.replace(/\D/g, "").length >= 10, "Informe um telefone válido com DDD"),
+  email: z.string().trim().email("Informe um e-mail válido").optional().or(z.literal("")),
+  username: usernameSchema,
+  password: passwordSchema,
+});
+export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
+
 /**
  * `returnTo` só é aceito se for um caminho relativo dentro da própria loja —
  * nunca uma URL externa. Usado depois do login de cliente feito fora do

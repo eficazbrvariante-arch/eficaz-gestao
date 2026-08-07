@@ -50,13 +50,30 @@ export async function StoreHeader({
           <StoreSearch base={base} />
         </div>
 
-        <div className="order-2 ml-auto flex items-center gap-4 sm:order-4 sm:ml-0">
-          <Link
-            href={session ? `${base}/conta` : `${base}/conta/entrar`}
-            className="max-w-[6.5rem] truncate text-sm text-slate-600 hover:text-slate-900 sm:max-w-none"
-          >
-            {session ? `@${session.username}` : "Entrar"}
-          </Link>
+        <div className="order-2 ml-auto flex items-center gap-2 sm:order-4 sm:ml-0">
+          {session ? (
+            <Link
+              href={`${base}/conta`}
+              className="max-w-[6.5rem] truncate rounded-md border border-slate-300 px-2 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:max-w-none sm:px-3"
+            >
+              @{session.username}
+            </Link>
+          ) : (
+            <>
+              <Link
+                href={`${base}/conta/entrar`}
+                className="rounded-md border border-slate-300 px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
+              >
+                Entrar
+              </Link>
+              <Link
+                href={`${base}/conta/entrar?modo=cadastro`}
+                className="rounded-md border border-slate-300 px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
+              >
+                Cadastrar
+              </Link>
+            </>
+          )}
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>
