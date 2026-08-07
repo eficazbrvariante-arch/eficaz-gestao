@@ -46,8 +46,9 @@ export default async function ProductReviewsPage({
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Lançar avaliação real</h2>
             <p className="mb-4 text-xs text-slate-500">
-              Use para registrar uma avaliação recebida de fato (WhatsApp, Google, na loja...).
-              Não há formulário público de avaliação nesta versão.
+              Use para registrar uma avaliação recebida de fora da plataforma (WhatsApp, Google,
+              na loja...). Avaliações de clientes que compraram pelo catálogo aparecem aqui
+              automaticamente, lançadas por eles em &quot;Minha conta&quot;.
             </p>
             <ReviewForm productId={product.id} />
           </div>

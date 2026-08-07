@@ -14,6 +14,24 @@ export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost";
  * administrativo) ou quando não há subdomínio — nesses casos o catálogo é
  * acessado pelo caminho `/loja/[subdominio]`.
  */
+/**
+ * O host é o domínio da própria aplicação (painel administrativo, ou uma loja
+ * acessada direto por `/loja/[subdomain]` sem subdomínio configurado)?
+ * Domínios próprios das lojas são qualquer outra coisa. Mesma checagem que o
+ * proxy usa para decidir se reescreve para domínio próprio, reaproveitada
+ * também pela sessão de cliente (`customer-session.ts`) para escopar o
+ * cookie corretamente.
+ */
+export function isAppHost(hostname: string): boolean {
+  return (
+    hostname === ROOT_DOMAIN ||
+    hostname === `www.${ROOT_DOMAIN}` ||
+    hostname.endsWith(`.${ROOT_DOMAIN}`) ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".vercel.app")
+  );
+}
+
 export function subdomainFromHost(host: string | null): string | null {
   if (!host) return null;
 

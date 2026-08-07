@@ -2,11 +2,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { storeDisplayName, type Store } from "@/modules/catalog/tenant-resolver";
 import type { CategoryGroup } from "@/modules/catalog/catalog-service";
+import { getCustomerSession } from "@/modules/customers/customer-session";
 import { CartBadge } from "./cart-badge";
 import { StoreSearch } from "./store-search";
 import { CategoryMenu } from "./category-menu";
 
-export function StoreHeader({
+export async function StoreHeader({
   store,
   categoryGroups,
 }: {
@@ -15,6 +16,7 @@ export function StoreHeader({
 }) {
   const base = `/loja/${store.subdomain}`;
   const name = storeDisplayName(store);
+  const session = await getCustomerSession(store.id);
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -48,7 +50,13 @@ export function StoreHeader({
           <StoreSearch base={base} />
         </div>
 
-        <div className="order-2 ml-auto sm:order-4 sm:ml-0">
+        <div className="order-2 ml-auto flex items-center gap-4 sm:order-4 sm:ml-0">
+          <Link
+            href={session ? `${base}/conta` : `${base}/conta/entrar`}
+            className="hidden text-sm text-slate-600 hover:text-slate-900 sm:inline"
+          >
+            {session ? `@${session.username}` : "Entrar"}
+          </Link>
           <CartBadge href={`${base}/carrinho`} />
         </div>
       </div>

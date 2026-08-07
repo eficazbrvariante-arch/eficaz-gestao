@@ -403,12 +403,20 @@ model ProductReview {
   /// Nota de 1 a 5.
   rating     Int
   comment    String?
-  /// De onde veio a avaliação real (ex.: "WhatsApp", "Google", "Loja física").
+  /// De onde veio a avaliação real (ex.: "WhatsApp", "Google", "Loja física") —
+  /// só para avaliação manual lançada pelo lojista. Avaliação de compra
+  /// verificada (`customerId` preenchido) não usa este campo.
   source     String?
+  /// Preenchido quando a avaliação vem do próprio cliente logado (compra
+  /// verificada, ver `hasCustomerPurchasedProduct`); nulo para as avaliações
+  /// manuais que o lojista lança a partir de fora da plataforma.
+  customerId String?
   createdAt  DateTime @default(now())
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, productId, customerId])
   @@index([tenantId, productId])
   @@map("product_reviews")
 }
@@ -502,6 +510,12 @@ model Customer {
   /// pagamento numa venda futura). Mantido pela mesma transação que gera ou
   /// resgata o crédito — nunca recalculado a partir do histórico.
   creditBalance  Decimal   @default(0) @db.Decimal(12, 2)
+  /// Login da loja pública (checkout com conta) — nulo para clientes cadastrados
+  /// manualmente pelo lojista, que nunca ganharam login. Formato exibido como
+  /// "@handle", guardado sem o "@". Único por loja, não globalmente.
+  username       String?
+  passwordHash   String?
+  lastLoginAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -510,9 +524,50 @@ model Customer {
   orders          Order[]
   creditMovements CustomerCreditMovement[]
   repairOrders    RepairOrder[]
+  sessions        CustomerSession[]
+  reviews         ProductReview[]
 
+  @@unique([tenantId, username])
   @@index([tenantId, name])
   @@map("customers")
+}
+
+/// Sessão de login da loja pública (Customer) — inteiramente separada da sessão
+/// NextAuth de User/funcionário. O cookie do navegador carrega só um token opaco;
+/// aqui fica somente o hash (SHA-256) desse token, nunca o valor em claro, para um
+/// vazamento do banco não virar sessão utilizável (ver `customer-session.ts`).
+model CustomerSession {
+  id         String    @id @default(cuid())
+  tenantId   String
+  customerId String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  /// Preenchido ao revogar (logout, troca de conta, rotação em novo login) — a
+  /// sessão nunca é reaproveitada depois disso, mesmo antes de expirar.
+  revokedAt  DateTime?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([expiresAt])
+  @@map("customer_sessions")
+}
+
+/// Tentativa de login (bem-sucedida ou não) na loja pública, usada só para limitar
+/// força bruta por usuário e por IP sem depender de infraestrutura externa. Uma
+/// linha por tentativa; limpa periodicamente por `scripts/limpar-sessoes-expiradas.mts`.
+model CustomerLoginAttempt {
+  id        String   @id @default(cuid())
+  tenantId  String
+  username  String
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, username, createdAt])
+  @@index([tenantId, ipAddress, createdAt])
+  @@map("customer_login_attempts")
 }
 
 /// Extrato de crédito de loja por cliente — cada linha soma (GRANTED) ou
@@ -822,23 +877,23 @@ enum OrderPaymentMethod {
 
 /// Faixa de entrega com taxa própria, identificada por bairro e/ou CEP.
 model DeliveryZone {
-  id           String   @id @default(cuid())
-  tenantId     String
-  name         String
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
   /// Bairro atendido (comparado sem diferenciar maiúsculas/acentos na busca).
-  neighborhood String?
+  neighborhood    String?
   /// Faixa de CEP atendida, apenas dígitos (ex.: 01000000 a 01099999).
-  zipStart     String?
-  zipEnd       String?
-  fee          Decimal  @default(0) @db.Decimal(10, 2)
+  zipStart        String?
+  zipEnd          String?
+  fee             Decimal  @default(0) @db.Decimal(10, 2)
   /// Subtotal do pedido a partir do qual a entrega fica grátis nesta faixa.
   /// Nulo = sem frete grátis.
   freeShippingMin Decimal? @db.Decimal(10, 2)
   /// Prazo estimado exibido ao cliente (ex.: "até 2 horas").
-  estimate     String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  estimate        String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders Order[]
@@ -855,12 +910,17 @@ model Order {
   status   OrderStatus @default(NEW)
 
   // Dados de contato informados no checkout (o visitante não tem conta).
-  customerName     String
-  customerPhone    String
-  customerEmail    String?
-  customerDocument String?
-  /// Vinculado quando o telefone casa com um cliente já cadastrado.
-  customerId       String?
+  customerName      String
+  customerPhone     String
+  customerEmail     String?
+  customerDocument  String?
+  /// Conta que fez o pedido (criada ou autenticada no checkout, ver
+  /// `registerCustomer`/`authenticateCustomer`) — nunca inferido por telefone.
+  customerId        String?
+  /// Token opaco para consultar o pedido publicamente sem login (ex.: link de
+  /// confirmação enviado por WhatsApp). Não substitui a checagem de sessão em
+  /// `pedido/[id]`, só cobre o caso de acesso sem conta ativa no navegador.
+  publicAccessToken String  @unique @default(cuid())
 
   fulfillment         FulfillmentType
   deliveryZoneId      String?

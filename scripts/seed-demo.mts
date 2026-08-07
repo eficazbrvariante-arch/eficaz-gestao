@@ -199,14 +199,19 @@ await prisma.cashMovement.create({
 });
 
 // --- Pedidos do catálogo ---
-const pedido1 = await createOrder(tenant.id, {
-  customerName: "Maria Souza", customerPhone: "(47) 98888-7777", customerEmail: "", customerDocument: "",
-  fulfillment: "DELIVERY", deliveryZoneId: "",
-  addressStreet: "Rua das Flores", addressNumber: "123", addressComplement: "Apto 4",
-  addressNeighborhood: "Centro I", addressCity: "Brusque", addressState: "SC", addressZip: "88350001",
-  paymentMethod: "PIX", changeFor: undefined, notes: "Entregar após as 18h",
-  items: [{ productId: cabo.id, variantId: "", quantity: 1 }, { productId: capa.id, variantId: "", quantity: 1 }],
-});
+const pedido1 = await createOrder(
+  tenant.id,
+  {
+    customerName: "Maria Souza", customerPhone: "(47) 98888-7777", customerEmail: "", customerDocument: "",
+    fulfillment: "DELIVERY", deliveryZoneId: "",
+    addressStreet: "Rua das Flores", addressNumber: "123", addressComplement: "Apto 4",
+    addressNeighborhood: "Centro I", addressCity: "Brusque", addressState: "SC", addressZip: "88350001",
+    paymentMethod: "PIX", changeFor: undefined, notes: "Entregar após as 18h",
+    items: [{ productId: cabo.id, variantId: "", quantity: 1 }, { productId: capa.id, variantId: "", quantity: 1 }],
+    auth: { authMode: "register", username: "mariasouza", password: "Demo12345" },
+  },
+  { mode: "register", username: "mariasouza", password: "Demo12345" }
+);
 if (pedido1.ok) {
   for (const s of ["CONFIRMED", "PREPARING", "SHIPPED", "COMPLETED"] as const) {
     await updateOrderStatus(tenant.id, pedido1.orderId, admin.id, s);
@@ -214,14 +219,19 @@ if (pedido1.ok) {
 }
 
 // Pedido novo, aguardando confirmação
-await createOrder(tenant.id, {
-  customerName: "João Pereira", customerPhone: "(47) 97777-6666", customerEmail: "", customerDocument: "",
-  fulfillment: "PICKUP", deliveryZoneId: "",
-  addressStreet: "", addressNumber: "", addressComplement: "", addressNeighborhood: "",
-  addressCity: "", addressState: "", addressZip: "",
-  paymentMethod: "CASH", changeFor: 200, notes: "",
-  items: [{ productId: galaxy.id, variantId: galaxy.variants[1].id, quantity: 1 }],
-});
+await createOrder(
+  tenant.id,
+  {
+    customerName: "João Pereira", customerPhone: "(47) 97777-6666", customerEmail: "", customerDocument: "",
+    fulfillment: "PICKUP", deliveryZoneId: "",
+    addressStreet: "", addressNumber: "", addressComplement: "", addressNeighborhood: "",
+    addressCity: "", addressState: "", addressZip: "",
+    paymentMethod: "CASH", changeFor: 200, notes: "",
+    items: [{ productId: galaxy.id, variantId: galaxy.variants[1].id, quantity: 1 }],
+    auth: { authMode: "register", username: "joaopereira", password: "Demo12345" },
+  },
+  { mode: "register", username: "joaopereira", password: "Demo12345" }
+);
 
 console.log("=== BANCO DE DEMONSTRACAO RECRIADO ===");
 console.log("Empresa:", tenant.name, "| subdominio:", tenant.subdomain);

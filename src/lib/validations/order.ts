@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkoutAuthSchema } from "@/lib/validations/customer-auth";
 
 /** Mantém apenas os dígitos (telefone, CEP, CPF/CNPJ). */
 export function onlyDigits(value: string) {
@@ -18,11 +19,16 @@ export const orderItemSchema = z.object({
  * validação falhar num campo invisível, bloqueando o envio sem mostrar erro.
  */
 const checkoutFields = {
-  customerName: z.string().trim().min(3, "Informe seu nome completo"),
+  // Obrigatórios só ao criar conta nova (aba "Criar conta") — quem já tem
+  // conta ("Já tenho conta"/sessão ativa) não vê esses campos, os dados vêm
+  // do `Customer` já cadastrado. Ver `requiredWhenRegistering` abaixo.
+  customerName: z.string().trim().optional().or(z.literal("")),
   customerPhone: z
     .string()
     .trim()
-    .refine((v) => onlyDigits(v).length >= 10, "Informe um telefone válido com DDD"),
+    .optional()
+    .or(z.literal(""))
+    .refine((v) => !v || onlyDigits(v).length >= 10, "Informe um telefone válido com DDD"),
   customerEmail: z
     .string()
     .trim()
@@ -50,6 +56,21 @@ const checkoutFields = {
   notes: z.string().trim().max(500, "Máximo de 500 caracteres").optional().or(z.literal("")),
 };
 
+/**
+ * Formato "leve" de `auth` só para o formulário no navegador — não é o
+ * `checkoutAuthSchema` estrito (discriminated union) que valida de verdade no
+ * servidor. Existe separado porque React Hook Form não lida bem com um campo
+ * cujo tipo é uma union discriminada (o `register("auth.username")` não
+ * tipa). Campos extras que não fazem sentido pro modo atual (ex.: `username`
+ * quando `authMode: "session"`) são simplesmente ignorados pelo
+ * `checkoutAuthSchema` no servidor — cada branch da union só lê o que é dela.
+ */
+const clientAuthSchema = z.object({
+  authMode: z.enum(["register", "login", "session"]),
+  username: z.string().trim().optional().or(z.literal("")),
+  password: z.string().optional().or(z.literal("")),
+});
+
 type AddressField = "addressStreet" | "addressNumber" | "addressNeighborhood";
 
 /** Entrega exige endereço; retirada não. */
@@ -62,9 +83,23 @@ function requiredWhenDelivery(field: AddressField) {
   }) => data.fulfillment !== "DELIVERY" || Boolean(data[field]?.trim());
 }
 
+type RegisterField = "customerName" | "customerPhone";
+
+/** Nome/telefone só são pedidos (e exigidos) quando o cliente está criando conta nova. */
+function requiredWhenRegistering(field: RegisterField) {
+  return (data: { auth: { authMode: string }; customerName?: string; customerPhone?: string }) =>
+    data.auth.authMode !== "register" || Boolean(data[field]?.trim());
+}
+
+/** authMode/username/senha exigidos só fora do modo "session" (conta já logada). */
+function requiredWhenNotSession(field: "username" | "password") {
+  return (data: { auth: { authMode: string; username?: string; password?: string } }) =>
+    data.auth.authMode === "session" || Boolean(data.auth[field]?.trim());
+}
+
 /** Schema do formulário — sem itens, para o React Hook Form validar só o que está na tela. */
 export const checkoutFormSchema = z
-  .object(checkoutFields)
+  .object({ ...checkoutFields, auth: clientAuthSchema })
   .refine(requiredWhenDelivery("addressStreet"), {
     message: "Informe o endereço de entrega",
     path: ["addressStreet"],
@@ -76,13 +111,34 @@ export const checkoutFormSchema = z
   .refine(requiredWhenDelivery("addressNeighborhood"), {
     message: "Informe o bairro",
     path: ["addressNeighborhood"],
+  })
+  .refine(requiredWhenRegistering("customerName"), {
+    message: "Informe seu nome completo",
+    path: ["customerName"],
+  })
+  .refine(requiredWhenRegistering("customerPhone"), {
+    message: "Informe um telefone válido com DDD",
+    path: ["customerPhone"],
+  })
+  .refine(requiredWhenNotSession("username"), {
+    message: "Escolha um @usuário",
+    path: ["auth", "username"],
+  })
+  .refine(requiredWhenNotSession("password"), {
+    message: "Informe uma senha",
+    path: ["auth", "password"],
+  })
+  .refine((data) => data.auth.authMode !== "register" || (data.auth.password?.length ?? 0) >= 8, {
+    message: "Mínimo de 8 caracteres",
+    path: ["auth", "password"],
   });
 
-/** Schema completo, validado no servidor — inclui os itens do carrinho. */
+/** Schema completo, validado no servidor — inclui os itens do carrinho e o `auth` estrito (discriminated union). */
 export const checkoutSchema = z
   .object({
     ...checkoutFields,
     items: z.array(orderItemSchema).min(1, "Seu carrinho está vazio"),
+    auth: checkoutAuthSchema,
   })
   .refine(requiredWhenDelivery("addressStreet"), {
     message: "Informe o endereço de entrega",
@@ -95,11 +151,23 @@ export const checkoutSchema = z
   .refine(requiredWhenDelivery("addressNeighborhood"), {
     message: "Informe o bairro",
     path: ["addressNeighborhood"],
+  })
+  .refine(requiredWhenRegistering("customerName"), {
+    message: "Informe seu nome completo",
+    path: ["customerName"],
+  })
+  .refine(requiredWhenRegistering("customerPhone"), {
+    message: "Informe um telefone válido com DDD",
+    path: ["customerPhone"],
   });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type CheckoutFieldsInput = z.infer<typeof checkoutFormSchema>;
 export type CheckoutFormValues = z.input<typeof checkoutFormSchema>;
+/** O que o formulário de fato envia para `submitOrderAction` — `auth` no formato leve do cliente (ver `clientAuthSchema`), validado de verdade no servidor por `checkoutSchema`. */
+export type CheckoutSubmission = CheckoutFieldsInput & {
+  items: { productId: string; variantId?: string; quantity: number }[];
+};
 
 export const orderStatusSchema = z.object({
   status: z.enum(["NEW", "CONFIRMED", "PREPARING", "SHIPPED", "COMPLETED", "CANCELLED"]),

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { normalizeText } from "@/lib/text";
 import { onlyDigits, type CheckoutInput } from "@/lib/validations/order";
 import type { OrderStatus } from "@/generated/prisma/enums";
@@ -8,6 +9,7 @@ import {
   flashPriceOverrideFor,
 } from "@/modules/catalog/flash-deal-service";
 import { isPromoActive } from "@/modules/products/catalog-price";
+import { registerCustomer } from "@/modules/customers/customer-service";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -50,8 +52,22 @@ export async function findDeliveryZone(
 }
 
 export type CreateOrderResult =
-  | { ok: true; orderId: string; number: number }
-  | { ok: false; error: string };
+  | { ok: true; orderId: string; number: number; publicAccessToken: string; customerId: string }
+  | { ok: false; error: string; field?: "username" };
+
+/**
+ * Quem é o cliente do pedido — sempre resolvido pelo server action ANTES de
+ * chamar `createOrder`, nunca pelo próprio `createOrder` (que não sabe ler
+ * cookie nem comparar senha):
+ * - `session`/`login`: conta já identificada (cookie válido ou senha já
+ *   conferida por `authenticateCustomer`) — só o `customerId` importa aqui.
+ * - `register`: ainda não existe `Customer` nenhum; é criado dentro da MESMA
+ *   transação que cria o pedido (ver `registerCustomer`).
+ */
+export type OrderCustomerAuth =
+  | { mode: "session"; customerId: string }
+  | { mode: "login"; customerId: string }
+  | { mode: "register"; username: string; password: string };
 
 /**
  * Registra um pedido vindo do catálogo online.
@@ -66,7 +82,8 @@ export type CreateOrderResult =
  */
 export async function createOrder(
   tenantId: string,
-  input: CheckoutInput
+  input: CheckoutInput,
+  auth: OrderCustomerAuth
 ): Promise<CreateOrderResult> {
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
@@ -190,18 +207,61 @@ export async function createOrder(
   }
 
   const total = round2(subtotal + deliveryFee);
-  const phoneDigits = onlyDigits(input.customerPhone);
 
-  // Reaproveita o cadastro de cliente quando o telefone bate.
-  const existingCustomer = await prisma.customer.findFirst({
-    where: { tenantId, phone: { contains: phoneDigits.slice(-8) } },
-    select: { id: true },
-  });
+  // Dados de contato do pedido: de uma conta já existente (nunca do texto
+  // digitado — esses campos nem são pedidos nesse modo, ver
+  // `requiredWhenRegistering` em `validations/order.ts`) ou dos campos do
+  // formulário (obrigatórios pelo zod quando `auth.mode === "register"`).
+  // Nunca mais um vínculo automático por telefone — ver nota na seção 9 do
+  // plano: casar por telefone sem confirmação abriria uma forma de account
+  // takeover num cadastro antigo.
+  let contact: { name: string; phone: string; email: string | null; document: string | null };
+  if (auth.mode === "register") {
+    contact = {
+      name: input.customerName!.trim(),
+      phone: input.customerPhone!.trim(),
+      email: input.customerEmail || null,
+      document: input.customerDocument || null,
+    };
+  } else {
+    const existingCustomer = await prisma.customer.findFirst({
+      where: { id: auth.customerId, tenantId },
+      select: { name: true, phone: true, email: true, document: true },
+    });
+    if (!existingCustomer) {
+      return { ok: false, error: "Não foi possível identificar sua conta. Entre novamente." };
+    }
+    contact = {
+      name: existingCustomer.name,
+      phone: existingCustomer.phone ?? "",
+      email: existingCustomer.email,
+      document: existingCustomer.document,
+    };
+  }
 
   const deductNow = tenant.stockPolicy === "DEDUCT";
 
   try {
     const order = await prisma.$transaction(async (tx) => {
+      const customerId =
+        auth.mode === "register"
+          ? (
+              await registerCustomer(tx, tenantId, {
+                username: auth.username,
+                password: auth.password,
+                name: contact.name,
+                phone: contact.phone,
+                email: contact.email,
+                document: contact.document,
+                addressStreet: input.addressStreet || null,
+                addressNumber: input.addressNumber || null,
+                addressCity: input.addressCity || null,
+                addressState: input.addressState || null,
+                addressZip: input.addressZip || null,
+              })
+            ).id
+          : auth.customerId;
+
       const counter = await tx.tenant.update({
         where: { id: tenantId },
         data: { orderSequence: { increment: 1 } },
@@ -212,11 +272,11 @@ export async function createOrder(
         data: {
           tenantId,
           number: counter.orderSequence,
-          customerName: input.customerName,
-          customerPhone: input.customerPhone,
-          customerEmail: input.customerEmail || null,
-          customerDocument: input.customerDocument || null,
-          customerId: existingCustomer?.id ?? null,
+          customerName: contact.name,
+          customerPhone: contact.phone,
+          customerEmail: contact.email,
+          customerDocument: contact.document,
+          customerId,
           fulfillment: input.fulfillment,
           deliveryZoneId,
           addressStreet: input.addressStreet || null,
@@ -236,20 +296,57 @@ export async function createOrder(
           stockDeductedAt: deductNow ? new Date() : null,
           items: { create: resolvedItems },
         },
-        select: { id: true, number: true },
+        select: { id: true, number: true, publicAccessToken: true },
       });
 
       if (deductNow) {
         await applyStockDeduction(tx, tenantId, created.id, created.number, resolvedItems);
       }
 
-      return created;
+      return { ...created, customerId };
     });
 
-    return { ok: true, orderId: order.id, number: order.number };
-  } catch {
+    return {
+      ok: true,
+      orderId: order.id,
+      number: order.number,
+      publicAccessToken: order.publicAccessToken,
+      customerId: order.customerId,
+    };
+  } catch (error) {
+    // Corrida rara: dois envios do mesmo @usuário novo ao mesmo tempo — já
+    // checado antes (`isUsernameAvailable`), mas não atomicamente. A
+    // transação inteira já foi revertida pelo Prisma; não há tentativa de
+    // reaproveitá-la, só devolve um erro de campo pro cliente tentar de novo.
+    if (
+      auth.mode === "register" &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return {
+        ok: false,
+        error: "Esse @usuário acabou de ser registrado por outra pessoa. Escolha outro.",
+        field: "username",
+      };
+    }
     return { ok: false, error: "Não foi possível registrar o pedido. Tente novamente." };
   }
+}
+
+/** Pedidos de uma conta de cliente — sempre filtrado por tenant + conta juntos. */
+export async function listCustomerOrders(tenantId: string, customerId: string) {
+  return prisma.order.findMany({
+    where: { tenantId, customerId },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      total: true,
+      createdAt: true,
+      items: { select: { nameSnapshot: true, quantity: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];

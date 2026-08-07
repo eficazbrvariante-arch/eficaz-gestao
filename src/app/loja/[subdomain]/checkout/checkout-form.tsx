@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -15,7 +15,8 @@ import { formatBRL } from "@/lib/format";
 import { lookupAddressByZip } from "@/lib/viacep";
 import { markFlashDealPurchased } from "../flash-deal-popup-storage";
 import { trackEvent } from "@/modules/analytics/track-client";
-import { submitOrderAction, quoteDeliveryFeeAction } from "./actions";
+import { submitOrderAction, quoteDeliveryFeeAction, checkUsernameAvailableAction } from "./actions";
+import { logoutCustomerAction } from "@/modules/customers/customer-actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -31,24 +32,37 @@ type Quote = {
   free: boolean;
 };
 
+const USERNAME_CHECK_DEBOUNCE_MS = 500;
+
 export function CheckoutForm({
   subdomain,
   base,
   deliveryEnabled,
   pickupEnabled,
   pickupNotes,
+  loggedIn,
 }: {
   subdomain: string;
   base: string;
   deliveryEnabled: boolean;
   pickupEnabled: boolean;
   pickupNotes: string | null;
+  loggedIn: { name: string; username: string } | null;
 }) {
   const router = useRouter();
   const { items, subtotal, ready, clear, flashDealProductId } = useCart();
   const [serverError, setServerError] = useState<string>();
   const [quote, setQuote] = useState<Quote>();
   const [isPending, startTransition] = useTransition();
+
+  // Sem sessão ativa, o cliente escolhe entre criar conta (padrão) ou entrar
+  // numa já existente — os dois caminhos vão juntos no mesmo submit do
+  // pedido, sem navegar pra outra página (ver `submitOrderAction`).
+  const [authTab, setAuthTab] = useState<"register" | "login">("register");
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">(
+    "idle"
+  );
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (ready && items.length > 0) {
@@ -65,14 +79,22 @@ export function CheckoutForm({
     watch,
     getValues,
     setValue,
+    setError,
     formState: { errors },
   } = useForm<CheckoutFormValues, unknown, CheckoutFieldsInput>({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: {
       fulfillment: deliveryEnabled ? "DELIVERY" : "PICKUP",
       paymentMethod: "PIX",
+      auth: { authMode: loggedIn ? "session" : "register", username: "", password: "" },
     },
   });
+
+  // Mantém `auth.authMode` em sincronia com a aba escolhida (ou com a sessão
+  // ativa) — é esse campo, e não o estado local `authTab`, que o zod valida.
+  useEffect(() => {
+    setValue("auth.authMode", loggedIn ? "session" : authTab);
+  }, [authTab, loggedIn, setValue]);
 
   const fulfillment = watch("fulfillment");
   const paymentMethod = watch("paymentMethod");
@@ -82,6 +104,21 @@ export function CheckoutForm({
   // consulta da taxa — espalhar `register(...)` depois de `onBlur` o sobrescreveria.
   const neighborhoodField = register("addressNeighborhood");
   const zipField = register("addressZip");
+  const usernameField = register("auth.username", {
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+      if (value.trim().length < 3) {
+        setUsernameStatus("idle");
+        return;
+      }
+      setUsernameStatus("checking");
+      usernameDebounceRef.current = setTimeout(async () => {
+        const { available } = await checkUsernameAvailableAction(subdomain, value);
+        setUsernameStatus(available ? "available" : "taken");
+      }, USERNAME_CHECK_DEBOUNCE_MS);
+    },
+  });
 
   const deliveryFee = isDelivery ? (quote?.fee ?? 0) : 0;
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
@@ -134,6 +171,13 @@ export function CheckoutForm({
     checkFee();
   }
 
+  function handleSwitchAccount() {
+    startTransition(async () => {
+      await logoutCustomerAction(subdomain);
+      router.refresh();
+    });
+  }
+
   /**
    * Chamado quando o formulário é inválido. Sem isto, um erro em campo que não
    * está na tela faria o botão "não fazer nada" sem explicação.
@@ -153,6 +197,7 @@ export function CheckoutForm({
     startTransition(async () => {
       const result = await submitOrderAction(subdomain, {
         ...data,
+        auth: { ...data.auth, authMode: loggedIn ? "session" : authTab },
         items: items.map((line) => ({
           productId: line.productId,
           variantId: line.variantId ?? "",
@@ -161,6 +206,11 @@ export function CheckoutForm({
       });
 
       if ("error" in result && result.error) {
+        if (result.field === "auth.username") {
+          setError("auth.username", { message: result.error });
+        } else if (result.field === "auth.password") {
+          setError("auth.password", { message: result.error });
+        }
         setServerError(result.error);
         return;
       }
@@ -173,7 +223,7 @@ export function CheckoutForm({
         });
         markFlashDealPurchased(subdomain);
         clear();
-        router.push(`${base}/pedido/${result.orderId}`);
+        router.push(`${base}/pedido/${result.orderId}?t=${result.publicAccessToken}`);
       }
     });
   };
@@ -201,38 +251,123 @@ export function CheckoutForm({
     <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          {/* Contato */}
+          {/* Contato / conta */}
           <section className="rounded-xl border border-slate-200 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">Seus dados</h2>
-
-            <div className="mb-4">
-              <Label htmlFor="customerName">Nome completo *</Label>
-              <Input id="customerName" autoComplete="name" {...register("customerName")} />
-              <FieldError message={errors.customerName?.message} />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="customerPhone">Telefone / WhatsApp *</Label>
-                <Input
-                  id="customerPhone"
-                  autoComplete="tel"
-                  placeholder="(11) 99999-9999"
-                  {...register("customerPhone")}
-                />
-                <FieldError message={errors.customerPhone?.message} />
+            {loggedIn ? (
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-sm text-slate-700">
+                  Comprando como <span className="font-semibold">@{loggedIn.username}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSwitchAccount}
+                  disabled={isPending}
+                  className="text-sm text-slate-500 hover:underline"
+                >
+                  Trocar de conta
+                </button>
               </div>
-              <div>
-                <Label htmlFor="customerEmail">E-mail</Label>
-                <Input
-                  id="customerEmail"
-                  type="email"
-                  autoComplete="email"
-                  {...register("customerEmail")}
-                />
-                <FieldError message={errors.customerEmail?.message} />
+            ) : (
+              <div className="mb-4 flex gap-2 rounded-md bg-slate-100 p-1 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setAuthTab("register")}
+                  className={
+                    authTab === "register"
+                      ? "flex-1 rounded-md bg-white px-3 py-2 font-medium text-slate-900 shadow-sm"
+                      : "flex-1 rounded-md px-3 py-2 text-slate-500"
+                  }
+                >
+                  Criar conta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthTab("login")}
+                  className={
+                    authTab === "login"
+                      ? "flex-1 rounded-md bg-white px-3 py-2 font-medium text-slate-900 shadow-sm"
+                      : "flex-1 rounded-md px-3 py-2 text-slate-500"
+                  }
+                >
+                  Já tenho conta
+                </button>
               </div>
-            </div>
+            )}
+
+            {!loggedIn && authTab === "register" && (
+              <>
+                <div className="mb-4">
+                  <Label htmlFor="customerName">Nome completo *</Label>
+                  <Input id="customerName" autoComplete="name" {...register("customerName")} />
+                  <FieldError message={errors.customerName?.message} />
+                </div>
+
+                <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="customerPhone">Telefone / WhatsApp *</Label>
+                    <Input
+                      id="customerPhone"
+                      autoComplete="tel"
+                      placeholder="(11) 99999-9999"
+                      {...register("customerPhone")}
+                    />
+                    <FieldError message={errors.customerPhone?.message} />
+                  </div>
+                  <div>
+                    <Label htmlFor="customerEmail">E-mail</Label>
+                    <Input
+                      id="customerEmail"
+                      type="email"
+                      autoComplete="email"
+                      {...register("customerEmail")}
+                    />
+                    <FieldError message={errors.customerEmail?.message} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!loggedIn && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="authUsername">@usuário *</Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">
+                      @
+                    </span>
+                    <Input
+                      id="authUsername"
+                      autoComplete={authTab === "register" ? "username" : "username"}
+                      className="pl-7"
+                      {...usernameField}
+                    />
+                  </div>
+                  {authTab === "register" && usernameStatus === "checking" && (
+                    <p className="mt-1 text-xs text-slate-500">Verificando disponibilidade...</p>
+                  )}
+                  {authTab === "register" && usernameStatus === "available" && (
+                    <p className="mt-1 text-xs text-emerald-600">Disponível.</p>
+                  )}
+                  {authTab === "register" && usernameStatus === "taken" && (
+                    <p className="mt-1 text-xs text-amber-600">Esse @usuário já está em uso.</p>
+                  )}
+                  <FieldError message={errors.auth?.username?.message} />
+                </div>
+                <div>
+                  <Label htmlFor="authPassword">Senha *</Label>
+                  <Input
+                    id="authPassword"
+                    type="password"
+                    autoComplete={authTab === "register" ? "new-password" : "current-password"}
+                    {...register("auth.password")}
+                  />
+                  {authTab === "register" && (
+                    <p className="mt-1 text-xs text-slate-500">Mínimo de 8 caracteres.</p>
+                  )}
+                  <FieldError message={errors.auth?.password?.message} />
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Entrega ou retirada */}

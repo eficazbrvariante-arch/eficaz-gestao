@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
+import { getCustomerSession } from "@/modules/customers/customer-session";
 import { CheckoutForm } from "./checkout-form";
 
 export default async function CheckoutPage({
@@ -12,10 +13,13 @@ export default async function CheckoutPage({
   const store = await getStoreBySubdomain(subdomain);
   if (!store) notFound();
 
-  const settings = await prisma.tenant.findUniqueOrThrow({
-    where: { id: store.id },
-    select: { deliveryEnabled: true, pickupEnabled: true, pickupNotes: true },
-  });
+  const [settings, session] = await Promise.all([
+    prisma.tenant.findUniqueOrThrow({
+      where: { id: store.id },
+      select: { deliveryEnabled: true, pickupEnabled: true, pickupNotes: true },
+    }),
+    getCustomerSession(store.id),
+  ]);
 
   return (
     <div>
@@ -31,6 +35,7 @@ export default async function CheckoutPage({
         deliveryEnabled={settings.deliveryEnabled}
         pickupEnabled={settings.pickupEnabled}
         pickupNotes={settings.pickupNotes}
+        loggedIn={session ? { name: session.name, username: session.username } : null}
       />
     </div>
   );

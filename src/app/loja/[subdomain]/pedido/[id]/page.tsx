@@ -5,6 +5,7 @@ import {
   getStoreBySubdomain,
   storeDisplayName,
 } from "@/modules/catalog/tenant-resolver";
+import { getCustomerSession } from "@/modules/customers/customer-session";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import {
   ORDER_PAYMENT_LABELS,
@@ -19,18 +20,31 @@ import {
 
 export default async function OrderConfirmationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ subdomain: string; id: string }>;
+  searchParams: Promise<{ t?: string }>;
 }) {
   const { subdomain, id } = await params;
   const store = await getStoreBySubdomain(subdomain);
   if (!store) notFound();
 
-  const order = await prisma.order.findFirst({
-    where: { id, tenantId: store.id },
-    include: { items: true, deliveryZone: true },
-  });
+  const [order, session, { t }] = await Promise.all([
+    prisma.order.findFirst({
+      where: { id, tenantId: store.id },
+      include: { items: true, deliveryZone: true },
+    }),
+    getCustomerSession(store.id),
+    searchParams,
+  ]);
   if (!order) notFound();
+
+  // Acesso só com a sessão dona do pedido OU o token público específico
+  // desse pedido (`?t=`, enviado no redirect de sucesso do checkout) — nunca
+  // só por conhecer o ID. Nunca expõe pedido de outro customerId/tenant.
+  const ownsOrder = session !== null && order.customerId === session.customerId;
+  const hasValidToken = Boolean(t) && t === order.publicAccessToken;
+  if (!ownsOrder && !hasValidToken) notFound();
 
   const base = `/loja/${store.subdomain}`;
   const storeName = storeDisplayName(store);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { ROOT_DOMAIN, subdomainFromHost } from "@/modules/catalog/tenant-resolver";
+import { isAppHost, subdomainFromHost } from "@/modules/catalog/tenant-resolver";
 import { resolveCustomDomain } from "@/modules/domain/domain-cache";
 
 /** Rotas do painel acessíveis sem login. */
@@ -18,21 +18,6 @@ const PUBLIC_PREFIXES = ["/loja/", "/redefinir-senha/", "/comprovante/"];
 /** Hostname sem a porta, em minúsculas. */
 function hostnameOf(host: string | null) {
   return (host ?? "").split(":")[0].toLowerCase();
-}
-
-/**
- * O host é o domínio da própria aplicação (painel administrativo)?
- * Domínios próprios das lojas são qualquer outra coisa.
- */
-function isAppHost(hostname: string) {
-  return (
-    hostname === ROOT_DOMAIN ||
-    hostname === `www.${ROOT_DOMAIN}` ||
-    hostname.endsWith(`.${ROOT_DOMAIN}`) ||
-    hostname === "127.0.0.1" ||
-    // Hosts de deploy (ex.: eficaz-gestao.vercel.app) servem o painel.
-    hostname.endsWith(".vercel.app")
-  );
 }
 
 export default auth(async (req) => {
