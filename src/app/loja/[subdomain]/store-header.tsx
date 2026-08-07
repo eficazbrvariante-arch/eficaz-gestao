@@ -53,7 +53,7 @@ export async function StoreHeader({
         <div className="order-2 ml-auto flex items-center gap-4 sm:order-4 sm:ml-0">
           <Link
             href={session ? `${base}/conta` : `${base}/conta/entrar`}
-            className="hidden text-sm text-slate-600 hover:text-slate-900 sm:inline"
+            className="max-w-[6.5rem] truncate text-sm text-slate-600 hover:text-slate-900 sm:max-w-none"
           >
             {session ? `@${session.username}` : "Entrar"}
           </Link>
