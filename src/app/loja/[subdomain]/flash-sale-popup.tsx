@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/modules/catalog/cart-context";
 import { formatBRL } from "@/lib/format";
@@ -65,6 +66,14 @@ export function FlashSalePopup({
   const [visible, setVisible] = useState(false);
   const [entrance, setEntrance] = useState<"hard" | "soft">("hard");
   const [addCapped, setAddCapped] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  const hasVariants = deal.variants.length > 0;
+  const [variantId, setVariantId] = useState<string | null>(
+    hasVariants ? deal.variants[0].id : null
+  );
+  const variant = deal.variants.find((v) => v.id === variantId) ?? null;
+  const unitPrice = Math.round((deal.promoPrice + (variant?.priceAdjustment ?? 0)) * 100) / 100;
 
   const suppressed =
     pathname.includes("/carrinho") ||
@@ -110,25 +119,25 @@ export function FlashSalePopup({
     }, CLOSE_COOLDOWN_MS);
   }
 
-  function handleBuyNow() {
+  // Sempre adiciona ao carrinho de verdade — nunca navega para a página do
+  // produto. Antes, produto com variante caía num `router.push` pra página
+  // do produto (o popup não tinha como escolher a opção); agora o seletor
+  // abaixo resolve isso aqui mesmo.
+  function handleAddToCart() {
     trackEvent(subdomain, { type: "FLASH_CLICK", productId: deal.productId });
-    if (deal.hasVariants) {
-      router.push(`${base}/produto/${deal.productId}`);
-      return;
-    }
-    if (addCapped) {
-      router.push(`${base}/carrinho`);
-      return;
-    }
+
+    const available = variant ? variant.stockQty : deal.stockQty;
+    if (available <= 0) return;
+
     const result = addItem(
       {
         productId: deal.productId,
-        variantId: null,
+        variantId: variant?.id ?? null,
         name: deal.productName,
-        variantName: null,
-        unitPrice: deal.promoPrice,
+        variantName: variant?.name ?? null,
+        unitPrice,
         imageUrl: deal.imageUrl,
-        stockQty: deal.stockQty,
+        stockQty: available,
       },
       1
     );
@@ -136,7 +145,8 @@ export function FlashSalePopup({
       setAddCapped(true);
       return;
     }
-    router.push(`${base}/carrinho`);
+    setAddCapped(false);
+    setAdded(true);
   }
 
   const trustItems = [
@@ -272,10 +282,10 @@ export function FlashSalePopup({
 
             <div className="mt-2">
               <span className="block text-xs text-white/60 line-through">
-                {formatBRL(deal.basePrice)}
+                {formatBRL(deal.basePrice + (variant?.priceAdjustment ?? 0))}
               </span>
               <span className="block text-3xl font-extrabold leading-tight sm:text-4xl">
-                {formatBRL(deal.promoPrice)}
+                {formatBRL(unitPrice)}
               </span>
             </div>
 
@@ -286,10 +296,40 @@ export function FlashSalePopup({
               >
                 Economize {formatBRL(deal.savingsAmount)}
               </span>
-              <FlashDealCountdown endsAt={deal.endsAt} />
+              <FlashDealCountdown endsAt={deal.endsAt} onExpire={() => router.refresh()} />
             </div>
           </div>
         </div>
+
+        {hasVariants && (
+          <div className="mt-3.5">
+            <p className="mb-1.5 text-xs font-medium text-white/80">Escolha uma opção</p>
+            <div className="flex flex-wrap gap-1.5">
+              {deal.variants.map((v) => {
+                const isActive = v.id === variantId;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => {
+                      setVariantId(v.id);
+                      setAdded(false);
+                      setAddCapped(false);
+                    }}
+                    className={[
+                      "rounded-md border px-2.5 py-1.5 text-xs font-medium",
+                      isActive
+                        ? "border-white bg-white text-slate-900"
+                        : "border-white/40 text-white hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    {v.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {addCapped && (
           <p className="mt-3 text-xs font-medium text-amber-200">
@@ -300,11 +340,20 @@ export function FlashSalePopup({
 
         <button
           type="button"
-          onClick={handleBuyNow}
+          onClick={handleAddToCart}
           className="mt-4 w-full rounded-xl bg-emerald-600 py-3.5 text-base font-extrabold text-white shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-500 hover:shadow-emerald-900/40 active:translate-y-0 active:scale-[0.98]"
         >
-          {addCapped ? "Ver carrinho" : "Comprar Agora"}
+          Adicionar ao carrinho
         </button>
+
+        {added && (
+          <p className="mt-2 text-center text-xs text-white/90">
+            Adicionado ao carrinho.{" "}
+            <Link href={`${base}/carrinho`} className="font-semibold underline">
+              Ver carrinho
+            </Link>
+          </p>
+        )}
 
         {trustItems.length > 0 && (
           <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-white/15 pt-3">

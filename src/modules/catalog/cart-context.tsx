@@ -97,6 +97,7 @@ export function useCart() {
   }
 
   return {
+    subdomain,
     items,
     ready,
     ...totals,
@@ -104,6 +105,7 @@ export function useCart() {
     setQuantity,
     removeItem: store.removeItem.bind(store),
     clear: store.clear.bind(store),
+    reconcile: store.reconcile.bind(store),
     flashDealProductId: flashDeal?.productId ?? null,
     flashDealOrderLimit: flashDeal?.orderLimit ?? null,
   };

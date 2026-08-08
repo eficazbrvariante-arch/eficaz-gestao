@@ -42,6 +42,7 @@ const productCardSelect = {
   category: { select: { id: true, name: true } },
   brand: { select: { id: true, name: true } },
   images: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
+  _count: { select: { variants: true } },
 } as const;
 
 export type CatalogProductCard = {
@@ -65,6 +66,9 @@ export type CatalogProductCard = {
   strikePrice: number | null;
   discountPercent: number | null;
   isFlashDeal: boolean;
+  /** Produto tem variantes cadastradas — o botão de adição rápida do card não
+   * sabe escolher uma variante, então some quando isso é verdade (ver `ProductCard`). */
+  hasVariants: boolean;
 };
 
 type RawProductCard = {
@@ -82,6 +86,7 @@ type RawProductCard = {
   category: { id: string; name: string } | null;
   brand: { id: string; name: string } | null;
   images: { url: string }[];
+  _count: { variants: number };
 };
 
 function toCard(product: RawProductCard): CatalogProductCard {
@@ -112,6 +117,7 @@ function toCard(product: RawProductCard): CatalogProductCard {
     strikePrice: null,
     discountPercent: null,
     isFlashDeal,
+    hasVariants: product._count.variants > 0,
   };
 }
 

@@ -15,13 +15,27 @@ function timeLeft(endsAt: Date) {
   return `${minutes}min ${seconds}s`;
 }
 
-/** Contagem regressiva leve, só para cards de oferta relâmpago — o resto do catálogo fica sem esse custo de JS. */
-export function FlashDealCountdown({ endsAt }: { endsAt: Date }) {
+/**
+ * Contagem regressiva leve, só para cards de oferta relâmpago — o resto do
+ * catálogo fica sem esse custo de JS.
+ *
+ * `onExpire` (opcional) dispara uma única vez quando o contador chega a
+ * zero — usado pelo popup para buscar a oferta de novo no servidor
+ * (`router.refresh()`) sem esperar o cliente recarregar a página manualmente.
+ */
+export function FlashDealCountdown({ endsAt, onExpire }: { endsAt: Date; onExpire?: () => void }) {
   const [label, setLabel] = useState(() => timeLeft(endsAt));
 
   useEffect(() => {
-    const id = window.setInterval(() => setLabel(timeLeft(endsAt)), 1000);
+    const id = window.setInterval(() => {
+      const next = timeLeft(endsAt);
+      setLabel((current) => {
+        if (current !== null && next === null) onExpire?.();
+        return next;
+      });
+    }, 1000);
     return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endsAt]);
 
   if (!label) return null;

@@ -103,15 +103,34 @@ class CartStore {
 
     if (existing) {
       const next = existing.quantity + quantity;
+      // Readicionar a mesma linha atualiza tudo (preço incluído) para o valor
+      // recém-lido do servidor — sem isso, o preço da primeira adição ficava
+      // congelado para sempre, mesmo que a oferta/promoção tivesse mudado
+      // entre um clique e outro.
       this.commit(
-        current.map((line) =>
-          line.key === key ? { ...line, quantity: next, stockQty: item.stockQty } : line
-        )
+        current.map((line) => (line.key === key ? { ...line, ...item, quantity: next } : line))
       );
       return;
     }
 
     this.commit([...current, { ...item, key, quantity }]);
+  }
+
+  /**
+   * Concilia o carrinho com preços/disponibilidade atuais do servidor (ver
+   * `useCartPriceSync`) — nunca inventa valor, só aplica o que o servidor
+   * devolveu. `removeKeys` tira do carrinho itens que não existem mais no
+   * catálogo (produto removido/inativado).
+   */
+  reconcile(updates: { key: string; unitPrice: number; stockQty: number }[], removeKeys: string[]) {
+    if (updates.length === 0 && removeKeys.length === 0) return;
+    const next = this.snapshot.items
+      .filter((line) => !removeKeys.includes(line.key))
+      .map((line) => {
+        const update = updates.find((u) => u.key === line.key);
+        return update ? { ...line, unitPrice: update.unitPrice, stockQty: update.stockQty } : line;
+      });
+    this.commit(next);
   }
 
   setQuantity(key: string, quantity: number) {

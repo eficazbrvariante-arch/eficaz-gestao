@@ -11,6 +11,12 @@ import {
   rotateCustomerSession,
 } from "@/modules/customers/customer-session";
 import { authenticateCustomer, isUsernameAvailable } from "@/modules/customers/customer-service";
+import {
+  getFlashDealSchedule,
+  todayFlashDealEntry,
+  flashPriceOverrideFor,
+} from "@/modules/catalog/flash-deal-service";
+import { resolveEffectiveUnitPrice } from "@/modules/products/catalog-price";
 
 /**
  * Consulta a taxa de entrega de uma região.
@@ -58,6 +64,84 @@ export async function checkUsernameAvailableAction(subdomain: string, username: 
   if (!username.trim()) return { available: false };
 
   return { available: await isUsernameAvailable(tenant.id, username) };
+}
+
+export type CartPricingItem = { key: string; productId: string; variantId: string | null };
+export type CartPricingResult = {
+  items: {
+    key: string;
+    available: boolean;
+    unitPrice: number | null;
+    stockQty: number | null;
+  }[];
+  flashDeal: { productId: string; orderLimit: number } | null;
+};
+
+/**
+ * Revalida o carrinho (só leitura) contra o preço e a disponibilidade
+ * atuais — chamada por `useCartPriceSync` ao abrir o carrinho/checkout, para
+ * o que o cliente vê nunca divergir do que `createOrder` vai realmente
+ * cobrar. Usa a mesma `resolveEffectiveUnitPrice` do pedido final; nunca uma
+ * segunda conta de preço.
+ */
+export async function getCartPricingAction(
+  subdomain: string,
+  items: CartPricingItem[]
+): Promise<CartPricingResult> {
+  const tenant = await prisma.tenant.findFirst({
+    where: { subdomain: subdomain.toLowerCase(), catalogEnabled: true },
+    select: { id: true },
+  });
+  if (!tenant) {
+    return { items: items.map((i) => ({ key: i.key, available: false, unitPrice: null, stockQty: null })), flashDeal: null };
+  }
+
+  const productIds = [...new Set(items.map((i) => i.productId))];
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds }, tenantId: tenant.id, active: true, showInCatalog: true },
+    include: { variants: true },
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  const flashEntry = todayFlashDealEntry(await getFlashDealSchedule(tenant.id));
+
+  const resolved = items.map((item) => {
+    const product = productMap.get(item.productId);
+    if (!product) return { key: item.key, available: false, unitPrice: null, stockQty: null };
+
+    const variant = item.variantId ? product.variants.find((v) => v.id === item.variantId) : undefined;
+    if (item.variantId && !variant) {
+      return { key: item.key, available: false, unitPrice: null, stockQty: null };
+    }
+
+    const flashOverride = flashPriceOverrideFor(flashEntry, {
+      id: product.id,
+      salePrice: Number(product.salePrice),
+    });
+
+    const unitPrice = resolveEffectiveUnitPrice(
+      {
+        salePrice: Number(product.salePrice),
+        promoPrice: product.promoPrice === null ? null : Number(product.promoPrice),
+        promoStartedAt: product.promoStartedAt,
+        promoEndsAt: product.promoEndsAt,
+      },
+      Number(variant?.priceAdjustment ?? 0),
+      flashOverride
+    );
+
+    return {
+      key: item.key,
+      available: true,
+      unitPrice,
+      stockQty: variant ? variant.stockQty : product.stockQty,
+    };
+  });
+
+  return {
+    items: resolved,
+    flashDeal: flashEntry?.productId ? { productId: flashEntry.productId, orderLimit: flashEntry.orderLimit } : null,
+  };
 }
 
 export async function submitOrderAction(subdomain: string, input: CheckoutSubmission) {

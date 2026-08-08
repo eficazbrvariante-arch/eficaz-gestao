@@ -8,7 +8,7 @@ import {
   todayFlashDealEntry,
   flashPriceOverrideFor,
 } from "@/modules/catalog/flash-deal-service";
-import { isPromoActive } from "@/modules/products/catalog-price";
+import { resolveEffectiveUnitPrice } from "@/modules/products/catalog-price";
 import { registerCustomer } from "@/modules/customers/customer-service";
 
 function round2(value: number) {
@@ -167,28 +167,31 @@ export async function createOrder(
       salePrice: Number(product.salePrice),
     });
 
-    // A promoção do produto (diferente da Oferta Relâmpago por dia acima) só
-    // é cobrada se ainda estiver dentro da janela — sem isso, uma promoção já
-    // expirada (que a vitrine já parou de mostrar como ativa) continuaria
-    // sendo cobrada com o preço promocional pra sempre, já que `promoPrice`
-    // nunca é limpo automaticamente do produto.
-    const promoActive = isPromoActive(
-      product.promoPrice === null ? null : Number(product.promoPrice),
-      product.promoStartedAt,
-      product.promoEndsAt
-    );
-
     let quantity = item.quantity;
-    let basePrice = Number(promoActive ? product.promoPrice : product.salePrice);
     if (flashOverride) {
       const remaining = Math.max(0, flashEntry!.orderLimit - flashQtyUsed);
       quantity = Math.min(item.quantity, remaining);
       if (quantity === 0) continue;
       flashQtyUsed += quantity;
-      basePrice = flashOverride.promoPrice;
     }
 
-    const unitPrice = round2(basePrice + Number(variant?.priceAdjustment ?? 0));
+    // Preço vindo da mesma função usada para revalidar o carrinho antes do
+    // checkout (`getCartPricingAction`) — nunca uma segunda conta aqui. A
+    // promoção "evergreen" do produto (diferente da Oferta Relâmpago por dia)
+    // só é considerada se ainda estiver dentro da janela (`isPromoActive`,
+    // usada dentro de `resolveEffectiveUnitPrice`) — sem isso, uma promoção já
+    // expirada continuaria sendo cobrada pra sempre, já que `promoPrice` nunca
+    // é limpo automaticamente do produto.
+    const unitPrice = resolveEffectiveUnitPrice(
+      {
+        salePrice: Number(product.salePrice),
+        promoPrice: product.promoPrice === null ? null : Number(product.promoPrice),
+        promoStartedAt: product.promoStartedAt,
+        promoEndsAt: product.promoEndsAt,
+      },
+      Number(variant?.priceAdjustment ?? 0),
+      flashOverride
+    );
     const total = round2(unitPrice * quantity);
 
     resolvedItems.push({

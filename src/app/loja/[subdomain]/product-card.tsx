@@ -141,18 +141,24 @@ export function ProductCard({
         </div>
       </Link>
 
-      {/* Fica fora do <Link> (irmão, não descendente) para não aninhar botão
+      {/* Só existe para produto sem variante: o botão de adição rápida não tem
+          como escolher uma opção, então adicionaria a linha errada (sem
+          variante, sem o ajuste de preço dela) — produto com variante depende
+          de abrir a página, que já tem o seletor completo.
+          Fica fora do <Link> (irmão, não descendente) para não aninhar botão
           dentro de âncora — clicar aqui não navega para a página do produto. */}
-      <AddToCartQuickButton
-        product={{
-          id: product.id,
-          name: product.name,
-          unitPrice: price,
-          imageUrl: product.imageUrl,
-          stockQty: product.stockQty,
-        }}
-        className="absolute right-2 top-2 z-10 opacity-90 transition-opacity duration-150 hover:opacity-100"
-      />
+      {!product.hasVariants && (
+        <AddToCartQuickButton
+          product={{
+            id: product.id,
+            name: product.name,
+            unitPrice: price,
+            imageUrl: product.imageUrl,
+            stockQty: product.stockQty,
+          }}
+          className="absolute right-2 top-2 z-10 opacity-90 transition-opacity duration-150 hover:opacity-100"
+        />
+      )}
     </div>
   );
 }

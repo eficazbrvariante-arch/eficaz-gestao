@@ -11,6 +11,7 @@ import {
   type CheckoutFormValues,
 } from "@/lib/validations/order";
 import { useCart } from "@/modules/catalog/cart-context";
+import { useCartPriceSync } from "@/modules/catalog/use-cart-price-sync";
 import { formatBRL } from "@/lib/format";
 import { lookupAddressByZip } from "@/lib/viacep";
 import { markFlashDealPurchased } from "../flash-deal-popup-storage";
@@ -51,6 +52,7 @@ export function CheckoutForm({
 }) {
   const router = useRouter();
   const { items, subtotal, ready, clear, flashDealProductId } = useCart();
+  const priceSyncNotice = useCartPriceSync();
   const [serverError, setServerError] = useState<string>();
   const [quote, setQuote] = useState<Quote>();
   const [isPending, startTransition] = useTransition();
@@ -553,6 +555,12 @@ export function CheckoutForm({
         <aside className="lg:col-span-1">
           <div className="rounded-xl border border-slate-200 p-5">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Resumo do pedido</h2>
+
+            {priceSyncNotice && (
+              <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {priceSyncNotice}
+              </p>
+            )}
 
             <ul className="mb-4 space-y-2 text-sm">
               {items.map((line) => (

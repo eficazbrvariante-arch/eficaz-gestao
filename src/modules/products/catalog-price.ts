@@ -34,3 +34,37 @@ export function isPromoActive(
   if (promoEndsAt && promoEndsAt.getTime() <= now.getTime()) return false;
   return true;
 }
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Preço unitário efetivo de um produto (com variante, se houver) — fonte
+ * única usada tanto para gravar o pedido (`createOrder`) quanto para
+ * revalidar o preço exibido no carrinho/checkout (`getCartPricingAction`).
+ * Nunca duplique esta conta em outro lugar.
+ *
+ * Prioridade: Oferta Relâmpago do dia (`flashOverride`, se bater com este
+ * produto) > promoção "evergreen" do produto, só se `isPromoActive` > preço
+ * de venda normal. Depois soma o ajuste da variante, se houver.
+ */
+export function resolveEffectiveUnitPrice(
+  product: {
+    salePrice: number;
+    promoPrice: number | null;
+    promoStartedAt: Date | null;
+    promoEndsAt: Date | null;
+  },
+  variantPriceAdjustment: number,
+  flashOverride: { promoPrice: number } | null,
+  now: Date = new Date()
+): number {
+  const promoActive = isPromoActive(product.promoPrice, product.promoStartedAt, product.promoEndsAt, now);
+  const basePrice = flashOverride
+    ? flashOverride.promoPrice
+    : promoActive
+      ? product.promoPrice!
+      : product.salePrice;
+  return round2(basePrice + variantPriceAdjustment);
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/modules/catalog/cart-context";
+import { useCartPriceSync } from "@/modules/catalog/use-cart-price-sync";
 import { formatBRL } from "@/lib/format";
 import { FreeShippingNotice } from "../free-shipping-notice";
 
@@ -27,6 +28,7 @@ export function CartView({
     flashDealOrderLimit,
   } = useCart();
   const [cappedKey, setCappedKey] = useState<string | null>(null);
+  const priceSyncNotice = useCartPriceSync();
 
   function handleSetQuantity(key: string, quantity: number) {
     const result = setQuantity(key, quantity);
@@ -60,6 +62,11 @@ export function CartView({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2">
+        {priceSyncNotice && (
+          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            {priceSyncNotice}
+          </p>
+        )}
         <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200">
           {items.map((line) => {
             const isFlashLine = line.productId === flashDealProductId;

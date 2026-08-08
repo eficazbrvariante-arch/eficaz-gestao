@@ -47,9 +47,15 @@ export function parseFlashDealSchedule(value: unknown): FlashDealDayEntry[] {
   });
 }
 
-/** Entrada de hoje na agenda, ou `null` se o dia estiver desligado/sem produto — sem fallback. */
-export function todayFlashDealEntry(schedule: FlashDealDayEntry[]): FlashDealDayEntry | null {
-  const day = todayWeekday();
+/**
+ * Entrada de hoje na agenda, ou `null` se o dia estiver desligado/sem produto — sem fallback.
+ *
+ * `now` é opcional (default = agora de verdade) só para permitir testar os 7 dias da semana
+ * de forma determinística, sem mexer no relógio do sistema nem em nenhum caminho de produção
+ * (nenhuma requisição HTTP expõe esse parâmetro).
+ */
+export function todayFlashDealEntry(schedule: FlashDealDayEntry[], now: Date = new Date()): FlashDealDayEntry | null {
+  const day = todayWeekday(now);
   const entry = schedule.find((e) => e.day === day) ?? null;
   if (!entry || !entry.active || !entry.productId || entry.promoPrice === null) return null;
   return entry;
@@ -63,11 +69,12 @@ export function todayFlashDealEntry(schedule: FlashDealDayEntry[]): FlashDealDay
  */
 export function flashPriceOverrideFor(
   entry: FlashDealDayEntry | null,
-  product: { id: string; salePrice: number }
+  product: { id: string; salePrice: number },
+  now: Date = new Date()
 ): { promoPrice: number; endsAt: Date } | null {
   if (!entry || entry.productId !== product.id || entry.promoPrice === null) return null;
   if (entry.promoPrice >= product.salePrice) return null;
-  return { promoPrice: entry.promoPrice, endsAt: nextMidnightSaoPaulo() };
+  return { promoPrice: entry.promoPrice, endsAt: nextMidnightSaoPaulo(now) };
 }
 
 /**
@@ -96,6 +103,13 @@ export const getFlashDealSchedule = cache(async (tenantId: string): Promise<Flas
   return parseFlashDealSchedule(tenant?.flashDealSchedule);
 });
 
+export type FlashDealVariant = {
+  id: string;
+  name: string;
+  priceAdjustment: number;
+  stockQty: number;
+};
+
 export type ResolvedFlashDeal = {
   productId: string;
   productName: string;
@@ -105,6 +119,8 @@ export type ResolvedFlashDeal = {
   savingsAmount: number;
   savingsPercent: number;
   hasVariants: boolean;
+  /** Vazio quando `hasVariants` é falso. Usado pelo seletor de variante do popup. */
+  variants: FlashDealVariant[];
   stockQty: number;
   orderLimit: number;
   badgeText: string;
@@ -120,54 +136,68 @@ export type ResolvedFlashDeal = {
  * está desligado, sem produto, ou o produto não está mais disponível
  * (inativo, fora do catálogo, sem estoque). Sem fallback: nesses casos o
  * popup simplesmente não aparece.
+ *
+ * `now` é opcional (ver `todayFlashDealEntry`) — só para testar os 7 dias da
+ * semana deterministicamente; nenhum caminho de produção passa esse parâmetro.
+ * Continua envolta em `cache()`: o dedupe do React funciona pelos argumentos
+ * recebidos na chamada — quem não passa `now` continua deduplicando
+ * corretamente por `tenantId` dentro do mesmo render, como antes.
  */
-export const getTodayFlashDeal = cache(async (tenantId: string): Promise<ResolvedFlashDeal | null> => {
-  const schedule = await getFlashDealSchedule(tenantId);
-  const entry = todayFlashDealEntry(schedule);
-  if (!entry || !entry.productId) return null;
+export const getTodayFlashDeal = cache(
+  async (tenantId: string, now: Date = new Date()): Promise<ResolvedFlashDeal | null> => {
+    const schedule = await getFlashDealSchedule(tenantId);
+    const entry = todayFlashDealEntry(schedule, now);
+    if (!entry || !entry.productId) return null;
 
-  const product = await prisma.product.findFirst({
-    where: {
-      id: entry.productId,
-      tenantId,
-      active: true,
-      showInCatalog: true,
-      stockQty: { gt: 0 },
-    },
-    select: {
-      id: true,
-      name: true,
-      salePrice: true,
-      stockQty: true,
-      images: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
-      _count: { select: { variants: true } },
-    },
-  });
-  if (!product) return null;
+    const product = await prisma.product.findFirst({
+      where: {
+        id: entry.productId,
+        tenantId,
+        active: true,
+        showInCatalog: true,
+        stockQty: { gt: 0 },
+      },
+      select: {
+        id: true,
+        name: true,
+        salePrice: true,
+        stockQty: true,
+        images: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
+        variants: { select: { id: true, name: true, priceAdjustment: true, stockQty: true } },
+      },
+    });
+    if (!product) return null;
 
-  const basePrice = Number(product.salePrice);
-  const override = flashPriceOverrideFor(entry, { id: product.id, salePrice: basePrice });
-  if (!override) return null;
+    const basePrice = Number(product.salePrice);
+    const override = flashPriceOverrideFor(entry, { id: product.id, salePrice: basePrice }, now);
+    if (!override) return null;
 
-  const savingsAmount = Math.round((basePrice - override.promoPrice) * 100) / 100;
-  const savingsPercent = Math.round((savingsAmount / basePrice) * 100);
+    const savingsAmount = Math.round((basePrice - override.promoPrice) * 100) / 100;
+    const savingsPercent = Math.round((savingsAmount / basePrice) * 100);
 
-  return {
-    productId: product.id,
-    productName: product.name,
-    imageUrl: product.images[0]?.url ?? null,
-    basePrice,
-    promoPrice: override.promoPrice,
-    savingsAmount,
-    savingsPercent,
-    hasVariants: product._count.variants > 0,
-    stockQty: product.stockQty,
-    orderLimit: entry.orderLimit,
-    badgeText: entry.badgeText,
-    icon: entry.icon,
-    bgColor: entry.bgColor,
-    accentColor: entry.accentColor,
-    soundEnabled: entry.soundEnabled,
-    endsAt: override.endsAt,
-  };
-});
+    return {
+      productId: product.id,
+      productName: product.name,
+      imageUrl: product.images[0]?.url ?? null,
+      basePrice,
+      promoPrice: override.promoPrice,
+      savingsAmount,
+      savingsPercent,
+      hasVariants: product.variants.length > 0,
+      variants: product.variants.map((v) => ({
+        id: v.id,
+        name: v.name,
+        priceAdjustment: Number(v.priceAdjustment),
+        stockQty: v.stockQty,
+      })),
+      stockQty: product.stockQty,
+      orderLimit: entry.orderLimit,
+      badgeText: entry.badgeText,
+      icon: entry.icon,
+      bgColor: entry.bgColor,
+      accentColor: entry.accentColor,
+      soundEnabled: entry.soundEnabled,
+      endsAt: override.endsAt,
+    };
+  }
+);
