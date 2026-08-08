@@ -165,7 +165,11 @@ export default async function OrderConfirmationPage({
         <div className="mt-4 space-y-1 border-t border-slate-200 pt-4 text-sm text-slate-600">
           <p>
             <span className="text-slate-500">Recebimento:</span>{" "}
-            {order.fulfillment === "DELIVERY" ? "Entrega" : "Retirada na loja"}
+            {order.fulfillment === "DELIVERY"
+              ? "Entrega"
+              : order.fulfillment === "PICKUP"
+                ? "Retirada na loja"
+                : "A combinar pelo WhatsApp"}
           </p>
           {order.fulfillment === "DELIVERY" && (
             <p>
@@ -174,7 +178,9 @@ export default async function OrderConfirmationPage({
           )}
           <p>
             <span className="text-slate-500">Pagamento:</span>{" "}
-            {ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod}
+            {order.paymentMethod
+              ? (ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod)
+              : "A combinar pelo WhatsApp"}
           </p>
           {order.notes && (
             <p>

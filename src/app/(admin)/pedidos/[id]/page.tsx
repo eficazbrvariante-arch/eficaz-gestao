@@ -85,6 +85,11 @@ export default async function PedidoDetalhePage({
           <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
             {ORDER_STATUS_LABELS[order.status]}
           </span>
+          {order.origin === "WHATSAPP" && (
+            <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+              Via WhatsApp — combine entrega e pagamento na conversa
+            </span>
+          )}
         </div>
         <p className="text-sm text-slate-500">{formatDateTime(order.createdAt)}</p>
       </div>
@@ -213,7 +218,11 @@ export default async function PedidoDetalhePage({
             <h2 className="mb-3 text-sm font-semibold text-slate-900">Entrega</h2>
             <div className="space-y-1 text-sm text-slate-600">
               <p className="font-medium text-slate-900">
-                {order.fulfillment === "DELIVERY" ? "Entrega" : "Retirada na loja"}
+                {order.fulfillment === "DELIVERY"
+                  ? "Entrega"
+                  : order.fulfillment === "PICKUP"
+                    ? "Retirada na loja"
+                    : "A combinar com o cliente"}
               </p>
               {order.fulfillment === "DELIVERY" && <p>{formatAddress(whatsappOrder)}</p>}
               {order.deliveryZone?.estimate && (
@@ -226,7 +235,9 @@ export default async function PedidoDetalhePage({
             <h2 className="mb-3 text-sm font-semibold text-slate-900">Pagamento</h2>
             <div className="space-y-1 text-sm text-slate-600">
               <p className="font-medium text-slate-900">
-                {ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod}
+                {order.paymentMethod
+                  ? (ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod)
+                  : "A combinar com o cliente"}
               </p>
               {order.changeFor && (
                 <p>

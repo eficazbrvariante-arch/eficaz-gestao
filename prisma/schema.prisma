@@ -884,6 +884,12 @@ enum FulfillmentType {
   PICKUP // Retirada na loja
 }
 
+/// Origem do pedido — ver comentário do campo `Order.origin`.
+enum OrderOrigin {
+  CHECKOUT
+  WHATSAPP
+}
+
 /// Forma de pagamento combinada no pedido — a cobrança acontece fora do sistema.
 enum OrderPaymentMethod {
   CASH
@@ -940,7 +946,16 @@ model Order {
   /// `pedido/[id]`, só cobre o caso de acesso sem conta ativa no navegador.
   publicAccessToken String  @unique @default(cuid())
 
-  fulfillment         FulfillmentType
+  /// De onde veio o pedido: `CHECKOUT` (carrinho/checkout normal, com entrega
+  /// e pagamento já definidos) ou `WHATSAPP` (clique em "Comprar pelo
+  /// WhatsApp" na página do produto — vira pedido pendente para o cliente
+  /// aparecer em "Pedidos online", mas entrega/pagamento só são combinados
+  /// depois, na conversa).
+  origin OrderOrigin @default(CHECKOUT)
+
+  /// Nulo apenas em pedidos `origin: WHATSAPP`, até a loja combinar com o
+  /// cliente pelo chat.
+  fulfillment         FulfillmentType?
   deliveryZoneId      String?
   addressStreet       String?
   addressNumber       String?
@@ -950,7 +965,8 @@ model Order {
   addressState        String?
   addressZip          String?
 
-  paymentMethod OrderPaymentMethod
+  /// Nulo apenas em pedidos `origin: WHATSAPP` (ver `fulfillment`).
+  paymentMethod OrderPaymentMethod?
   /// Troco pedido pelo cliente quando o pagamento é em dinheiro.
   changeFor     Decimal?           @db.Decimal(12, 2)
 

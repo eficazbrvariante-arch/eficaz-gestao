@@ -351,6 +351,113 @@ export async function createOrder(
   }
 }
 
+export type CreateWhatsappLeadResult =
+  | { ok: true; orderId: string; number: number }
+  | { ok: false; error: string };
+
+/**
+ * Pedido pendente criado quando um cliente já logado clica em "Comprar pelo
+ * WhatsApp" na página do produto (`WhatsappProductCta`) — sem isso, o clique
+ * só abria o WhatsApp e nunca deixava rastro nenhum em "Pedidos online".
+ * `fulfillment`/`paymentMethod` ficam `null` (só `origin: WHATSAPP` os
+ * permite): a loja ainda vai combinar entrega e pagamento na conversa. 1
+ * unidade, sem variante — mesma limitação do próprio CTA, que não conhece
+ * seleção de variante/quantidade (essas só existem no `AddToCart`, componente
+ * irmão e independente).
+ */
+export async function createWhatsappLeadOrder(
+  tenantId: string,
+  customerId: string,
+  productId: string
+): Promise<CreateWhatsappLeadResult> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { catalogEnabled: true, flashDealSchedule: true },
+  });
+  if (!tenant || !tenant.catalogEnabled) {
+    return { ok: false, error: "Esta loja não está aceitando pedidos no momento." };
+  }
+
+  const [customer, product] = await Promise.all([
+    prisma.customer.findFirst({
+      where: { id: customerId, tenantId },
+      select: { name: true, phone: true, email: true, document: true },
+    }),
+    prisma.product.findFirst({
+      where: { id: productId, tenantId, active: true, showInCatalog: true },
+      select: {
+        id: true,
+        name: true,
+        salePrice: true,
+        promoPrice: true,
+        promoStartedAt: true,
+        promoEndsAt: true,
+        costPrice: true,
+      },
+    }),
+  ]);
+  if (!customer) return { ok: false, error: "Não foi possível identificar sua conta. Entre novamente." };
+  if (!product) return { ok: false, error: "Este produto não está mais disponível." };
+
+  const flashEntry = todayFlashDealEntry(parseFlashDealSchedule(tenant.flashDealSchedule));
+  const flashOverride = flashPriceOverrideFor(flashEntry, {
+    id: product.id,
+    salePrice: Number(product.salePrice),
+  });
+  const unitPrice = resolveEffectiveUnitPrice(
+    {
+      salePrice: Number(product.salePrice),
+      promoPrice: product.promoPrice === null ? null : Number(product.promoPrice),
+      promoStartedAt: product.promoStartedAt,
+      promoEndsAt: product.promoEndsAt,
+    },
+    0,
+    flashOverride
+  );
+  const total = round2(unitPrice);
+
+  const order = await prisma.$transaction(async (tx) => {
+    const counter = await tx.tenant.update({
+      where: { id: tenantId },
+      data: { orderSequence: { increment: 1 } },
+      select: { orderSequence: true },
+    });
+
+    return tx.order.create({
+      data: {
+        tenantId,
+        number: counter.orderSequence,
+        origin: "WHATSAPP",
+        customerName: customer.name,
+        customerPhone: customer.phone ?? "",
+        customerEmail: customer.email,
+        customerDocument: customer.document,
+        customerId,
+        subtotal: total,
+        deliveryFee: 0,
+        total,
+        costTotal: Number(product.costPrice),
+        items: {
+          create: [
+            {
+              productId: product.id,
+              variantId: null,
+              nameSnapshot: product.name,
+              quantity: 1,
+              unitPrice,
+              unitCost: Number(product.costPrice),
+              total,
+            },
+          ],
+        },
+      },
+      select: { id: true, number: true },
+    });
+  });
+
+  return { ok: true, orderId: order.id, number: order.number };
+}
+
 /** Pedidos de uma conta de cliente — sempre filtrado por tenant + conta juntos. */
 export async function listCustomerOrders(tenantId: string, customerId: string) {
   return prisma.order.findMany({

@@ -193,7 +193,10 @@ export async function getRevenueByPaymentMethod(
   };
 
   for (const row of payments) add(row.method, toNumber(row._sum.amount), row._count);
-  for (const row of orders) add(row.paymentMethod, toNumber(row._sum.total), row._count);
+  // paymentMethod só é nulo em pedido de WhatsApp (`origin: WHATSAPP`) ainda não combinado
+  // com o cliente — não deveria chegar em COMPLETED sem isso definido, mas se chegar, cai
+  // aqui em vez de quebrar a apuração.
+  for (const row of orders) add(row.paymentMethod ?? "A combinar", toNumber(row._sum.total), row._count);
 
   return [...totals.entries()]
     .map(([method, value]) => ({

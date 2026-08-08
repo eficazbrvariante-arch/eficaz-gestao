@@ -117,11 +117,22 @@ export default async function PedidosPage({
                 <td className="px-4 py-3 font-medium text-slate-900">#{order.number}</td>
                 <td className="px-4 py-3 text-slate-500">{formatDateTime(order.createdAt)}</td>
                 <td className="px-4 py-3">
-                  <div className="text-slate-900">{order.customerName}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-900">{order.customerName}</span>
+                    {order.origin === "WHATSAPP" && (
+                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                        WhatsApp
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-400">{order.customerPhone}</div>
                 </td>
                 <td className="px-4 py-3 text-slate-500">
-                  {order.fulfillment === "DELIVERY" ? "Entrega" : "Retirada"}
+                  {order.fulfillment === "DELIVERY"
+                    ? "Entrega"
+                    : order.fulfillment === "PICKUP"
+                      ? "Retirada"
+                      : "A combinar"}
                 </td>
                 <td className="px-4 py-3 text-slate-500">{order._count.items}</td>
                 <td className="px-4 py-3 text-slate-900">{formatBRL(order.total)}</td>

@@ -7,8 +7,10 @@ export type WhatsappOrder = {
   number: number;
   customerName: string;
   customerPhone: string;
-  fulfillment: "DELIVERY" | "PICKUP";
-  paymentMethod: string;
+  /** `null` só em pedidos vindos do CTA "Comprar pelo WhatsApp" (`origin: WHATSAPP`) — ainda não combinado com o cliente. */
+  fulfillment: "DELIVERY" | "PICKUP" | null;
+  /** `null` pela mesma razão de `fulfillment`. */
+  paymentMethod: string | null;
   changeFor: number | null;
   subtotal: number;
   deliveryFee: number;
@@ -70,12 +72,16 @@ export function buildWhatsappMessage(order: WhatsappOrder, storeName: string) {
   if (order.fulfillment === "DELIVERY") {
     lines.push("*Entrega no endereço:*");
     lines.push(formatAddress(order));
-  } else {
+  } else if (order.fulfillment === "PICKUP") {
     lines.push("*Retirada na loja*");
+  } else {
+    lines.push("*Entrega/retirada:* a combinar");
   }
   lines.push("");
 
-  const paymentLabel = ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod;
+  const paymentLabel = order.paymentMethod
+    ? (ORDER_PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod)
+    : "a combinar";
   lines.push(`*Pagamento:* ${paymentLabel}`);
   if (order.paymentMethod === "CASH" && order.changeFor) {
     const change = order.changeFor - order.total;

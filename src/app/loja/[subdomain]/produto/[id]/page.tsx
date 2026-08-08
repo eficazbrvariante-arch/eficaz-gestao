@@ -12,6 +12,7 @@ import {
   listRelatedProducts,
   listFrequentlyBoughtWith,
 } from "@/modules/catalog/catalog-service";
+import { getCustomerSession } from "@/modules/customers/customer-session";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { ProductGrid } from "../../product-card";
 import { ProductGallery } from "./product-gallery";
@@ -59,9 +60,10 @@ export default async function StoreProductPage({
   if (!product) notFound();
 
   const base = `/loja/${store.subdomain}`;
-  const [related, boughtTogether] = await Promise.all([
+  const [related, boughtTogether, customerSession] = await Promise.all([
     listRelatedProducts(store.id, product.id, product.categoryId),
     listFrequentlyBoughtWith(store.id, product.id),
+    getCustomerSession(store.id),
   ]);
 
   const commerce = storeCommerceInfo(store);
@@ -194,10 +196,8 @@ export default async function StoreProductPage({
             />
             {store.whatsapp && (
               <WhatsappProductCta
-                whatsapp={store.whatsapp}
-                productName={product.name}
-                priceLabel={formatBRL(basePrice)}
-                productUrl={`${storeOrigin(store)}${base}/produto/${product.id}`}
+                href={`${base}/produto/${product.id}/comprar-whatsapp`}
+                loggedIn={customerSession !== null}
               />
             )}
           </div>
