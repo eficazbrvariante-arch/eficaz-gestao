@@ -107,6 +107,15 @@ model Tenant {
   visitorSessions VisitorSession[]
   analyticsEvents AnalyticsEvent[]
 
+  // Central de Atendimento WhatsApp (ver bloco "Fase 9" no fim do arquivo).
+  whatsAppIntegration   WhatsAppIntegration?
+  whatsAppContacts      WhatsAppContact[]
+  whatsAppConversations WhatsAppConversation[]
+  whatsAppMessages      WhatsAppMessage[]
+  whatsAppQueues        WhatsAppQueue[]
+  whatsAppTags          WhatsAppTag[]
+  whatsAppQuickReplies  WhatsAppQuickReply[]
+
   @@map("tenants")
 }
 
@@ -179,6 +188,9 @@ model User {
   creditMovements      CustomerCreditMovement[]
   devicesRequested     Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged Device[]                 @relation("DeviceStatusChangedBy")
+
+  whatsAppConversationsAssigned WhatsAppConversation[] @relation("WhatsAppConversationAssignedTo")
+  whatsAppMessagesSent          WhatsAppMessage[]      @relation("WhatsAppMessageSender")
 
   @@map("users")
 }
@@ -524,13 +536,14 @@ model Customer {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sales           Sale[]
-  orders          Order[]
-  creditMovements CustomerCreditMovement[]
-  repairOrders    RepairOrder[]
-  sessions        CustomerSession[]
-  reviews         ProductReview[]
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales            Sale[]
+  orders           Order[]
+  creditMovements  CustomerCreditMovement[]
+  repairOrders     RepairOrder[]
+  sessions         CustomerSession[]
+  reviews          ProductReview[]
+  whatsAppContacts WhatsAppContact[]
 
   @@unique([tenantId, username])
   @@index([tenantId, name])
@@ -1079,4 +1092,219 @@ model AnalyticsEvent {
   @@index([tenantId, type, createdAt])
   @@index([sessionId, type])
   @@map("analytics_events")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 9 — Central de Atendimento WhatsApp
+// ---------------------------------------------------------------------------
+
+enum WhatsAppIntegrationStatus {
+  /// Credenciais salvas, ainda não confirmadas por um envio/webhook bem-sucedido.
+  PENDING
+  ACTIVE
+  /// Última tentativa de uso falhou (ver `lastErrorMessage`).
+  ERROR
+  /// Desligado manualmente pelo lojista, sem apagar a configuração.
+  DISABLED
+}
+
+/// Uma linha por tenant (1:1). Não existe até o lojista configurar a integração —
+/// a ausência da linha já significa "não configurado", sem precisar de um status
+/// à parte. O segredo do App da Meta e o verify token do webhook são globais
+/// (uma única App/callback URL para todos os tenants — ver `WHATSAPP_APP_SECRET`
+/// e `WHATSAPP_WEBHOOK_VERIFY_TOKEN`), só o número/token de cada loja mora aqui.
+model WhatsAppIntegration {
+  id                 String                    @id @default(cuid())
+  tenantId           String                    @unique
+  /// ID do número de telefone na Graph API — usado para resolver o tenant a
+  /// partir do payload do webhook (globalmente único na Meta).
+  phoneNumberId      String                    @unique
+  wabaId             String
+  displayPhoneNumber String?
+  /// Cifrado com AES-256-GCM (ver `token-crypto.ts`) — nunca gravado em texto puro.
+  accessToken        String
+  status             WhatsAppIntegrationStatus @default(PENDING)
+  lastErrorMessage   String?
+  connectedAt        DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_integrations")
+}
+
+/// Identidade do número de WhatsApp que fala com a loja. Estável ao longo do
+/// tempo, diferente de `WhatsAppConversation` (o atendimento em si, que pode
+/// ser fechado e reaberto várias vezes com o mesmo contato).
+model WhatsAppContact {
+  id          String   @id @default(cuid())
+  tenantId    String
+  /// Formato E.164 (ex.: "5511999998888"), sem "+". Normalizado na Fase 2,
+  /// quando o número chega pela primeira vez via webhook.
+  phoneE164   String
+  /// Nome de perfil informado pelo WhatsApp — não é confiável para exibição
+  /// oficial, é só o que a Meta manda (pode vir vazio ou qualquer coisa).
+  profileName String?
+  customerId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer      Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  conversations WhatsAppConversation[]
+
+  @@unique([tenantId, phoneE164])
+  @@index([tenantId, customerId])
+  @@map("whatsapp_contacts")
+}
+
+enum WhatsAppConversationStatus {
+  OPEN
+  /// "Arquivada" — pode ser reaberta; não é exclusão.
+  CLOSED
+}
+
+model WhatsAppConversation {
+  id                 String                     @id @default(cuid())
+  tenantId           String
+  contactId          String
+  status             WhatsAppConversationStatus @default(OPEN)
+  queueId            String?
+  assignedUserId     String?
+  /// Desnormalizado a partir da última `WhatsAppMessage`, para a lista de
+  /// conversas não precisar de subquery a cada render (mesmo raciocínio de
+  /// `Product.avgRating`).
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  unreadCount        Int                        @default(0)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact      WhatsAppContact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  queue        WhatsAppQueue?            @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  assignedUser User?                     @relation("WhatsAppConversationAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages     WhatsAppMessage[]
+  tags         WhatsAppConversationTag[]
+
+  @@index([tenantId, status, lastMessageAt])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, queueId])
+  @@map("whatsapp_conversations")
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  TEMPLATE
+  INTERACTIVE
+  /// Qualquer tipo que a Meta mande e o sistema ainda não saiba interpretar —
+  /// o processamento nunca falha por isso, só cai aqui.
+  UNKNOWN
+}
+
+enum WhatsAppMessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  /// Estado de toda mensagem INBOUND assim que persistida.
+  RECEIVED
+}
+
+model WhatsAppMessage {
+  id             String                   @id @default(cuid())
+  tenantId       String
+  conversationId String
+  direction      WhatsAppMessageDirection
+  /// `wamid` da Meta. Chave de idempotência do webhook (Fase 2) — evita
+  /// gravar a mesma mensagem duas vezes num reenvio.
+  externalId     String?
+  type           WhatsAppMessageType
+  textBody       String?
+  mediaUrl       String?
+  mediaMimeType  String?
+  status         WhatsAppMessageStatus    @default(PENDING)
+  errorMessage   String?
+  /// Nulo em mensagens INBOUND e em qualquer automação futura — uma sugestão
+  /// de IA só vira mensagem quando um atendente revisa e aprova (nunca envia
+  /// sozinha), então toda linha OUTBOUND sempre tem um `senderUserId` humano.
+  senderUserId   String?
+  createdAt      DateTime                 @default(now())
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser   User?                @relation("WhatsAppMessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, conversationId, createdAt])
+  @@map("whatsapp_messages")
+}
+
+model WhatsAppQueue {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations WhatsAppConversation[]
+
+  @@unique([tenantId, name])
+  @@map("whatsapp_queues")
+}
+
+model WhatsAppTag {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations WhatsAppConversationTag[]
+
+  @@unique([tenantId, name])
+  @@map("whatsapp_tags")
+}
+
+/// Tabela de junção conversa↔etiqueta (muitos-para-muitos).
+model WhatsAppConversationTag {
+  conversationId String
+  tagId          String
+  createdAt      DateTime @default(now())
+
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          WhatsAppTag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, tagId])
+  @@map("whatsapp_conversation_tags")
+}
+
+model WhatsAppQuickReply {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// Atalho digitado no chat (ex.: "pix"), sem a barra "/".
+  shortcut  String
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shortcut])
+  @@map("whatsapp_quick_replies")
 }
