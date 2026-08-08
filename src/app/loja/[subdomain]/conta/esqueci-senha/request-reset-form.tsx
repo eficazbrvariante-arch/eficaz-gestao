@@ -15,6 +15,7 @@ import { FormBanner } from "@/components/ui/form-banner";
 
 export function RequestResetForm({ subdomain }: { subdomain: string }) {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
+  const [sent, setSent] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const {
@@ -33,9 +34,12 @@ export function RequestResetForm({ subdomain }: { subdomain: string }) {
         setFeedback({ type: "error", message: result.error });
       } else if (result?.success) {
         setFeedback({ type: "success", message: result.success });
+        setSent(true);
       }
     });
   };
+
+  const { onChange: onEmailChange, ...emailField } = register("email");
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -43,17 +47,26 @@ export function RequestResetForm({ subdomain }: { subdomain: string }) {
 
       <div className="mb-6">
         <Label htmlFor="email">E-mail cadastrado</Label>
-        <Input id="email" type="email" autoComplete="email" {...register("email")} />
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          {...emailField}
+          onChange={(e) => {
+            setSent(false);
+            onEmailChange(e);
+          }}
+        />
         <FieldError message={errors.email?.message} />
       </div>
 
       <button
         type="submit"
-        disabled={isPending}
+        disabled={isPending || sent}
         className="w-full rounded-md px-5 py-3 text-sm font-medium text-white disabled:bg-slate-400"
-        style={isPending ? undefined : { backgroundColor: "var(--store-primary)" }}
+        style={isPending || sent ? undefined : { backgroundColor: "var(--store-primary)" }}
       >
-        {isPending ? "Enviando..." : "Enviar instruções"}
+        {isPending ? "Enviando..." : sent ? "Enviado" : "Enviar instruções"}
       </button>
     </form>
   );

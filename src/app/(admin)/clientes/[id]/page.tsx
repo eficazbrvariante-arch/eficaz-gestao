@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { CustomerForm } from "../customer-form";
+import { ResetCustomerPasswordPanel } from "../reset-password-panel";
 
 export default async function FichaClientePage({
   params,
@@ -175,6 +176,16 @@ export default async function FichaClientePage({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mb-6 max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Acesso à loja online</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          {customer.username
+            ? `Login: @${customer.username}`
+            : "Cliente sem login na loja online."}
+        </p>
+        <ResetCustomerPasswordPanel customerId={customer.id} hasLogin={customer.username !== null} />
       </div>
 
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

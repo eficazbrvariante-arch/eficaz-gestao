@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
@@ -151,6 +152,42 @@ export async function requestCustomerPasswordReset(
   });
 
   return { rawToken, name: customer.name, email: customer.email };
+}
+
+/** Senha temporária legível para o lojista repassar por telefone/WhatsApp. */
+export function generateRandomPassword(): string {
+  return randomBytes(9).toString("base64url");
+}
+
+export type AdminSetCustomerPasswordResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Redefinição de senha pelo lojista (ficha do cliente no admin) — para
+ * quando o cliente perdeu acesso e liga pedindo ajuda. Diferente de
+ * `changeCustomerPassword` (cliente logado trocando a própria senha) e de
+ * `resetCustomerPassword` (token por e-mail): aqui a autorização é a sessão
+ * do funcionário no admin, checada pelo chamador (`requireUser`) — este
+ * módulo só confere que o cliente pertence ao tenant e tem login habilitado.
+ */
+export async function adminSetCustomerPassword(
+  tenantId: string,
+  customerId: string,
+  newPassword: string
+): Promise<AdminSetCustomerPasswordResult> {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { username: true },
+  });
+  if (!customer) return { ok: false, error: "Cliente não encontrado." };
+  if (!customer.username) {
+    return { ok: false, error: "Este cliente não tem login na loja online." };
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, PASSWORD_COST);
+  await prisma.customer.update({ where: { id: customerId }, data: { passwordHash } });
+  await revokeAllCustomerSessions(customerId);
+
+  return { ok: true };
 }
 
 export type ChangeCustomerPasswordResult = { ok: true } | { ok: false; error: string };
