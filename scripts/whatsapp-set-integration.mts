@@ -12,7 +12,9 @@
  *     --access-token=EAAG... \
  *     [--display-phone="+55 11 99999-8888"]
  */
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: ".env.local" });
+loadEnv();
 import { prisma } from "../src/lib/prisma";
 import { encryptSecret } from "../src/modules/whatsapp/token-crypto";
 

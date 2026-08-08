@@ -8,7 +8,9 @@
  * Uso:
  *   npx tsx scripts/limpar-sessoes-expiradas.mts
  */
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: ".env.local" });
+loadEnv();
 import { prisma } from "../src/lib/prisma";
 
 const SESSION_RETENTION_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias após expirar/revogar

@@ -10,7 +10,9 @@
  *   npx tsx scripts/limpar-dados-demo.mts              → só mostra o que seria apagado
  *   npx tsx scripts/limpar-dados-demo.mts --confirmar  → apaga de verdade
  */
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: ".env.local" });
+loadEnv();
 import { prisma } from "../src/lib/prisma";
 
 /** E-mails criados pelo seed. Nenhum outro usuário é tocado. */

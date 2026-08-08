@@ -11,7 +11,9 @@
  *   npx tsx scripts/corrigir-promocao-zerada.mts              → só lista os afetados
  *   npx tsx scripts/corrigir-promocao-zerada.mts --confirmar  → zera promoPrice (NULL) e recalcula catalogPrice
  */
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: ".env.local" });
+loadEnv();
 import { prisma } from "../src/lib/prisma";
 
 const confirmado = process.argv.includes("--confirmar");

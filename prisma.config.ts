@@ -1,5 +1,10 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
 import { defineConfig } from "prisma/config";
+
+// Mesma precedencia do Next.js: .env.local primeiro (nao sobrescrito depois),
+// .env como fallback para quem nao tiver .env.local.
+loadEnv({ path: ".env.local" });
+loadEnv();
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
