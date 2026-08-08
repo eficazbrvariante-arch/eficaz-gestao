@@ -59,20 +59,12 @@ export async function StoreHeader({
               @{session.username}
             </Link>
           ) : (
-            <>
-              <Link
-                href={`${base}/conta/entrar`}
-                className="rounded-md border border-slate-300 px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
-              >
-                Entrar
-              </Link>
-              <Link
-                href={`${base}/conta/entrar?modo=cadastro`}
-                className="rounded-md border border-slate-300 px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
-              >
-                Cadastrar
-              </Link>
-            </>
+            <Link
+              href={`${base}/conta/entrar`}
+              className="rounded-md border border-slate-300 px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
+            >
+              Entrar
+            </Link>
           )}
           <CartBadge href={`${base}/carrinho`} />
         </div>
