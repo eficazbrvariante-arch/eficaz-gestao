@@ -16,6 +16,7 @@ export function AddToCart({
   productId,
   productName,
   basePrice,
+  ignoreVariantAdjustment = false,
   stockQty,
   imageUrl,
   variants,
@@ -24,6 +25,10 @@ export function AddToCart({
   productId: string;
   productName: string;
   basePrice: number;
+  /** A Oferta Relâmpago do dia é um preço fixo, igual pra qualquer variante —
+   * quando verdadeiro, o ajuste de preço da variante não é somado (mesma
+   * regra de `resolveEffectiveUnitPrice`, usada do lado do servidor). */
+  ignoreVariantAdjustment?: boolean;
   stockQty: number;
   imageUrl: string | null;
   variants: Variant[];
@@ -42,7 +47,9 @@ export function AddToCart({
   const [capped, setCapped] = useState(false);
 
   const variant = variants.find((v) => v.id === variantId) ?? null;
-  const unitPrice = Math.round((basePrice + (variant?.priceAdjustment ?? 0)) * 100) / 100;
+  const unitPrice = ignoreVariantAdjustment
+    ? basePrice
+    : Math.round((basePrice + (variant?.priceAdjustment ?? 0)) * 100) / 100;
   const available = variant ? variant.stockQty : stockQty;
 
   function handleAdd() {
@@ -88,7 +95,7 @@ export function AddToCart({
                   ].join(" ")}
                 >
                   {v.name}
-                  {v.priceAdjustment !== 0 && (
+                  {!ignoreVariantAdjustment && v.priceAdjustment !== 0 && (
                     <span className="ml-1 text-xs">
                       ({v.priceAdjustment > 0 ? "+" : ""}
                       {formatBRL(v.priceAdjustment)})

@@ -47,7 +47,14 @@ function round2(value: number): number {
  *
  * Prioridade: Oferta Relâmpago do dia (`flashOverride`, se bater com este
  * produto) > promoção "evergreen" do produto, só se `isPromoActive` > preço
- * de venda normal. Depois soma o ajuste da variante, se houver.
+ * de venda normal.
+ *
+ * A Oferta Relâmpago é um preço fixo por produto, cadastrado pelo lojista
+ * como "R$X hoje" — igual para qualquer variante escolhida. Por isso, quando
+ * `flashOverride` bate, o ajuste de preço da variante NÃO é somado (senão o
+ * valor anunciado mudaria dependendo da opção clicada, o que o lojista não
+ * configurou nem espera). Fora da oferta relâmpago, o ajuste de variante
+ * continua somado normalmente sobre o preço promocional/de venda.
  */
 export function resolveEffectiveUnitPrice(
   product: {
@@ -60,11 +67,9 @@ export function resolveEffectiveUnitPrice(
   flashOverride: { promoPrice: number } | null,
   now: Date = new Date()
 ): number {
+  if (flashOverride) return round2(flashOverride.promoPrice);
+
   const promoActive = isPromoActive(product.promoPrice, product.promoStartedAt, product.promoEndsAt, now);
-  const basePrice = flashOverride
-    ? flashOverride.promoPrice
-    : promoActive
-      ? product.promoPrice!
-      : product.salePrice;
+  const basePrice = promoActive ? product.promoPrice! : product.salePrice;
   return round2(basePrice + variantPriceAdjustment);
 }

@@ -181,6 +181,7 @@ export default async function StoreProductPage({
               productId={product.id}
               productName={product.name}
               basePrice={basePrice}
+              ignoreVariantAdjustment={product.hasFlashOverride}
               stockQty={product.stockQty}
               imageUrl={product.images[0]?.url ?? null}
               variants={product.variants.map((v) => ({

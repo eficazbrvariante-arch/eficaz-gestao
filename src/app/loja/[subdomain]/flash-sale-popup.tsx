@@ -73,7 +73,10 @@ export function FlashSalePopup({
     hasVariants ? deal.variants[0].id : null
   );
   const variant = deal.variants.find((v) => v.id === variantId) ?? null;
-  const unitPrice = Math.round((deal.promoPrice + (variant?.priceAdjustment ?? 0)) * 100) / 100;
+  // A Oferta Relâmpago é um preço fixo ("R$X hoje"), igual pra qualquer
+  // variante — nunca soma o ajuste de preço dela (mesma regra de
+  // `resolveEffectiveUnitPrice`, usada do lado do servidor).
+  const unitPrice = deal.promoPrice;
 
   const suppressed =
     pathname.includes("/carrinho") ||
@@ -282,7 +285,7 @@ export function FlashSalePopup({
 
             <div className="mt-2">
               <span className="block text-xs text-white/60 line-through">
-                {formatBRL(deal.basePrice + (variant?.priceAdjustment ?? 0))}
+                {formatBRL(deal.basePrice)}
               </span>
               <span className="block text-3xl font-extrabold leading-tight sm:text-4xl">
                 {formatBRL(unitPrice)}
@@ -338,17 +341,25 @@ export function FlashSalePopup({
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          className="mt-4 w-full rounded-xl bg-emerald-600 py-3.5 text-base font-extrabold text-white shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-500 hover:shadow-emerald-900/40 active:translate-y-0 active:scale-[0.98]"
-        >
-          Adicionar ao carrinho
-        </button>
+        {addCapped ? (
+          <Link
+            href={`${base}/carrinho`}
+            className="mt-4 block w-full rounded-xl bg-emerald-600 py-3.5 text-center text-base font-extrabold text-white shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-500 hover:shadow-emerald-900/40 active:translate-y-0 active:scale-[0.98]"
+          >
+            Ver carrinho
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            className="mt-4 w-full rounded-xl bg-emerald-600 py-3.5 text-base font-extrabold text-white shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-500 hover:shadow-emerald-900/40 active:translate-y-0 active:scale-[0.98]"
+          >
+            {added ? "Adicionado ✓" : "Adicionar ao carrinho"}
+          </button>
+        )}
 
-        {added && (
+        {added && !addCapped && (
           <p className="mt-2 text-center text-xs text-white/90">
-            Adicionado ao carrinho.{" "}
             <Link href={`${base}/carrinho`} className="font-semibold underline">
               Ver carrinho
             </Link>

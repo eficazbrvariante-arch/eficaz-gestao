@@ -64,9 +64,10 @@ describe("resolveEffectiveUnitPrice — fonte única de preço, usada por create
     expect(resolveEffectiveUnitPrice(baseProduct, 15, null)).toBe(115);
   });
 
-  it("soma o ajuste de variante em cima do preço da Oferta Relâmpago", () => {
+  it("NÃO soma o ajuste de variante quando a Oferta Relâmpago está ativa — é um preço fixo, igual pra qualquer variante", () => {
     const product = { ...baseProduct, promoPrice: 80 };
-    expect(resolveEffectiveUnitPrice(product, 10, { promoPrice: 30 })).toBe(40);
+    expect(resolveEffectiveUnitPrice(product, 10, { promoPrice: 30 })).toBe(30);
+    expect(resolveEffectiveUnitPrice(product, -5, { promoPrice: 30 })).toBe(30);
   });
 
   it("arredonda o resultado para duas casas decimais", () => {

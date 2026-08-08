@@ -606,6 +606,10 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
       Boolean(flashOverride) ||
       (Boolean(product.promoEndsAt) &&
         isPromoActive(rawPromoPrice, product.promoStartedAt, product.promoEndsAt)),
+    /** Diferente de `isFlashDeal` (que também é verdadeiro pra promoção normal com prazo):
+     * só verdadeiro quando o preço vem especificamente da Oferta Relâmpago do dia — é o que
+     * decide se o ajuste de preço da variante deve ou não ser somado (ver `AddToCart`). */
+    hasFlashOverride: Boolean(flashOverride),
     soldQty: soldQuantities.get(product.id) ?? 0,
     strikePrice: hasGenuineStrike ? lowest! : null,
     discountPercent: hasGenuineStrike ? Math.round(((lowest! - current) / lowest!) * 100) : null,
