@@ -8,6 +8,7 @@ import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { LogoutButton } from "./logout-button";
 import { ReviewForm } from "./review-form";
+import { ChangePasswordForm } from "./change-password-form";
 
 export default async function CustomerAccountPage({
   params,
@@ -82,6 +83,13 @@ export default async function CustomerAccountPage({
           ))}
         </ul>
       )}
+
+      <details className="mt-8 border-t border-slate-200 pt-6">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900">Alterar senha</summary>
+        <div className="mt-4">
+          <ChangePasswordForm subdomain={subdomain} />
+        </div>
+      </details>
     </div>
   );
 }

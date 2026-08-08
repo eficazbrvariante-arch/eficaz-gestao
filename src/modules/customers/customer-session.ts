@@ -145,3 +145,17 @@ export async function destroyCustomerSession(tenantId: string, subdomain: string
   await revokeCurrentSession(tenantId);
   await clearSessionCookie(subdomain);
 }
+
+/**
+ * Revoga TODAS as sessões ativas de uma conta — diferente de
+ * `revokeCurrentSession` (só a do cookie atual). Usada quando a senha é
+ * redefinida (`resetCustomerPassword`): se alguém tinha uma sessão de antes
+ * (ex.: acesso indevido), a troca de senha derruba esse acesso também, em
+ * qualquer navegador.
+ */
+export async function revokeAllCustomerSessions(customerId: string) {
+  await prisma.customerSession.updateMany({
+    where: { customerId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -51,6 +52,12 @@ function LoginPanel({ subdomain, returnTo }: { subdomain: string; returnTo: stri
         <Label htmlFor="password">Senha</Label>
         <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
         <FieldError message={errors.password?.message} />
+        <Link
+          href={`/loja/${subdomain}/conta/esqueci-senha`}
+          className="mt-1 inline-block text-xs text-slate-500 hover:text-slate-900 hover:underline"
+        >
+          Esqueci minha senha
+        </Link>
       </div>
 
       <FormBanner message={serverError} variant="error" />

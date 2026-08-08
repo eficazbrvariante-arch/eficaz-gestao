@@ -7,6 +7,7 @@ import { AuthError, CredentialsSignin } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { signIn } from "@/lib/auth";
 import { generateResetToken, hashToken } from "@/lib/tokens";
+import { sendEmail } from "@/lib/email";
 import {
   loginSchema,
   requestPasswordResetSchema,
@@ -179,9 +180,16 @@ export async function requestPasswordResetAction(input: RequestPasswordResetInpu
 
     const resetUrl = `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/redefinir-senha/${rawToken}`;
 
-    // TODO(fase 1): integrar um provedor de e-mail transacional (ex.: Resend) e enviar `resetUrl`.
-    // Enquanto isso, o link é registrado no log do servidor para viabilizar testes locais.
-    console.log(`[recuperação de senha] link para ${user.email}: ${resetUrl}`);
+    await sendEmail({
+      to: user.email,
+      subject: "Redefinição de senha — Eficaz Gestão",
+      html: `
+        <p>Olá, ${user.name}.</p>
+        <p>Recebemos um pedido para redefinir a senha da sua conta no Eficaz Gestão.</p>
+        <p><a href="${resetUrl}">Clique aqui para escolher uma nova senha</a>. O link expira em 1 hora.</p>
+        <p>Se você não pediu essa redefinição, pode ignorar este e-mail.</p>
+      `,
+    });
   }
 
   // Mensagem genérica sempre, para não revelar se o e-mail existe na base.

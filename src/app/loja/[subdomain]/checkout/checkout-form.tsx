@@ -373,6 +373,14 @@ export function CheckoutForm({
                     <p className="mt-1 text-xs text-slate-500">Mínimo de 8 caracteres.</p>
                   )}
                   <FieldError message={errors.auth?.password?.message} />
+                  {authTab === "login" && (
+                    <Link
+                      href={`${base}/conta/esqueci-senha`}
+                      className="mt-1 inline-block text-xs text-slate-500 hover:text-slate-900 hover:underline"
+                    >
+                      Esqueci minha senha
+                    </Link>
+                  )}
                 </div>
               </div>
             )}

@@ -82,6 +82,35 @@ export const registerCustomerSchema = z.object({
 });
 export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
 
+export const requestCustomerPasswordResetSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Informe um e-mail válido"),
+});
+export type RequestCustomerPasswordResetInput = z.infer<typeof requestCustomerPasswordResetSchema>;
+
+export const changeCustomerPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Informe a senha atual"),
+    newPassword: passwordSchema,
+    confirmNewPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "As senhas não conferem",
+    path: ["confirmNewPassword"],
+  });
+export type ChangeCustomerPasswordInput = z.infer<typeof changeCustomerPasswordSchema>;
+
+export const resetCustomerPasswordSchema = z
+  .object({
+    token: z.string().min(1),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "As senhas não conferem",
+    path: ["confirmPassword"],
+  });
+export type ResetCustomerPasswordInput = z.infer<typeof resetCustomerPasswordSchema>;
+
 /**
  * `returnTo` só é aceito se for um caminho relativo dentro da própria loja —
  * nunca uma URL externa. Usado depois do login de cliente feito fora do

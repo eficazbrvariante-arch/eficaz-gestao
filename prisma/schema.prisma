@@ -487,37 +487,42 @@ model StockMovement {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id             String    @id @default(cuid())
-  tenantId       String
-  name           String
-  document       String?
-  phone          String?
-  whatsapp       String?
-  email          String?
-  addressStreet  String?
-  addressNumber  String?
-  addressCity    String?
-  addressState   String?
-  addressZip     String?
-  notes          String?
+  id                  String    @id @default(cuid())
+  tenantId            String
+  name                String
+  document            String?
+  phone               String?
+  whatsapp            String?
+  email               String?
+  addressStreet       String?
+  addressNumber       String?
+  addressCity         String?
+  addressState        String?
+  addressZip          String?
+  notes               String?
   /// Reservado para ações de relacionamento futuras (ex.: mensagem de aniversário).
-  birthDate      DateTime?
+  birthDate           DateTime?
   // Totais desnormalizados, mantidos pela transação de venda/cancelamento
   // para evitar recalcular a cada listagem.
-  totalSpent     Decimal   @default(0) @db.Decimal(12, 2)
-  lastPurchaseAt DateTime?
+  totalSpent          Decimal   @default(0) @db.Decimal(12, 2)
+  lastPurchaseAt      DateTime?
   /// Saldo de crédito de loja (gerado por cancelamento, usável como forma de
   /// pagamento numa venda futura). Mantido pela mesma transação que gera ou
   /// resgata o crédito — nunca recalculado a partir do histórico.
-  creditBalance  Decimal   @default(0) @db.Decimal(12, 2)
+  creditBalance       Decimal   @default(0) @db.Decimal(12, 2)
   /// Login da loja pública (checkout com conta) — nulo para clientes cadastrados
   /// manualmente pelo lojista, que nunca ganharam login. Formato exibido como
   /// "@handle", guardado sem o "@". Único por loja, não globalmente.
-  username       String?
-  passwordHash   String?
-  lastLoginAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  username            String?
+  passwordHash        String?
+  lastLoginAt         DateTime?
+  /// Token de recuperação de senha (hash SHA-256, nunca o valor em claro —
+  /// mesmo padrão de `User.resetToken`). Único globalmente: é só uma chave
+  /// de busca, não precisa (nem faz sentido) ser único por loja.
+  resetToken          String?   @unique
+  resetTokenExpiresAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sales           Sale[]
