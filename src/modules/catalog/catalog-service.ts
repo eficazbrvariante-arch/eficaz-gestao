@@ -554,7 +554,15 @@ export async function getCatalogProduct(tenantId: string, productId: string) {
         select: { id: true, name: true, priceAdjustment: true, stockQty: true },
       },
       reviews: {
-        select: { id: true, authorName: true, rating: true, comment: true, source: true, createdAt: true },
+        select: {
+          id: true,
+          authorName: true,
+          rating: true,
+          comment: true,
+          source: true,
+          customerId: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 20,
       },

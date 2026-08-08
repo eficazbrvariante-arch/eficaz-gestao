@@ -223,6 +223,11 @@ export default async function StoreProductPage({
                         ))}
                       </div>
                       <span className="text-sm font-medium text-slate-900">{review.authorName}</span>
+                      {review.customerId && (
+                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                          Compra verificada
+                        </span>
+                      )}
                       <span className="text-xs text-slate-500">{formatDateTime(review.createdAt)}</span>
                     </div>
                     {review.comment && (
