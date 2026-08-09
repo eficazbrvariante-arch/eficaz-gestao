@@ -15,6 +15,9 @@
     "limpar:sessoes": "tsx scripts/limpar-sessoes-expiradas.mts",
     "corrigir:promocao-zerada": "tsx scripts/corrigir-promocao-zerada.mts",
     "whatsapp:set-integration": "tsx scripts/whatsapp-set-integration.mts",
+    "check:repo": "tsx scripts/check-repo-status.mts",
+    "scan:secrets": "tsx scripts/scan-secrets.mts",
+    "check:deploy": "tsx scripts/post-deploy-check.mts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
