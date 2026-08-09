@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { FormBanner } from "@/components/ui/form-banner";
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
 import { searchCustomersAction } from "../clientes/actions";
+import { SellerPickerModal } from "./seller-picker-modal";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -69,6 +70,14 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     { id: 1, method: "CASH", amount: 0 },
   ]);
   const [cashReceived, setCashReceived] = useState<number | "">("");
+
+  // Vendedor da venda: nunca inferido de quem operou o caixa — é sempre
+  // escolhido explicitamente aqui, e revalidado no servidor em
+  // `createSaleAction`. Enquanto não houver um vendedor, a seção de
+  // pagamento fica desabilitada (ver `availableMethods`/inputs abaixo).
+  const [sellerId, setSellerId] = useState<string | null>(null);
+  const [sellerName, setSellerName] = useState<string | null>(null);
+  const [sellerModalOpen, setSellerModalOpen] = useState(false);
 
   // Sugestões em tempo real conforme o operador digita (busca parcial pelo
   // nome). Separado do Enter/leitor de código de barras, que continua
@@ -240,6 +249,10 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
       setError("Adicione pelo menos um produto.");
       return;
     }
+    if (!sellerId) {
+      setSellerModalOpen(true);
+      return;
+    }
     if (Math.abs(remaining) > 0.005) {
       setError(
         remaining > 0
@@ -262,6 +275,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     startTransition(async () => {
       const result = await createSaleAction({
         customerId: customer?.id ?? "",
+        sellerId,
         items: cart.map((line) => ({
           productId: line.productId,
           variantId: line.variantId ?? "",
@@ -587,13 +601,36 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
               </div>
             </div>
 
+            <div className="mb-3">
+              <Label className="mb-1">Vendedor</Label>
+              {sellerName ? (
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                  <span className="text-sm font-medium text-slate-900">{sellerName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSellerModalOpen(true)}
+                    className="text-xs font-medium text-slate-700 hover:underline"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              ) : (
+                <Button type="button" variant="secondary" onClick={() => setSellerModalOpen(true)}>
+                  Selecionar vendedor
+                </Button>
+              )}
+            </div>
+
+            {/* A seleção do vendedor acontece antes da forma de pagamento: sem
+                vendedor escolhido, os campos abaixo ficam desabilitados. */}
             <div className="mb-3 space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="mb-0">Formas de pagamento</Label>
                 <button
                   type="button"
                   onClick={addPaymentLine}
-                  className="text-xs font-medium text-slate-700 hover:underline"
+                  disabled={!sellerId}
+                  className="text-xs font-medium text-slate-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
                 >
                   + Dividir pagamento
                 </button>
@@ -603,6 +640,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                 <div key={payment.id} className="flex gap-2">
                   <Select
                     value={payment.method}
+                    disabled={!sellerId}
                     onChange={(e) =>
                       updatePayment(payment.id, { method: e.target.value as PaymentMethod })
                     }
@@ -618,11 +656,12 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                       type="number"
                       step="0.01"
                       min={0}
+                      disabled={!sellerId}
                       value={payment.amount || ""}
                       onChange={(e) =>
                         updatePayment(payment.id, { amount: Number(e.target.value) || 0 })
                       }
-                      className="w-28 shrink-0 rounded-md border border-slate-300 px-2 text-right text-sm"
+                      className="w-28 shrink-0 rounded-md border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50"
                     />
                   ) : (
                     <div className="flex w-28 shrink-0 items-center justify-end rounded-md bg-slate-50 px-2 text-sm font-medium text-slate-900">
@@ -641,7 +680,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                 </div>
               ))}
 
-              {Math.abs(remaining) > 0.005 && (
+              {sellerId && Math.abs(remaining) > 0.005 && (
                 <p className={remaining > 0 ? "text-xs text-amber-600" : "text-xs text-red-600"}>
                   {remaining > 0
                     ? `Falta distribuir ${formatBRL(remaining)}`
@@ -658,12 +697,13 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                   type="number"
                   step="0.01"
                   min={0}
+                  disabled={!sellerId}
                   value={cashReceived}
                   onChange={(e) =>
                     setCashReceived(e.target.value === "" ? "" : Number(e.target.value))
                   }
                   placeholder={String(cashPortion.toFixed(2))}
-                  className="mb-2 h-9 w-full rounded border border-slate-300 px-2 text-right text-sm"
+                  className="mb-2 h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50"
                 />
                 <div className="flex justify-between text-sm font-medium">
                   <span className="text-slate-700">Troco</span>
@@ -687,6 +727,16 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
           </div>
         </div>
       </div>
+
+      <SellerPickerModal
+        open={sellerModalOpen}
+        onClose={() => setSellerModalOpen(false)}
+        onSelect={(seller) => {
+          setSellerId(seller.id);
+          setSellerName(seller.name);
+          setSellerModalOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -138,3 +138,25 @@ export function canQuickEditStockQty(role: UserRole) {
 export function canResetStockCheckQueue(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
+
+/**
+ * Corrigir manualmente uma marcação de ponto de outro colaborador. O próprio
+ * colaborador nunca pode alterar o que já registrou — só quem tem este papel.
+ */
+export function canCorrectAttendance(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
+ * Registrar o próprio ponto sem selfie (câmera indisponível/sem permissão),
+ * mediante motivo obrigatório. Bater ponto em si é universal a qualquer
+ * usuário autenticado — esta função só libera a exceção da foto.
+ */
+export function canWaiveAttendanceSelfie(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/** Ver o painel de ponto de todos os colaboradores (presença, atrasos, horas). */
+export function canViewAttendancePanel(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}

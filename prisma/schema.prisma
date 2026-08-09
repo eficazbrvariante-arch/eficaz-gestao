@@ -85,27 +85,33 @@ model Tenant {
   saleSequence           Int                  @default(0)
   orderSequence          Int                  @default(0)
   repairOrderSequence    Int                  @default(0)
+  /// Reservado para jornada/escala/tolerância de atraso/banco de horas
+  /// configuráveis por empresa (fase futura). Formato livre, não interpretado
+  /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
+  attendanceSettings     Json?
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
-  users           User[]
-  categories      Category[]
-  brands          Brand[]
-  suppliers       Supplier[]
-  products        Product[]
-  stockMovements  StockMovement[]
-  customers       Customer[]
-  cashRegisters   CashRegister[]
-  cashMovements   CashMovement[]
-  sales           Sale[]
-  orders          Order[]
-  deliveryZones   DeliveryZone[]
-  auditLogs       AuditLog[]
-  repairOrders    RepairOrder[]
-  creditMovements CustomerCreditMovement[]
-  devices         Device[]
-  visitorSessions VisitorSession[]
-  analyticsEvents AnalyticsEvent[]
+  users                 User[]
+  categories            Category[]
+  brands                Brand[]
+  suppliers             Supplier[]
+  products              Product[]
+  stockMovements        StockMovement[]
+  customers             Customer[]
+  cashRegisters         CashRegister[]
+  cashMovements         CashMovement[]
+  sales                 Sale[]
+  orders                Order[]
+  deliveryZones         DeliveryZone[]
+  auditLogs             AuditLog[]
+  repairOrders          RepairOrder[]
+  creditMovements       CustomerCreditMovement[]
+  devices               Device[]
+  visitorSessions       VisitorSession[]
+  analyticsEvents       AnalyticsEvent[]
+  attendanceEntries     AttendanceEntry[]
+  attendanceCorrections AttendanceCorrection[]
 
   // Central de Atendimento WhatsApp (ver bloco "Fase 9" no fim do arquivo).
   whatsAppIntegration   WhatsAppIntegration?
@@ -183,11 +189,16 @@ model User {
   registersClosed      CashRegister[]           @relation("CashRegisterClosedBy")
   salesMade            Sale[]                   @relation("SaleSeller")
   salesCancelled       Sale[]                   @relation("SaleCancelledBy")
+  salesAssisted        Sale[]                   @relation("SaleAssistantSeller")
   auditLogs            AuditLog[]
   repairOrdersCreated  RepairOrder[]            @relation("RepairOrderCreatedBy")
   creditMovements      CustomerCreditMovement[]
   devicesRequested     Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged Device[]                 @relation("DeviceStatusChangedBy")
+
+  attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
+  attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
+  attendanceCorrectionsMade AttendanceCorrection[] @relation("AttendanceCorrectionBy")
 
   whatsAppConversationsAssigned WhatsAppConversation[] @relation("WhatsAppConversationAssignedTo")
   whatsAppMessagesSent          WhatsAppMessage[]      @relation("WhatsAppMessageSender")
@@ -252,8 +263,85 @@ model Device {
   requestedBy     User?  @relation("DeviceRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
   statusChangedBy User?  @relation("DeviceStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
 
+  attendanceEntries AttendanceEntry[]
+
   @@index([tenantId, status])
   @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Controle de Ponto
+// ---------------------------------------------------------------------------
+
+enum AttendanceEntryType {
+  CLOCK_IN // Entrada
+  BREAK_START // Saída para intervalo
+  BREAK_END // Retorno do intervalo
+  CLOCK_OUT // Saída / fim de expediente
+}
+
+/// Uma marcação de ponto. Imutável por design: nunca sofre UPDATE depois de
+/// criada — qualquer correção vira uma linha nova em `AttendanceCorrection`,
+/// vinculada a esta (ver `resolveEffectiveAttendanceEntry`). O tipo nunca é
+/// escolhido pelo colaborador: é sempre calculado no servidor a partir das
+/// marcações do dia (ver `getNextExpectedAttendanceType`).
+model AttendanceEntry {
+  id                 String              @id @default(cuid())
+  tenantId           String
+  userId             String
+  type               AttendanceEntryType
+  /// Horário real da marcação (não necessariamente igual a `createdAt`, para
+  /// deixar espaço a uma eventual sincronização offline no futuro).
+  occurredAt         DateTime            @default(now())
+  selfieUrl          String?
+  /// Marcação feita sem selfie, mediante permissão administrativa (ver
+  /// `canWaiveAttendanceSelfie`) — sempre acompanhada de motivo e também
+  /// registrada em `AuditLog` ("attendance.selfie_waived").
+  selfieWaived       Boolean             @default(false)
+  selfieWaivedById   String?
+  selfieWaivedReason String?
+  /// Reaproveita o cookie `device_id` já existente (ver model `Device`) —
+  /// nulo quando a marcação não teve um dispositivo aprovado associável.
+  deviceId           String?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime            @default(now())
+
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User                   @relation("AttendanceEntryUser", fields: [userId], references: [id])
+  selfieWaivedBy User?                  @relation("AttendanceEntrySelfieWaivedBy", fields: [selfieWaivedById], references: [id], onDelete: SetNull)
+  device         Device?                @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  corrections    AttendanceCorrection[]
+
+  @@index([tenantId, userId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("attendance_entries")
+}
+
+/// Correção administrativa de uma marcação. Aditiva: nunca apaga nem edita a
+/// `AttendanceEntry` original — preserva valor original, novo valor,
+/// responsável e motivo. O valor "efetivo" de uma marcação corrigida é
+/// sempre a correção mais recente por `createdAt` (ver
+/// `resolveEffectiveAttendanceEntry`), nunca uma sobrescrita silenciosa.
+model AttendanceCorrection {
+  id                 String              @id @default(cuid())
+  tenantId           String
+  entryId            String
+  correctedById      String
+  originalType       AttendanceEntryType
+  originalOccurredAt DateTime
+  newType            AttendanceEntryType
+  newOccurredAt      DateTime
+  reason             String
+  createdAt          DateTime            @default(now())
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entry       AttendanceEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  correctedBy User            @relation("AttendanceCorrectionBy", fields: [correctedById], references: [id])
+
+  @@index([tenantId, entryId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("attendance_corrections")
 }
 
 model Category {
@@ -780,32 +868,36 @@ enum SaleStatus {
 }
 
 model Sale {
-  id             String     @id @default(cuid())
-  tenantId       String
+  id                String     @id @default(cuid())
+  tenantId          String
   /// Número sequencial por empresa, exibido no comprovante.
-  number         Int
-  cashRegisterId String
-  customerId     String?
-  sellerId       String
-  status         SaleStatus @default(COMPLETED)
-  subtotal       Decimal    @db.Decimal(12, 2)
-  discount       Decimal    @default(0) @db.Decimal(12, 2)
-  total          Decimal    @db.Decimal(12, 2)
+  number            Int
+  cashRegisterId    String
+  customerId        String?
+  sellerId          String
+  /// Segunda pessoa envolvida na venda (opcional). Só estrutura de dados —
+  /// nenhuma regra de comissão/relatório usa este campo ainda.
+  assistantSellerId String?
+  status            SaleStatus @default(COMPLETED)
+  subtotal          Decimal    @db.Decimal(12, 2)
+  discount          Decimal    @default(0) @db.Decimal(12, 2)
+  total             Decimal    @db.Decimal(12, 2)
   /// Soma do custo dos itens no momento da venda, para apurar lucro bruto.
-  costTotal      Decimal    @default(0) @db.Decimal(12, 2)
+  costTotal         Decimal    @default(0) @db.Decimal(12, 2)
   /// Valor em dinheiro recebido do cliente (apenas quando há pagamento em espécie).
-  cashReceived   Decimal?   @db.Decimal(12, 2)
-  changeAmount   Decimal    @default(0) @db.Decimal(12, 2)
-  notes          String?
-  createdAt      DateTime   @default(now())
-  cancelledAt    DateTime?
-  cancelledById  String?
-  cancelReason   String?
+  cashReceived      Decimal?   @db.Decimal(12, 2)
+  changeAmount      Decimal    @default(0) @db.Decimal(12, 2)
+  notes             String?
+  createdAt         DateTime   @default(now())
+  cancelledAt       DateTime?
+  cancelledById     String?
+  cancelReason      String?
 
   tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister    CashRegister             @relation(fields: [cashRegisterId], references: [id])
   customer        Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
   seller          User                     @relation("SaleSeller", fields: [sellerId], references: [id])
+  assistantSeller User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
   cancelledBy     User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
   items           SaleItem[]
   payments        Payment[]
@@ -968,7 +1060,7 @@ model Order {
   /// Nulo apenas em pedidos `origin: WHATSAPP` (ver `fulfillment`).
   paymentMethod OrderPaymentMethod?
   /// Troco pedido pelo cliente quando o pagamento é em dinheiro.
-  changeFor     Decimal?           @db.Decimal(12, 2)
+  changeFor     Decimal?            @db.Decimal(12, 2)
 
   subtotal    Decimal @db.Decimal(12, 2)
   deliveryFee Decimal @default(0) @db.Decimal(12, 2)

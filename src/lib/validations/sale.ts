@@ -13,6 +13,12 @@ export const salePaymentSchema = z.object({
 
 export const createSaleSchema = z.object({
   customerId: z.string().trim().optional().or(z.literal("")),
+  /** Quem realizou a venda — sempre exigido, nunca inferido do usuário logado
+   *  (que pode ser só quem opera o caixa). Revalidado no servidor contra o
+   *  banco antes de gravar (ver `isSellerAssignable`). */
+  sellerId: z.string().trim().min(1, "Selecione o vendedor"),
+  /** Auxiliar opcional da venda (estrutura para comissão dividida no futuro). */
+  assistantSellerId: z.string().trim().optional().or(z.literal("")),
   items: z.array(saleItemSchema).min(1, "Adicione pelo menos um produto"),
   discount: z.coerce.number().min(0).default(0),
   payments: z.array(salePaymentSchema).min(1, "Informe a forma de pagamento"),

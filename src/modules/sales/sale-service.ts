@@ -132,6 +132,16 @@ export async function createSale(
   }
 
   const customerId = input.customerId || null;
+
+  const assistantSellerId = input.assistantSellerId || null;
+  if (assistantSellerId) {
+    const assistant = await prisma.user.findFirst({
+      where: { id: assistantSellerId, tenantId: ctx.tenantId, active: true },
+      select: { id: true },
+    });
+    if (!assistant) return { ok: false, error: "Auxiliar de venda não encontrado." };
+  }
+
   const storeCreditAmount = round2(
     input.payments.filter((p) => p.method === "STORE_CREDIT").reduce((sum, p) => sum + p.amount, 0)
   );
@@ -174,6 +184,7 @@ export async function createSale(
           cashRegisterId: ctx.cashRegisterId,
           customerId,
           sellerId: ctx.sellerId,
+          assistantSellerId,
           subtotal,
           discount,
           total,

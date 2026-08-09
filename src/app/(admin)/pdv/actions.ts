@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { canApplyDiscount, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
+import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
 import { createSaleSchema, type CreateSaleInput } from "@/lib/validations/sale";
 
 export type PdvProduct = {
@@ -104,6 +105,23 @@ export async function searchProductsAction(
   return { products: products.map(toPdvProduct), exact: false };
 }
 
+export type PdvSellerOption = { id: string; name: string; role: string };
+
+/**
+ * Vendedores ativos do tenant, para a seleção obrigatória antes do pagamento
+ * (ver `SellerPickerModal`). Não inclui o próprio usuário automaticamente —
+ * quem opera o caixa não é necessariamente quem vende.
+ */
+export async function listActiveSellersAction(): Promise<PdvSellerOption[]> {
+  const user = await requireUser();
+  const sellers = await prisma.user.findMany({
+    where: { tenantId: user.tenantId, active: true },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: "asc" },
+  });
+  return sellers.filter((seller) => canSell(seller.role));
+}
+
 export async function createSaleAction(input: CreateSaleInput) {
   const user = await requireUser();
   if (!canSell(user.role)) {
@@ -115,6 +133,17 @@ export async function createSaleAction(input: CreateSaleInput) {
     return { error: parsed.error.issues[0]?.message ?? "Dados da venda inválidos." };
   }
 
+  // O vendedor nunca é assumido como o usuário logado: é relido do banco e
+  // revalidado aqui, fechando o caminho de burlar a seleção chamando esta
+  // Server Action diretamente sem passar pela tela de seleção do PDV.
+  const seller = await prisma.user.findFirst({
+    where: { id: parsed.data.sellerId },
+    select: { tenantId: true, active: true, role: true },
+  });
+  if (!isSellerAssignable(seller, user.tenantId)) {
+    return { error: "Selecione um vendedor válido para concluir a venda." };
+  }
+
   const register = await getOpenCashRegister(user.tenantId);
   if (!register) {
     return { error: "Nenhum caixa aberto. Abra o caixa antes de vender." };
@@ -123,7 +152,7 @@ export async function createSaleAction(input: CreateSaleInput) {
   const result = await createSale(
     {
       tenantId: user.tenantId,
-      sellerId: user.id,
+      sellerId: parsed.data.sellerId,
       cashRegisterId: register.id,
       allowDiscount: canApplyDiscount(user.role),
     },

@@ -7,6 +7,7 @@ import {
   canManageStock,
   canSell,
   canViewAllSales,
+  canViewAttendancePanel,
   canViewDashboard,
   canViewReports,
   isStockCollaborator,
@@ -29,6 +30,13 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Troca", href: "/vendas/buscar", available: true, visibleTo: canSell },
   { label: "Produtos", href: "/produtos", available: true, visibleTo: canManageProducts },
   { label: "Estoque", href: "/estoque", available: true, visibleTo: canManageStock },
+  { label: "Ponto", href: "/ponto", available: true },
+  {
+    label: "Painel de Ponto",
+    href: "/ponto/painel",
+    available: true,
+    visibleTo: canViewAttendancePanel,
+  },
   { label: "Clientes", href: "/clientes", available: true },
   { label: "Fornecedores", href: "/fornecedores", available: true, visibleTo: canManageProducts },
   { label: "Pedidos online", href: "/pedidos", available: true, visibleTo: canSell },
@@ -92,14 +100,13 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** Não é um item da lista geral: esse papel só enxerga essa única tela, nunca o resto do painel. */
-const STOCK_COLLABORATOR_ITEM: NavItem = {
-  label: "Estoque (fotos)",
-  href: "/colaborador-estoque",
-  available: true,
-};
+/** Não é um item da lista geral: esse papel só enxerga essas telas, nunca o resto do painel. */
+const STOCK_COLLABORATOR_ITEMS: NavItem[] = [
+  { label: "Estoque (fotos)", href: "/colaborador-estoque", available: true },
+  { label: "Ponto", href: "/ponto", available: true },
+];
 
 export function navItemsForRole(role: UserRole) {
-  if (isStockCollaborator(role)) return [STOCK_COLLABORATOR_ITEM];
+  if (isStockCollaborator(role)) return STOCK_COLLABORATOR_ITEMS;
   return NAV_ITEMS.filter((item) => !item.visibleTo || item.visibleTo(role));
 }

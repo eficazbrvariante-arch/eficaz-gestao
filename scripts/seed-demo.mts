@@ -161,6 +161,7 @@ const ctx = (sellerId: string) => ({
 
 // Venda 1: dinheiro com troco (admin)
 await createSale(ctx(admin.id), {
+  sellerId: admin.id,
   customerId: maria.id,
   items: [{ productId: cabo.id, variantId: "", quantity: 2 }],
   discount: 0,
@@ -171,6 +172,7 @@ await createSale(ctx(admin.id), {
 // Venda 2: variação + desconto + pagamento dividido (vendedora)
 const variante = galaxy.variants[0];
 await createSale(ctx(vendedor.id), {
+  sellerId: vendedor.id,
   customerId: maria.id,
   items: [{ productId: galaxy.id, variantId: variante.id, quantity: 1 }],
   discount: 100,
@@ -179,6 +181,7 @@ await createSale(ctx(vendedor.id), {
 
 // Venda 3: cartão de débito (vendedora)
 await createSale(ctx(vendedor.id), {
+  sellerId: vendedor.id,
   items: [{ productId: capa.id, variantId: "", quantity: 3 }],
   discount: 0,
   payments: [{ method: "DEBIT", amount: 119.7 }],
@@ -186,6 +189,7 @@ await createSale(ctx(vendedor.id), {
 
 // Venda 4: cancelada
 const cancelada = await createSale(ctx(admin.id), {
+  sellerId: admin.id,
   items: [{ productId: fone.id, variantId: "", quantity: 1 }],
   discount: 0,
   payments: [{ method: "PIX", amount: 129.9 }],
