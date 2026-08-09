@@ -112,14 +112,26 @@ export function storeCityLabel(store: Pick<Store, "addressCity" | "addressState"
 }
 
 /**
- * URL pública absoluta da loja (domínio próprio verificado, senão o
- * subdomínio da plataforma) — usada em links enviados fora do navegador
- * (ex.: mensagem de WhatsApp), onde uma URL relativa não funciona.
+ * URL pública absoluta da loja (domínio próprio verificado, senão o host
+ * público da plataforma) — usada em links enviados fora do navegador (ex.:
+ * mensagem de WhatsApp, e-mail de redefinição de senha), onde uma URL
+ * relativa não funciona.
+ *
+ * Sem `NEXT_PUBLIC_STORE_HOST`, cai no formato antigo `subdomínio.ROOT_DOMAIN`
+ * — mas em produção isso está quebrado: não existe DNS coringa para
+ * `*.ROOT_DOMAIN`, e `ROOT_DOMAIN` lá vale `app.eficazbr.com.br` (precisa
+ * continuar assim, senão o proxy passa a ler `app.eficazbr.com.br` como se
+ * fosse a loja de subdomínio "app" e derruba o painel). O host público real
+ * da vitrine (`www.eficazbr.com.br`, sempre com `/loja/[subdominio]` no
+ * caminho — path já incluído pelos chamadores) fica em `NEXT_PUBLIC_STORE_HOST`.
  */
 export function storeOrigin(store: Pick<Store, "subdomain" | "customDomain" | "domainStatus">) {
+  const storeHost = process.env.NEXT_PUBLIC_STORE_HOST;
   const host =
-    store.customDomain && store.domainStatus === "ACTIVE" ? store.customDomain : `${store.subdomain}.${ROOT_DOMAIN}`;
-  const protocol = ROOT_DOMAIN === "localhost" ? "http" : "https";
+    store.customDomain && store.domainStatus === "ACTIVE"
+      ? store.customDomain
+      : (storeHost ?? `${store.subdomain}.${ROOT_DOMAIN}`);
+  const protocol = host === "localhost" || host.endsWith(".localhost") ? "http" : "https";
   return `${protocol}://${host}`;
 }
 
