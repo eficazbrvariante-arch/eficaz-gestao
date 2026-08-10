@@ -1,5 +1,41 @@
 # Relatórios de sessão
 
+## 2026-08-10 — Login por e-mail único + correção da câmera no Controle de Ponto
+
+**O que mudou:**
+1. Login substituído por fluxo de duas etapas: e-mail único da empresa
+   (`Tenant.email`, novo) identifica o tenant, depois o colaborador escolhe o
+   próprio nome numa lista e digita só a senha (`User.email` virou opcional).
+   Reaproveita o fluxo existente de "dispositivo lembrado". Migration com
+   backfill automático (e-mail do primeiro ADMIN de cada tenant vira
+   `Tenant.email`) — nenhum tenant existente perde acesso. Commit `c3a528d`.
+2. Ajuste no `scripts/scan-secrets.mts` para reduzir falsos positivos
+   (`NEXTAUTH_URL`, `EMAIL_FROM`, referências de propriedade tipo
+   `parsed.data.password`). Commit `b6fcb38`.
+3. **Bug corrigido:** preview da câmera no Controle de Ponto
+   (`src/components/ui/selfie-capture-field.tsx`) ficava com a tela preta
+   mesmo com a permissão da câmera concedida. Causa: o `srcObject` do stream
+   era atribuído dentro do `.then()` do `getUserMedia`, mas o `<video>` só
+   existe no DOM quando `mode === "live"` — nesse momento o ref ainda era
+   `null`, então o stream nunca chegava a ser conectado ao elemento. Corrigido
+   movendo a atribuição para um `useEffect` disparado quando `mode` muda para
+   `"live"`, depois que o `<video>` já montou. Commit `b168458`.
+
+**Testado:** os três commits foram enviados e o deploy de produção
+confirmado (`npx vercel inspect`). O fluxo de login foi validado manualmente
+com o usuário "EficazBr Gestão" em `app.eficazbr.com.br`. A correção da
+câmera foi validada com uma página de debug temporária local
+(`/debug-selfie`, criada e removida na mesma sessão, sem tocar em senha de
+usuário) e depois confirmada end-to-end em produção: câmera ao vivo, captura
+nítida, upload da selfie e "Entrada registrada com sucesso".
+
+**Observação:** durante o diagnóstico, um teste inicial ficou preso porque a
+webcam física estava em uso por outra aba/stream ainda aberta — não é bug de
+código, é limitação normal de webcams USB (um único acesso por vez).
+
+**Tudo commitado e em produção**, working tree limpo (só `.codex/` não
+rastreado, sem relação com esta sessão).
+
 ## 2026-08-09 — Controle de Ponto (selfie) + Vendedor obrigatório no PDV
 
 **O que mudou:** novo módulo de Controle de Ponto (marcação com selfie, correção
