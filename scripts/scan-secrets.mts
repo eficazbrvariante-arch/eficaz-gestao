@@ -16,6 +16,9 @@ import { existsSync, readFileSync } from "node:fs";
 
 const MIN_SECRET_VALUE_LENGTH = 8;
 
+/** Chaves de .env.local/.env que não são segredos de verdade (URL pública, e-mail de remetente etc.) — não vale a pena comparar o valor delas contra o diff. */
+const NON_SECRET_KEYS = new Set(["NEXTAUTH_URL", "EMAIL_FROM"]);
+
 function git(command: string): string {
   try {
     return execSync(`git ${command}`, { encoding: "utf8", maxBuffer: 1024 * 1024 * 50 });
@@ -67,6 +70,7 @@ function realSecretValues(): { key: string; value: string }[] {
       if (!match) continue;
       const [, key, rawValue] = match;
       const value = rawValue.trim();
+      if (NON_SECRET_KEYS.has(key)) continue;
       if (value.length >= MIN_SECRET_VALUE_LENGTH) found.push({ key, value });
     }
   }
@@ -91,9 +95,14 @@ for (const { key, value } of realSecretValues()) {
   }
 }
 
+/** `parsed.data.password`, `user.email`, etc. — referência a propriedade no código, não um valor literal de segredo. */
+const DOTTED_IDENTIFIER = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/;
+
 for (const { name, pattern } of GENERIC_PATTERNS) {
   const match = diff.match(pattern);
   if (match) {
+    const value = match[0].replace(/^(?:KEY|SECRET|TOKEN|PASSWORD)\s*[:=]\s*["']?/i, "").replace(/["']?$/, "");
+    if (DOTTED_IDENTIFIER.test(value)) continue;
     problems.push(`Padrão de segredo encontrado (${name}): ${match[0].slice(0, 40)}...`);
   }
 }
