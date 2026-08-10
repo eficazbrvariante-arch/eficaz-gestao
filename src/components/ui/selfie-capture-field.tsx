@@ -53,10 +53,6 @@ export function SelfieCaptureField({
       .getUserMedia({ video: { facingMode: "user" }, audio: false })
       .then((stream) => {
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
         setMode("live");
       })
       .catch(() => {
@@ -68,6 +64,16 @@ export function SelfieCaptureField({
     startCamera();
     return stopCamera;
   }, [startCamera, stopCamera]);
+
+  // O <video> só existe no DOM quando mode === "live" (ver JSX abaixo), então
+  // o srcObject precisa ser anexado aqui, depois que ele monta — setá-lo
+  // dentro do .then() do getUserMedia é tarde demais, o ref ainda é null lá.
+  useEffect(() => {
+    if (mode === "live" && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [mode]);
 
   function capture() {
     const video = videoRef.current;
