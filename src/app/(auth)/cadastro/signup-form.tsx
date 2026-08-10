@@ -61,8 +61,12 @@ export function SignupForm() {
       </div>
 
       <div className="mb-4">
-        <Label htmlFor="email">E-mail</Label>
+        <Label htmlFor="email">E-mail de acesso (login da empresa)</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
+        <p className="mt-1 text-xs text-slate-400">
+          É com este e-mail que qualquer pessoa da equipe começa a entrar — depois disso,
+          cada um escolhe o próprio nome numa lista e digita a senha.
+        </p>
         <FieldError message={errors.email?.message} />
       </div>
 

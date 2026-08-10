@@ -26,6 +26,7 @@ const tenant = await prisma.tenant.create({
     addressState: "SC",
     addressZip: "88350001",
     subdomain: "eficazbr",
+    email: "admin@eficazbr.test",
     primaryColor: "#1d4ed8",
     bannerTitle: "Eletrônicos com o melhor preço da região",
     bannerSubtitle: "Retire na loja ou receba em casa. Peça pelo WhatsApp.",

@@ -7,6 +7,7 @@ import {
   createUserSchema,
   resetUserPasswordSchema,
   ROLE_OPTIONS,
+  type CreateUserFormValues,
   type CreateUserInput,
   type ResetUserPasswordInput,
 } from "@/lib/validations/user";
@@ -35,7 +36,7 @@ export function CreateUserForm({ atLimit }: { atLimit: boolean }) {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CreateUserInput>({
+  } = useForm<CreateUserFormValues, unknown, CreateUserInput>({
     resolver: zodResolver(createUserSchema),
     defaultValues: { role: "SELLER" },
   });
@@ -73,8 +74,12 @@ export function CreateUserForm({ atLimit }: { atLimit: boolean }) {
       </div>
 
       <div className="mb-4">
-        <Label htmlFor="email">E-mail</Label>
+        <Label htmlFor="email">E-mail (opcional)</Label>
         <Input id="email" type="email" {...register("email")} />
+        <p className="mt-1 text-xs text-slate-400">
+          Não é preciso pra essa pessoa conseguir entrar — só é usado se ela quiser
+          recuperar a própria senha sozinha depois.
+        </p>
         <FieldError message={errors.email?.message} />
       </div>
 

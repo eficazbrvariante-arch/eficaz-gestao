@@ -79,7 +79,7 @@ export default async function UsuariosPage() {
                         <span className="ml-1 text-xs text-slate-400">(você)</span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-400">{row.email}</div>
+                    <div className="text-xs text-slate-400">{row.email ?? "sem e-mail"}</div>
                     <div className="text-xs text-slate-500">{ROLE_LABELS[row.role]}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-500">

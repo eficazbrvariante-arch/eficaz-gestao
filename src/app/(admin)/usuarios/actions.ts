@@ -37,8 +37,10 @@ export async function createUserAction(input: CreateUserInput) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (existing) return { error: "Já existe uma conta com este e-mail." };
+  if (parsed.data.email) {
+    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing) return { error: "Já existe uma conta com este e-mail." };
+  }
 
   const [tenant, userCount] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({
@@ -55,7 +57,7 @@ export async function createUserAction(input: CreateUserInput) {
     data: {
       tenantId: actor.tenantId,
       name: parsed.data.name,
-      email: parsed.data.email,
+      email: parsed.data.email ?? null,
       role: parsed.data.role,
       passwordHash: await bcrypt.hash(parsed.data.password, 10),
     },

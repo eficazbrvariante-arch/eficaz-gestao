@@ -9,17 +9,18 @@ import { signIn } from "@/lib/auth";
 import { generateResetToken, hashToken } from "@/lib/tokens";
 import { sendEmail } from "@/lib/email";
 import {
-  loginSchema,
   requestPasswordResetSchema,
   resetPasswordSchema,
   selectUserLoginSchema,
   signupSchema,
-  type LoginInput,
+  tenantLoginEmailSchema,
   type RequestPasswordResetInput,
   type ResetPasswordInput,
   type SelectUserLoginInput,
   type SignupInput,
+  type TenantLoginEmailInput,
 } from "@/lib/validations/auth";
+import type { UserRole } from "@/generated/prisma/enums";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 
@@ -27,21 +28,21 @@ const DEVICE_COOKIE = "device_id";
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2; // ~2 anos
 
 /**
- * Único ponto que chama `signIn("credentials", ...)` de verdade — usado tanto pelo
- * login clássico (e-mail+senha) quanto pela seleção por nome e pelo cadastro de
- * empresa nova, pra nunca duplicar a verificação de senha/dispositivo em vários
- * lugares (isso vive dentro de `authorize()`, em `src/lib/auth.ts`).
+ * Único ponto que chama `signIn("credentials", ...)` de verdade — usado pela
+ * seleção de colaborador e pelo cadastro de empresa nova, pra nunca duplicar a
+ * verificação de senha/dispositivo em vários lugares (isso vive dentro de
+ * `authorize()`, em `src/lib/auth.ts`).
  *
  * O cookie do dispositivo é sempre gravado ANTES de chamar `signIn`, pra sobreviver
  * tanto ao redirect de sucesso quanto a qualquer erro lançado (dispositivo pendente,
  * recusado, senha errada...).
  */
 async function performCredentialsLogin({
-  email,
+  userId,
   password,
   callbackUrl,
 }: {
-  email: string;
+  userId: string;
   password: string;
   callbackUrl?: string;
 }) {
@@ -57,7 +58,7 @@ async function performCredentialsLogin({
 
   try {
     await signIn("credentials", {
-      email,
+      userId,
       password,
       deviceId,
       redirectTo: callbackUrl && callbackUrl.startsWith("/") ? callbackUrl : "/dashboard",
@@ -77,7 +78,7 @@ async function performCredentialsLogin({
             error: "Este navegador já está vinculado a outra empresa. Use outro navegador ou uma aba anônima.",
           };
         default:
-          return { error: "E-mail ou senha inválidos." };
+          return { error: "Usuário ou senha inválidos." };
       }
     }
     if (error instanceof AuthError) {
@@ -87,35 +88,52 @@ async function performCredentialsLogin({
   }
 }
 
-export async function loginAction(input: LoginInput, callbackUrl?: string) {
-  const parsed = loginSchema.safeParse(input);
+export type TenantLoginResolution = {
+  tenantName: string;
+  tenantEmail: string;
+  users: { id: string; name: string; role: UserRole }[];
+};
+
+/**
+ * Passo 1 do login num dispositivo novo: resolve a empresa pelo "e-mail de
+ * acesso" (`Tenant.email`) e devolve a lista de colaboradores ativos dela —
+ * mesma listagem que `login/page.tsx` já monta a partir de `Device.tenantId`
+ * quando o dispositivo já está aprovado. Nenhuma senha é conferida aqui.
+ */
+export async function resolveTenantLoginAction(
+  input: TenantLoginEmailInput
+): Promise<{ error: string } | TenantLoginResolution> {
+  const parsed = tenantLoginEmailSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: "Dados inválidos." };
+    return { error: "Informe um e-mail válido." };
   }
 
-  return performCredentialsLogin({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    callbackUrl,
+  const tenant = await prisma.tenant.findUnique({
+    where: { email: parsed.data.email },
+    select: { id: true, name: true, email: true },
   });
+  if (!tenant) {
+    return { error: "E-mail não encontrado. Confira e tente novamente." };
+  }
+
+  const users = await prisma.user.findMany({
+    where: { tenantId: tenant.id, active: true },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: "asc" },
+  });
+
+  return { tenantName: tenant.name, tenantEmail: tenant.email, users };
 }
 
-/** Login por seleção de nome — dispositivo já aprovado, sem digitar e-mail. */
+/** Login por seleção de nome — empresa já identificada (e-mail do PDV ou dispositivo já aprovado). */
 export async function loginWithSelectedUserAction(input: SelectUserLoginInput, callbackUrl?: string) {
   const parsed = selectUserLoginSchema.safeParse(input);
   if (!parsed.success) {
     return { error: "Dados inválidos." };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: parsed.data.userId },
-    select: { email: true },
-  });
-  // Mensagem genérica igual à de senha errada — não revela se o usuário existe.
-  if (!user) return { error: "E-mail ou senha inválidos." };
-
   return performCredentialsLogin({
-    email: user.email,
+    userId: parsed.data.userId,
     password: parsed.data.password,
     callbackUrl,
   });
@@ -128,36 +146,41 @@ export async function signupAction(input: SignupInput) {
   }
   const { companyName, subdomain, adminName, email, password } = parsed.data;
 
-  const [existingTenant, existingUser] = await Promise.all([
+  const [existingTenant, existingTenantEmail] = await Promise.all([
     prisma.tenant.findUnique({ where: { subdomain } }),
-    prisma.user.findUnique({ where: { email } }),
+    prisma.tenant.findUnique({ where: { email } }),
   ]);
 
   if (existingTenant) {
     return { error: "Este subdomínio já está em uso. Escolha outro." };
   }
-  if (existingUser) {
-    return { error: "Já existe uma conta com este e-mail." };
+  if (existingTenantEmail) {
+    return { error: "Já existe uma empresa cadastrada com este e-mail." };
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  await prisma.tenant.create({
+  const tenant = await prisma.tenant.create({
     data: {
       name: companyName,
       subdomain,
+      email,
       users: {
         create: {
           name: adminName,
-          email,
           passwordHash,
           role: "ADMIN",
         },
       },
     },
+    include: { users: { select: { id: true } } },
   });
 
-  return performCredentialsLogin({ email, password, callbackUrl: "/dashboard" });
+  return performCredentialsLogin({
+    userId: tenant.users[0].id,
+    password,
+    callbackUrl: "/dashboard",
+  });
 }
 
 export async function requestPasswordResetAction(input: RequestPasswordResetInput) {
@@ -181,7 +204,9 @@ export async function requestPasswordResetAction(input: RequestPasswordResetInpu
     const resetUrl = `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/redefinir-senha/${rawToken}`;
 
     await sendEmail({
-      to: user.email,
+      // `user` foi encontrado buscando por este mesmo e-mail — é sempre igual
+      // a `user.email`, só que já garantido não-nulo pelo tipo do input.
+      to: parsed.data.email,
       subject: "Redefinição de senha — Eficaz Gestão",
       html: `
         <p>Olá, ${user.name}.</p>

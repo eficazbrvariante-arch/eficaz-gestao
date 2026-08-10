@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-export const loginSchema = z.object({
+/** Passo 1 do login num dispositivo novo: e-mail de acesso da empresa (`Tenant.email`). */
+export const tenantLoginEmailSchema = z.object({
   email: z.string().trim().toLowerCase().email("Informe um e-mail válido"),
-  password: z.string().min(1, "Informe sua senha"),
 });
 
-export type LoginInput = z.infer<typeof loginSchema>;
+export type TenantLoginEmailInput = z.infer<typeof tenantLoginEmailSchema>;
 
-/** Login por seleção de nome (dispositivo já aprovado) — sem digitar e-mail. */
+/** Login por seleção de nome (dispositivo já aprovado, ou empresa já identificada) — sem digitar e-mail pessoal. */
 export const selectUserLoginSchema = z.object({
   userId: z.string().trim().min(1),
   password: z.string().min(1, "Informe sua senha"),

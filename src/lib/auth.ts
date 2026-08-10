@@ -13,19 +13,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "E-mail", type: "email" },
+        userId: { label: "Usuário", type: "text" },
         password: { label: "Senha", type: "password" },
         deviceId: { label: "Dispositivo", type: "text" },
       },
       authorize: async (credentials, request) => {
-        const email = credentials?.email as string | undefined;
+        const userId = credentials?.userId as string | undefined;
         const password = credentials?.password as string | undefined;
         const deviceId = credentials?.deviceId as string | undefined;
-        if (!email || !password || !deviceId) return null;
+        if (!userId || !password || !deviceId) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase().trim() },
-        });
+        // O e-mail deixou de ser o identificador de login: quem escolhe a
+        // pessoa é a tela de seleção de colaborador (ver `resolveTenantLoginAction`
+        // e `UserPickerLoginForm`), então aqui já chega o `userId` escolhido.
+        const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user || !user.active) return null;
 
         const passwordMatches = await bcrypt.compare(password, user.passwordHash);

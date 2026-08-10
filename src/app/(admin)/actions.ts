@@ -17,6 +17,11 @@ export async function updateCompanyAction(input: CompanyInput) {
     return { error: "Dados inválidos." };
   }
 
+  const existing = await prisma.tenant.findUnique({ where: { email: parsed.data.email } });
+  if (existing && existing.id !== user.tenantId) {
+    return { error: "Já existe uma empresa cadastrada com este e-mail." };
+  }
+
   await prisma.tenant.update({
     where: { id: user.tenantId },
     data: parsed.data,

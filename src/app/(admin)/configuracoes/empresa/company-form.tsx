@@ -24,6 +24,7 @@ export function CompanyForm({ tenant }: { tenant: TenantModel }) {
     resolver: zodResolver(companySchema),
     defaultValues: {
       name: tenant.name,
+      email: tenant.email,
       tradeName: tenant.tradeName ?? "",
       document: tenant.document ?? "",
       phone: tenant.phone ?? "",
@@ -65,6 +66,16 @@ export function CompanyForm({ tenant }: { tenant: TenantModel }) {
           <Input id="tradeName" {...register("tradeName")} />
           <FieldError message={errors.tradeName?.message} />
         </div>
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="email">E-mail de acesso do PDV</Label>
+        <Input id="email" type="email" autoComplete="email" {...register("email")} />
+        <p className="mt-1 text-xs text-slate-400">
+          É o e-mail que aparece na tela de login para identificar a empresa, antes de
+          escolher o colaborador. Pode ser diferente do seu e-mail pessoal.
+        </p>
+        <FieldError message={errors.email?.message} />
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">

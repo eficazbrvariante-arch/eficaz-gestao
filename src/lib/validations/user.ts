@@ -17,7 +17,12 @@ const ROLE_VALUES = ["ADMIN", "MANAGER", "SELLER", "STOCKIST", "STOCK_COLLABORAT
 export const createUserSchema = z
   .object({
     name: z.string().trim().min(3, "Informe o nome completo"),
-    email: z.string().trim().toLowerCase().email("Informe um e-mail válido"),
+    /// Opcional — o login não depende do e-mail pessoal do colaborador (ver
+    /// `Tenant.email`). Quando informado, serve só para "esqueci minha senha".
+    email: z
+      .union([z.literal(""), z.string().trim().toLowerCase().email("Informe um e-mail válido")])
+      .optional()
+      .transform((v) => (v === "" || v === undefined ? undefined : v)),
     role: z.enum(ROLE_VALUES),
     password: z.string().min(8, "A senha deve ter no mínimo 8 caracteres"),
     confirmPassword: z.string().min(1, "Confirme a senha"),
@@ -28,6 +33,7 @@ export const createUserSchema = z
   });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type CreateUserFormValues = z.input<typeof createUserSchema>;
 
 export const changeRoleSchema = z.object({
   userId: z.string().trim().min(1),
