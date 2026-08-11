@@ -36,13 +36,16 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Comprovante de venda na impressora térmica (bobina 80mm, área imprimível
-   74mm ≈ 592 dots a 203dpi). A página impressa é declarada com a largura
+/* Comprovante de venda na impressora térmica (Epson TM-T20X-II, bobina 80mm,
+   área imprimível real 72mm ≈ 576 dots a 203dpi — o padrão ESC/POS de
+   impressoras de cupom 80mm). A página impressa é declarada com a largura
    física real do papel (80mm) e o cupom fica centralizado dentro dela com
-   3mm de margem de cada lado — a página NUNCA é declarada do tamanho da
+   4mm de margem de cada lado — a página NUNCA é declarada do tamanho da
    área útil, porque a impressora/driver não centralizam isso sozinhos:
    o conteúdo nasce encostado na borda esquerda da página e a borda direita
-   estoura, cortando texto no meio do caractere.
+   estoura, cortando texto no meio do caractere. (Já existiu uma tentativa
+   com 74mm de conteúdo — passava 2mm da área imprimível real da TM-T20X-II
+   e cortava a borda direita; por isso 72mm agora.)
    `position: fixed` com `left/right: 0` + `margin: 0 auto` centraliza o
    cupom em relação à PÁGINA impressa, não ao container do painel que o
    envolve — assim nenhum padding do layout do admin (ex.: `<main
@@ -63,7 +66,7 @@ body {
     right: 0;
     top: 0;
     box-sizing: border-box;
-    width: 74mm;
+    width: 72mm;
     margin: 0 auto;
     padding: 0;
     font-family: "Courier New", Courier, monospace;
@@ -88,7 +91,7 @@ body {
     word-wrap: break-word;
   }
 
-  /* Grade de 48 colunas (Fonte A, 74mm úteis) da tabela de itens:
+  /* Grade de 48 colunas (Fonte A, 72mm úteis) da tabela de itens:
      Item 22 | Qtd 4 | Unit. 10 | vão 1 | Total 11. `table-layout: fixed`
      faz as larguras abaixo valerem de verdade — sem isso, o navegador
      redimensiona as colunas pelo conteúdo e Unit./Total colam. */
