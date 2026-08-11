@@ -1,5 +1,67 @@
 # Relatórios de sessão
 
+## 2026-08-11 — E-mail transacional, cupom de venda, Ponto multiusuário e cadastro de cliente
+
+**O que mudou:**
+1. **E-mail transacional (Resend):** domínio `eficazbr.com.br` já estava
+   verificado (DKIM/SPF); atualizada a variável `EMAIL_FROM` em produção na
+   Vercel para `Eficaz Gestão <naoresponda@eficazbr.com.br>` (era o endereço
+   sandbox `onboarding@resend.dev`, que só envia pro próprio dono da conta —
+   causa do erro visto no início da sessão). Redeploy pra aplicar a variável.
+   Testado com um envio real (script temporário, removido depois) — chegou
+   certo na caixa de entrada.
+2. **Bug corrigido — preço da variante "Ventosa Traseira":** o catálogo
+   mostrava R$ 24,00 (dupla face ou adesivo) em vez de R$ 12,00 — o preço
+   base do produto (R$ 12) já cobria a opção, mas cada variante também tinha
+   `priceAdjustment` de +R$ 12, somando os dois. Corrigido diretamente no
+   banco de produção (zerado o `priceAdjustment` das duas variantes,
+   confirmado antes/depois) — não foi bug de código, foi dado cadastrado
+   errado. Sem commit (não mexeu em código).
+3. **Bug corrigido — corte na borda direita do cupom impresso:** a impressora
+   térmica real é uma Epson TM-T20X-II (80mm, área imprimível de 72mm), mas o
+   CSS de impressão (`src/app/globals.css`) usava 74mm de conteúdo — um fix
+   anterior (06/08) tinha corrigido o empurrão do padding do painel mas
+   superestimado a largura útil. Ajustado para 72mm, mantendo a centralização
+   já validada. Commit `e5313c8`.
+4. **Cupom de venda:** removido o rodapé "Documento sem valor fiscal ·
+   Obrigado pela preferência!"; adicionado o site da loja
+   (`www.eficazbr.com.br`, calculado por tenant via `storeOrigin`/novo
+   `storeDisplayHost`, não fixo) e um QR code (nova dependência `qrcode`, SVG
+   gerado no servidor) apontando pra home da loja, logo abaixo do telefone no
+   cabeçalho (`src/app/(admin)/vendas/[id]/page.tsx`). Commit `483a64d`.
+5. **Controle de Ponto — seleção de colaborador:** o caixa é compartilhado
+   por até 3 colaboradores numa sessão só; agora bater entrada/saída/intervalo
+   exige escolher o nome numa lista de colaboradores ativos do tenant antes de
+   ver a próxima marcação ou registrar — antes usava sempre o usuário logado.
+   Selfie continua obrigatória como já era; a marcação grava no colaborador
+   selecionado. Reescrito `src/app/(admin)/ponto/clock-widget.tsx` +
+   `page.tsx`, nova action `getPunchStatusAction` e validação do colaborador
+   selecionado em `punchAttendanceAction` (`src/app/(admin)/ponto/actions.ts`).
+   Commit `3fd65f8`.
+6. **Cadastro de cliente na loja online:** CPF e data de nascimento passaram a
+   obrigatórios nos dois fluxos de autocadastro do cliente — checkout ("Criar
+   conta") e botão "Cadastrar" do cabeçalho (`checkout-form.tsx`,
+   `conta/entrar/auth-form.tsx`, `src/lib/validations/order.ts`,
+   `src/lib/validations/customer-auth.ts`, `src/modules/customers/customer-service.ts`).
+   WhatsApp e `@usuário` já eram obrigatórios, endereço continua opcional.
+   Cadastro manual pelo lojista no painel (venda presencial) não foi tocado —
+   confirmado com o usuário que a exigência é só do lado do cliente na loja
+   online. Commit `3fd65f8` (mesmo commit do item 5).
+
+**Testado:** lint/typecheck/build sem erros nem warnings novos em cada
+mudança de código; suíte Vitest completa (82 testes) passando. Deploy de
+produção confirmado via `check:deploy` (Vercel + páginas públicas + rota
+`comprar-whatsapp` + logs) depois de cada leva de commits. Ponto e cadastro
+de cliente também testados manualmente pelo usuário em produção — confirmou
+que os dois funcionaram perfeitamente (seleção de colaborador e
+obrigatoriedade de CPF/data de nascimento/@usuário). O cupom recebeu duas
+rodadas de teste físico de impressão pelo usuário (foto do cupom antes/depois
+da correção de largura).
+
+**Tudo commitado e em produção** (commits `e5313c8`, `483a64d`, `3fd65f8`),
+working tree limpo (só `.codex/` não rastreado e este próprio relatório, sem
+relação direta com o código desta sessão).
+
 ## 2026-08-10 — Login por e-mail único + correção da câmera no Controle de Ponto
 
 **O que mudou:**
@@ -33,8 +95,26 @@ nítida, upload da selfie e "Entrada registrada com sucesso".
 webcam física estava em uso por outra aba/stream ainda aberta — não é bug de
 código, é limitação normal de webcams USB (um único acesso por vez).
 
-**Tudo commitado e em produção**, working tree limpo (só `.codex/` não
-rastreado, sem relação com esta sessão).
+4. **Nova funcionalidade:** relatório de Faturamento/Gastos/Lucro por período
+   na Assistência Técnica (`src/app/(admin)/assistencia-tecnica/page.tsx`),
+   visível só para Administrador (mesma regra de `costPrice`, que já era
+   restrito a ADMIN). Filtro De/Até + atalhos (Hoje, Ontem, Últimos 7/30 dias,
+   Este mês) reaproveitando o `PeriodPicker` já usado em Relatórios > Caixa
+   (`src/app/(admin)/relatorios/report-nav.tsx`, que ganhou um prop
+   `extraParams` opcional pra não perder a busca ao trocar o período, e
+   vice-versa). Faturamento = soma dos itens menos desconto das OS's do
+   período (exceto canceladas); Gastos = soma do `costPrice`; Lucro = a
+   diferença. Commit `e0baa9a`.
+
+**Testado (item 4):** validado com uma página de debug temporária local
+(`/debug-assistencia`, criada e removida na mesma sessão, sem login) contra
+dados reais do banco `dev-local` — números batendo à mão, troca de período e
+busca preservando um ao outro sem se atropelar. Lint/typecheck/build sem
+erros nem warnings novos. Deploy de produção confirmado via `vercel inspect`.
+
+**Tudo commitado e em produção** (commits `c3a528d`, `b6fcb38`, `b168458`,
+`e0baa9a`), working tree limpo (só `.codex/` não rastreado, sem relação com
+esta sessão).
 
 ## 2026-08-09 — Controle de Ponto (selfie) + Vendedor obrigatório no PDV
 
