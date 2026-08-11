@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { canManageRepairOrders } from "@/lib/permissions";
+import { canManageRepairOrders, canManageRepairOrderCostAnytime } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { formatBRL, formatDate } from "@/lib/format";
+import { formatBRL, formatDate, formatISODate, periodRange } from "@/lib/format";
 import {
   REPAIR_ORDER_STATUS_BADGE_CLASSES,
   REPAIR_ORDER_STATUS_LABELS,
 } from "@/lib/validations/repair-order";
+import { StatCard } from "@/components/admin/stat-card";
+import { PeriodPicker } from "../relatorios/report-nav";
+import { resolvePeriod } from "../relatorios/period";
 
 export default async function AssistenciaTecnicaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; de?: string; ate?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, ...periodParams } = await searchParams;
   const user = await requireUser();
   if (!canManageRepairOrders(user.role)) {
     return (
@@ -23,27 +26,60 @@ export default async function AssistenciaTecnicaPage({
     );
   }
 
-  const orders = await prisma.repairOrder.findMany({
-    where: {
-      tenantId: user.tenantId,
-      ...(q
-        ? {
-            OR: [
-              { brand: { contains: q, mode: "insensitive" } },
-              { model: { contains: q, mode: "insensitive" } },
-              { reportedDefects: { contains: q, mode: "insensitive" } },
-              { customer: { name: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
+  const canSeeFinancials = canManageRepairOrderCostAnytime(user.role);
+  const period = resolvePeriod(periodParams);
+  const { start, end } = periodRange(period.from, period.to);
+
+  const [orders, financialOrders] = await Promise.all([
+    prisma.repairOrder.findMany({
+      where: {
+        tenantId: user.tenantId,
+        ...(q
+          ? {
+              OR: [
+                { brand: { contains: q, mode: "insensitive" } },
+                { model: { contains: q, mode: "insensitive" } },
+                { reportedDefects: { contains: q, mode: "insensitive" } },
+                { customer: { name: { contains: q, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        customer: { select: { name: true } },
+        items: { select: { unitPrice: true, quantity: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    canSeeFinancials
+      ? prisma.repairOrder.findMany({
+          where: {
+            tenantId: user.tenantId,
+            status: { not: "CANCELLED" },
+            createdAt: { gte: start, lt: end },
+          },
+          select: {
+            discount: true,
+            costPrice: true,
+            items: { select: { unitPrice: true, quantity: true } },
+          },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const financials = financialOrders?.reduce(
+    (acc, order) => {
+      const gross = order.items.reduce(
+        (sum, item) => sum + Number(item.unitPrice) * item.quantity,
+        0
+      );
+      acc.revenue += Math.max(0, gross - Number(order.discount));
+      acc.cost += Number(order.costPrice ?? 0);
+      return acc;
     },
-    include: {
-      customer: { select: { name: true } },
-      items: { select: { unitPrice: true, quantity: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+    { revenue: 0, cost: 0 }
+  );
 
   return (
     <div>
@@ -60,7 +96,32 @@ export default async function AssistenciaTecnicaPage({
         </Link>
       </div>
 
+      {canSeeFinancials && financials && (
+        <div className="mb-6">
+          <p className="mb-2 text-sm text-slate-500">
+            Faturamento, gastos e lucro de {formatISODate(period.from)} a{" "}
+            {formatISODate(period.to)}.
+          </p>
+          <PeriodPicker period={period} extraParams={{ q }} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="Faturamento" value={formatBRL(financials.revenue)} />
+            <StatCard label="Gastos (custo de peças)" value={formatBRL(financials.cost)} />
+            <StatCard
+              label="Lucro"
+              value={formatBRL(financials.revenue - financials.cost)}
+              tone={financials.revenue - financials.cost >= 0 ? "positive" : "negative"}
+            />
+          </div>
+        </div>
+      )}
+
       <form className="mb-4 flex gap-2">
+        {canSeeFinancials && (
+          <>
+            <input type="hidden" name="de" value={period.from} />
+            <input type="hidden" name="ate" value={period.to} />
+          </>
+        )}
         <input
           type="text"
           name="q"

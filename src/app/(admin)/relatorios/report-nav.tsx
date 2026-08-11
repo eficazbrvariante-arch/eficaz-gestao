@@ -40,14 +40,30 @@ export function ReportTabs({ period }: { period: Period }) {
   );
 }
 
-export function PeriodPicker({ period }: { period: Period }) {
+export function PeriodPicker({
+  period,
+  extraParams,
+}: {
+  period: Period;
+  /** Outros parâmetros da URL (ex.: busca) a preservar ao aplicar o período. */
+  extraParams?: Record<string, string | undefined>;
+}) {
   const pathname = usePathname();
   const shortcuts = periodShortcuts();
+  const extraQuery = Object.entries(extraParams ?? {})
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}=${encodeURIComponent(value!)}`)
+    .join("&");
 
   return (
     <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-end gap-4">
         <form className="flex flex-wrap items-end gap-3">
+          {Object.entries(extraParams ?? {})
+            .filter(([, value]) => value)
+            .map(([key, value]) => (
+              <input key={key} type="hidden" name={key} value={value} />
+            ))}
           <div>
             <label htmlFor="de" className="mb-1 block text-xs font-medium text-slate-600">
               De
@@ -86,7 +102,7 @@ export function PeriodPicker({ period }: { period: Period }) {
             return (
               <Link
                 key={shortcut.label}
-                href={`${pathname}?de=${shortcut.from}&ate=${shortcut.to}`}
+                href={`${pathname}?de=${shortcut.from}&ate=${shortcut.to}${extraQuery ? `&${extraQuery}` : ""}`}
                 className={clsx(
                   "rounded-full px-3 py-1.5 text-xs",
                   isActive
