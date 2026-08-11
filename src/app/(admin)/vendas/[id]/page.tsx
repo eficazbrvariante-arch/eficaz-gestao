@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
+import QRCode from "qrcode";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { canCancelSale, canViewAllSales } from "@/lib/permissions";
+import { storeDisplayHost, storeOrigin } from "@/modules/catalog/tenant-resolver";
 import { SaleActions } from "./sale-controls";
 import { AutoPrint } from "./auto-print";
 
@@ -40,6 +42,15 @@ export default async function ComprovantePage({
   ]);
 
   if (!sale) notFound();
+
+  const siteHost = storeDisplayHost(tenant);
+  // Sem `width`: o SVG sai só com `viewBox`, então o tamanho final (tela e
+  // impressão) é controlado por CSS em `.receipt-qr` — mesmo princípio já
+  // usado no resto do cupom, escala sem perda por ser vetor.
+  const siteQrCode = await QRCode.toString(`${storeOrigin(tenant)}/`, {
+    type: "svg",
+    margin: 0,
+  });
 
   const isCancelled = sale.status === "CANCELLED";
 
@@ -88,6 +99,11 @@ export default async function ComprovantePage({
             </p>
           )}
           {tenant.phone && <p className="text-xs text-slate-500">Tel. {tenant.phone}</p>}
+          {siteHost && <p className="text-xs text-slate-500">{siteHost}</p>}
+          <div
+            className="receipt-qr mt-2 flex justify-center"
+            dangerouslySetInnerHTML={{ __html: siteQrCode }}
+          />
         </div>
 
         {isCancelled && (
@@ -194,10 +210,6 @@ export default async function ComprovantePage({
             {sale.customer.notes && <p>Obs.: {sale.customer.notes}</p>}
           </div>
         )}
-
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Documento sem valor fiscal · Obrigado pela preferência!
-        </p>
       </div>
     </div>
   );

@@ -136,6 +136,17 @@ export function storeOrigin(store: Pick<Store, "subdomain" | "customDomain" | "d
 }
 
 /**
+ * Texto do site pra exibir impresso (ex.: cupom da venda) — sempre com
+ * "www." na frente, mesmo quando o domínio próprio foi cadastrado sem (ver
+ * `normalizeDomain`, que remove o "www." do valor salvo). Sem protocolo,
+ * porque não faz sentido lido no papel.
+ */
+export function storeDisplayHost(store: Pick<Store, "subdomain" | "customDomain" | "domainStatus">) {
+  const host = storeOrigin(store).replace(/^https?:\/\//, "");
+  return host.startsWith("www.") ? host : `www.${host}`;
+}
+
+/**
  * Busca a empresa por domínio customizado (usado pelo proxy para reescrever a rota).
  * O fluxo completo de cadastro e validação de domínio entra na Fase 7.
  */

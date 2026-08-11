@@ -36,6 +36,14 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* QR code do site no cabeçalho do cupom: o SVG sai sem width/height fixos
+   (só viewBox), então o tamanho em tela padrão fica definido aqui — a
+   versão impressa tem sua própria largura, ver @media print abaixo. */
+.receipt-qr svg {
+  width: 96px;
+  height: 96px;
+}
+
 /* Comprovante de venda na impressora térmica (Epson TM-T20X-II, bobina 80mm,
    área imprimível real 72mm ≈ 576 dots a 203dpi — o padrão ESC/POS de
    impressoras de cupom 80mm). A página impressa é declarada com a largura
@@ -117,5 +125,12 @@ body {
 
   #recibo .receipt-total {
     font-size: 14px;
+  }
+
+  /* 22mm cabe folgado nos 72mm úteis e mantém o QR fácil de ler pela
+     câmera do celular (abaixo disso a densidade dos módulos complica). */
+  #recibo .receipt-qr svg {
+    width: 22mm;
+    height: 22mm;
   }
 }
