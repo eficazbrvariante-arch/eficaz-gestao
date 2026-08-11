@@ -125,6 +125,21 @@ function RegisterPanel({ subdomain, returnTo }: { subdomain: string; returnTo: s
         <FieldError message={errors.email?.message} />
       </div>
       <div>
+        <Label htmlFor="document">CPF</Label>
+        <Input
+          id="document"
+          inputMode="numeric"
+          placeholder="000.000.000-00"
+          {...register("document")}
+        />
+        <FieldError message={errors.document?.message} />
+      </div>
+      <div>
+        <Label htmlFor="birthDate">Data de nascimento</Label>
+        <Input id="birthDate" type="date" {...register("birthDate")} />
+        <FieldError message={errors.birthDate?.message} />
+      </div>
+      <div>
         <Label htmlFor="username">@usuário</Label>
         <div className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">

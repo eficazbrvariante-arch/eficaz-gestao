@@ -73,6 +73,8 @@ export async function registerCustomerAction(
         name: parsed.data.name,
         phone: parsed.data.phone,
         email: parsed.data.email || null,
+        document: parsed.data.document,
+        birthDate: parsed.data.birthDate,
       })
     );
   } catch (error) {

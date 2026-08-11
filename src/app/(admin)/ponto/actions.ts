@@ -5,11 +5,16 @@ import { revalidatePath } from "next/cache";
 import { requireUser, getCurrentUser } from "@/lib/session";
 import { canCorrectAttendance, canWaiveAttendanceSelfie } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { todayRange } from "@/lib/format";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
   correctAttendanceEntry,
+  getNextExpectedForToday,
+  listEffectiveEntries,
   punchAttendance,
+  type EffectiveAttendanceEntry,
 } from "@/modules/attendance/attendance-service";
+import type { AttendanceEntryType } from "@/generated/prisma/enums";
 import {
   correctAttendanceEntrySchema,
   punchAttendanceSchema,
@@ -17,12 +22,31 @@ import {
   type PunchAttendanceInput,
 } from "@/lib/validations/attendance";
 
+/**
+ * Confere que `userId` é um colaborador ativo do mesmo tenant de quem está
+ * logado — a loja compartilha um único login entre até 3 pessoas no caixa,
+ * então quem bate o ponto escolhe o próprio nome numa lista em vez de trocar
+ * de sessão; isso impede escolher um colaborador de fora do tenant ou já
+ * desligado.
+ */
+async function requireActiveTenantEmployee(tenantId: string, userId: string) {
+  return prisma.user.findFirst({
+    where: { id: userId, tenantId, active: true },
+    select: { id: true, name: true },
+  });
+}
+
 export async function punchAttendanceAction(input: PunchAttendanceInput) {
   const user = await requireUser();
 
   const parsed = punchAttendanceSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const employee = await requireActiveTenantEmployee(user.tenantId, parsed.data.userId);
+  if (!employee) {
+    return { error: "Selecione um colaborador válido." };
   }
 
   if (parsed.data.waived && !canWaiveAttendanceSelfie(user.role)) {
@@ -37,7 +61,7 @@ export async function punchAttendanceAction(input: PunchAttendanceInput) {
   const result = await punchAttendance(
     {
       tenantId: user.tenantId,
-      userId: user.id,
+      userId: employee.id,
       deviceId: sessionUser?.deviceId ?? null,
       ipAddress,
       userAgent,
@@ -60,7 +84,7 @@ export async function punchAttendanceAction(input: PunchAttendanceInput) {
       action: "attendance.selfie_waived",
       entity: "AttendanceEntry",
       entityId: result.entryId,
-      description: `${user.name} registrou o ponto (${result.type}) sem selfie. Motivo: ${parsed.data.waiveReason}`,
+      description: `${user.name} registrou o ponto de ${employee.name} (${result.type}) sem selfie. Motivo: ${parsed.data.waiveReason}`,
     });
   }
 
@@ -69,6 +93,31 @@ export async function punchAttendanceAction(input: PunchAttendanceInput) {
   revalidatePath("/ponto/painel");
 
   return { ok: true as const, entryId: result.entryId, type: result.type };
+}
+
+export type PunchStatus = {
+  nextType: AttendanceEntryType | null;
+  todaysEntries: EffectiveAttendanceEntry[];
+};
+
+/** Próxima marcação esperada e marcações de hoje do colaborador selecionado. */
+export async function getPunchStatusAction(
+  userId: string
+): Promise<PunchStatus | { error: string }> {
+  const user = await requireUser();
+
+  const employee = await requireActiveTenantEmployee(user.tenantId, userId);
+  if (!employee) {
+    return { error: "Selecione um colaborador válido." };
+  }
+
+  const { start, end } = todayRange();
+  const [nextType, todaysEntries] = await Promise.all([
+    getNextExpectedForToday(user.tenantId, employee.id),
+    listEffectiveEntries(user.tenantId, { userId: employee.id, from: start, to: end }),
+  ]);
+
+  return { nextType, todaysEntries };
 }
 
 export async function correctAttendanceEntryAction(input: CorrectAttendanceEntryInput) {

@@ -77,6 +77,12 @@ export const registerCustomerSchema = z.object({
     .trim()
     .refine((v) => v.replace(/\D/g, "").length >= 10, "Informe um telefone válido com DDD"),
   email: z.string().trim().email("Informe um e-mail válido").optional().or(z.literal("")),
+  document: z
+    .string()
+    .trim()
+    .refine((v) => v.replace(/\D/g, "").length === 11, "Informe um CPF válido (11 dígitos)"),
+  /** `YYYY-MM-DD`, mesmo formato do `<input type="date">` do formulário. */
+  birthDate: z.string().trim().min(1, "Informe a data de nascimento"),
   username: usernameSchema,
   password: passwordSchema,
 });

@@ -271,6 +271,7 @@ export async function createOrder(
                 phone: contact.phone,
                 email: contact.email,
                 document: contact.document,
+                birthDate: input.customerBirthDate || null,
                 addressStreet: input.addressStreet || null,
                 addressNumber: input.addressNumber || null,
                 addressCity: input.addressCity || null,

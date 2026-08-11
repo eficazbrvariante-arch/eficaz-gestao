@@ -326,6 +326,28 @@ export function CheckoutForm({
                     <FieldError message={errors.customerEmail?.message} />
                   </div>
                 </div>
+
+                <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="customerDocument">CPF *</Label>
+                    <Input
+                      id="customerDocument"
+                      inputMode="numeric"
+                      placeholder="000.000.000-00"
+                      {...register("customerDocument")}
+                    />
+                    <FieldError message={errors.customerDocument?.message} />
+                  </div>
+                  <div>
+                    <Label htmlFor="customerBirthDate">Data de nascimento *</Label>
+                    <Input
+                      id="customerBirthDate"
+                      type="date"
+                      {...register("customerBirthDate")}
+                    />
+                    <FieldError message={errors.customerBirthDate?.message} />
+                  </div>
+                </div>
               </>
             )}
 

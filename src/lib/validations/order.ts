@@ -35,7 +35,14 @@ const checkoutFields = {
     .email("Informe um e-mail válido")
     .optional()
     .or(z.literal("")),
-  customerDocument: z.string().trim().optional().or(z.literal("")),
+  customerDocument: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine((v) => !v || onlyDigits(v).length === 11, "CPF deve ter 11 dígitos"),
+  /** `YYYY-MM-DD`, mesmo formato do `<input type="date">` do formulário. */
+  customerBirthDate: z.string().trim().optional().or(z.literal("")),
 
   fulfillment: z.enum(["DELIVERY", "PICKUP"]),
   deliveryZoneId: z.string().trim().optional().or(z.literal("")),
@@ -83,12 +90,17 @@ function requiredWhenDelivery(field: AddressField) {
   }) => data.fulfillment !== "DELIVERY" || Boolean(data[field]?.trim());
 }
 
-type RegisterField = "customerName" | "customerPhone";
+type RegisterField = "customerName" | "customerPhone" | "customerDocument" | "customerBirthDate";
 
-/** Nome/telefone só são pedidos (e exigidos) quando o cliente está criando conta nova. */
+/** Nome/telefone/CPF/data de nascimento só são pedidos (e exigidos) quando o cliente está criando conta nova. */
 function requiredWhenRegistering(field: RegisterField) {
-  return (data: { auth: { authMode: string }; customerName?: string; customerPhone?: string }) =>
-    data.auth.authMode !== "register" || Boolean(data[field]?.trim());
+  return (data: {
+    auth: { authMode: string };
+    customerName?: string;
+    customerPhone?: string;
+    customerDocument?: string;
+    customerBirthDate?: string;
+  }) => data.auth.authMode !== "register" || Boolean(data[field]?.trim());
 }
 
 /** authMode/username/senha exigidos só fora do modo "session" (conta já logada). */
@@ -119,6 +131,14 @@ export const checkoutFormSchema = z
   .refine(requiredWhenRegistering("customerPhone"), {
     message: "Informe um telefone válido com DDD",
     path: ["customerPhone"],
+  })
+  .refine(requiredWhenRegistering("customerDocument"), {
+    message: "Informe o CPF",
+    path: ["customerDocument"],
+  })
+  .refine(requiredWhenRegistering("customerBirthDate"), {
+    message: "Informe a data de nascimento",
+    path: ["customerBirthDate"],
   })
   .refine(requiredWhenNotSession("username"), {
     message: "Campo obrigatório",
@@ -159,6 +179,14 @@ export const checkoutSchema = z
   .refine(requiredWhenRegistering("customerPhone"), {
     message: "Informe um telefone válido com DDD",
     path: ["customerPhone"],
+  })
+  .refine(requiredWhenRegistering("customerDocument"), {
+    message: "Informe o CPF",
+    path: ["customerDocument"],
+  })
+  .refine(requiredWhenRegistering("customerBirthDate"), {
+    message: "Informe a data de nascimento",
+    path: ["customerBirthDate"],
   });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;

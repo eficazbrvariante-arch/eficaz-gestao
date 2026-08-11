@@ -37,12 +37,20 @@ type RegisterCustomerData = {
   phone: string;
   email?: string | null;
   document?: string | null;
+  /** `YYYY-MM-DD`, mesmo formato do `<input type="date">` do formulário. */
+  birthDate?: string | null;
   addressStreet?: string | null;
   addressNumber?: string | null;
   addressCity?: string | null;
   addressState?: string | null;
   addressZip?: string | null;
 };
+
+/** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia — mesma regra do cadastro feito pelo painel (`(admin)/clientes/actions.ts`). */
+function parseDateOnly(value: string | null | undefined) {
+  if (!value) return null;
+  return new Date(`${value}T12:00:00-03:00`);
+}
 
 /**
  * Cria a conta dentro da MESMA transação que cria o pedido (`createOrder`) —
@@ -69,6 +77,7 @@ export async function registerCustomer(
       phone: data.phone,
       email: data.email || null,
       document: data.document || null,
+      birthDate: parseDateOnly(data.birthDate),
       addressStreet: data.addressStreet || null,
       addressNumber: data.addressNumber || null,
       addressCity: data.addressCity || null,
