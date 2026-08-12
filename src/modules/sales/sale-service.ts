@@ -429,3 +429,113 @@ export async function cancelSale(
     return { ok: false, error: "Não foi possível cancelar a venda. Tente novamente." };
   }
 }
+
+export type ReportSaleItemDefectResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Registra a troca de um item específico por defeito — não mexe no restante
+ * da venda (total/subtotal do comprovante ficam intactos, como fato
+ * histórico). Gera crédito de loja só do valor daquele item e some da
+ * quantidade "trocável" restante (não dá pra reportar mais unidades do que
+ * foram compradas). O produto NÃO volta ao estoque vendável — fica de fora
+ * até alguém avaliar/ajustar manualmente (ver comentário em `SaleItemDefect`
+ * no schema).
+ */
+export async function reportSaleItemDefect(
+  tenantId: string,
+  saleId: string,
+  userId: string,
+  input: {
+    saleItemId: string;
+    quantity: number;
+    reason: string;
+    photoUrls: string[];
+    /** Só é usado quando a venda ainda não tem cliente vinculado. */
+    creditCustomerId?: string | null;
+  }
+): Promise<ReportSaleItemDefectResult> {
+  const sale = await prisma.sale.findFirst({
+    where: { id: saleId, tenantId },
+    include: { items: { include: { defects: true } } },
+  });
+  if (!sale) return { ok: false, error: "Venda não encontrada." };
+  if (sale.status === "CANCELLED") {
+    return { ok: false, error: "Esta venda está cancelada — não dá pra trocar itens dela." };
+  }
+
+  const item = sale.items.find((i) => i.id === input.saleItemId);
+  if (!item) return { ok: false, error: "Item não encontrado nesta venda." };
+
+  const alreadyReported = item.defects.reduce((sum, d) => sum + d.quantity, 0);
+  const remaining = item.quantity - alreadyReported;
+  if (input.quantity > remaining) {
+    return {
+      ok: false,
+      error:
+        remaining <= 0
+          ? "Todas as unidades deste item já foram trocadas por defeito."
+          : `Só dá pra trocar até ${remaining} unidade(s) restante(s) deste item.`,
+    };
+  }
+
+  const customerId = sale.customerId ?? input.creditCustomerId ?? null;
+  if (!customerId) {
+    return {
+      ok: false,
+      error: "Selecione o cliente da venda para gerar o crédito da troca.",
+    };
+  }
+  if (!sale.customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Cliente não encontrado." };
+  }
+
+  const creditAmount = round2(Number(item.unitPrice) * input.quantity);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (!sale.customerId) {
+        await tx.sale.update({ where: { id: sale.id }, data: { customerId } });
+      }
+
+      await tx.saleItemDefect.create({
+        data: {
+          tenantId,
+          saleId: sale.id,
+          saleItemId: item.id,
+          quantity: input.quantity,
+          reason: input.reason,
+          creditAmount,
+          reportedById: userId,
+          photos: { create: input.photoUrls.map((url, order) => ({ url, order })) },
+        },
+      });
+
+      await tx.customer.update({
+        where: { id: customerId },
+        data: {
+          creditBalance: { increment: creditAmount },
+          ...(sale.customerId ? { totalSpent: { decrement: creditAmount } } : {}),
+        },
+      });
+      await tx.customerCreditMovement.create({
+        data: {
+          tenantId,
+          customerId,
+          type: "GRANTED",
+          amount: creditAmount,
+          saleId: sale.id,
+          userId,
+          reason: `Troca por defeito · venda #${sale.number} · ${item.nameSnapshot}`,
+        },
+      });
+    });
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Não foi possível registrar a troca. Tente novamente." };
+  }
+}
