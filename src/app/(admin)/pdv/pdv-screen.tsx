@@ -258,6 +258,19 @@ export function PdvScreen({
     setAmounts((current) => ({ ...current, [key]: amount }));
   }
 
+  /** Ao selecionar um cliente com crédito de loja, pré-preenche o campo
+   *  sozinho (menor valor entre o saldo disponível e o total da venda) —
+   *  o vendedor não precisa calcular/digitar, mas pode ajustar depois. */
+  function selectCustomer(picked: CustomerOption) {
+    setCustomer(picked);
+    if (picked.creditBalance > 0) {
+      setAmounts((current) => ({
+        ...current,
+        store_credit: round2(Math.min(picked.creditBalance, total)),
+      }));
+    }
+  }
+
   function finalizeSale() {
     setError(undefined);
 
@@ -638,7 +651,7 @@ export function PdvScreen({
                         key={c.id}
                         type="button"
                         onClick={() => {
-                          setCustomer(c);
+                          selectCustomer(c);
                           setCustomerResults([]);
                           setCustomerTerm("");
                         }}
