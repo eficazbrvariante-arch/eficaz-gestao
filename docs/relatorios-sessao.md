@@ -38,9 +38,22 @@ foram removidos do `dev-local` depois (estoque devolvido).
 anterior) preso na porta 3000 sem responder — encerrado com autorização do
 usuário para conseguir subir um servidor de dev limpo.
 
-**Não commitado** — script novo (`scripts/reset-vendas-pedidos.mts`, de uma
-sessão anterior) e as mudanças desta sessão seguem no working tree; avisar
-se quiser que eu commite.
+**Commits e deploy:** dois commits a pedido do usuário — `e926b2a` (só o
+script `scripts/reset-vendas-pedidos.mts`, de uma sessão anterior) e
+`fa6aeb5` (mudança do PDV + este relatório). Push pra `origin/main`
+(`65e1a15..fa6aeb5`), deploy automático na Vercel confirmado com
+`npm run check:deploy` — tudo OK (painel, loja, produto, categoria, rota
+`comprar-whatsapp`, sem erros nos logs).
+
+**Validado em produção:** com autorização do usuário, feita uma venda real
+de teste no PDV de produção (Adaptador 3 saídas, R$7,00, vendedor "Vendedor
+teste") — confirmado visualmente o comportamento novo (fica no PDV, aviso
+"Venda #7 registrada com sucesso", link de imprimir). Cancelada logo em
+seguida (motivo registrado), usando o cliente já existente "João da Silva
+Teste" para receber o crédito, evitando afetar cliente real. Conferido no
+banco depois: estoque do produto voltou pra 10, venda marcada `CANCELLED`
+com o motivo, crédito de R$7,00 só na conta de teste — nada real foi
+afetado.
 
 ## 2026-08-11 — Reset de vendas/pedidos/caixa para testes práticos + bug do Prisma em scripts
 
