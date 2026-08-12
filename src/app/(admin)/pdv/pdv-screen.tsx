@@ -12,7 +12,6 @@ import { FormBanner } from "@/components/ui/form-banner";
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
-import { PaymentMethodModal, type PaymentMethod } from "./payment-method-modal";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -25,7 +24,47 @@ type CartLine = {
   stockQty: number;
 };
 
-type PaymentLine = { id: number; method: PaymentMethod; label: string; amount: number };
+type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
+type PaymentSlotKey =
+  | "cash"
+  | "credit"
+  | "debit"
+  | "pix_key"
+  | "pix_machine"
+  | "mercado_pago"
+  | "store_credit"
+  | "fiado";
+type PaymentAmounts = Record<PaymentSlotKey, number>;
+
+const EMPTY_PAYMENTS: PaymentAmounts = {
+  cash: 0,
+  credit: 0,
+  debit: 0,
+  pix_key: 0,
+  pix_machine: 0,
+  mercado_pago: 0,
+  store_credit: 0,
+  fiado: 0,
+};
+
+/**
+ * Todos os métodos ficam visíveis ao mesmo tempo, cada um com seu próprio
+ * campo de valor — sem clicar em nada pra "selecionar" um método antes de
+ * poder digitar (pedido explícito do usuário, pra reduzir atrito na hora de
+ * dividir uma venda em várias formas). Chave PIX / Pix Maquininha / Mercado
+ * Pago são só rótulos: todos gravam `method: "PIX"` (mesmo método já
+ * existente, sem migração de banco).
+ */
+const PAYMENT_SLOTS: { key: PaymentSlotKey; label: string; method: PaymentMethod }[] = [
+  { key: "cash", label: "Dinheiro", method: "CASH" },
+  { key: "credit", label: "Cartão de Crédito", method: "CREDIT" },
+  { key: "debit", label: "Cartão de Débito", method: "DEBIT" },
+  { key: "pix_key", label: "Chave PIX", method: "PIX" },
+  { key: "pix_machine", label: "Pix Maquininha", method: "PIX" },
+  { key: "mercado_pago", label: "Mercado Pago", method: "PIX" },
+  { key: "store_credit", label: "Crédito de loja", method: "STORE_CREDIT" },
+  { key: "fiado", label: "Fiado", method: "FIADO" },
+];
 
 type CustomerOption = {
   id: string;
@@ -68,11 +107,7 @@ export function PdvScreen({
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
 
-  const [payments, setPayments] = useState<PaymentLine[]>([]);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  // Incrementado a cada abertura do modal — vira `key` do formulário interno
-  // dele, forçando um remount limpo em vez de resetar estado por `useEffect`.
-  const [paymentModalNonce, setPaymentModalNonce] = useState(0);
+  const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENTS);
   const [cashReceived, setCashReceived] = useState<number | "">("");
   const [fiadoDueDate, setFiadoDueDate] = useState("");
 
@@ -138,17 +173,11 @@ export function PdvScreen({
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
   const total = round2(Math.max(0, subtotal - discount));
 
-  const paid = round2(payments.reduce((sum, p) => sum + (p.amount || 0), 0));
+  const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
   const remaining = round2(total - paid);
-  const cashPortion = round2(
-    payments.filter((p) => p.method === "CASH").reduce((sum, p) => sum + (p.amount || 0), 0)
-  );
-  const storeCreditPortion = round2(
-    payments.filter((p) => p.method === "STORE_CREDIT").reduce((sum, p) => sum + (p.amount || 0), 0)
-  );
-  const fiadoPortion = round2(
-    payments.filter((p) => p.method === "FIADO").reduce((sum, p) => sum + (p.amount || 0), 0)
-  );
+  const cashPortion = round2(amounts.cash || 0);
+  const storeCreditPortion = round2(amounts.store_credit || 0);
+  const fiadoPortion = round2(amounts.fiado || 0);
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
 
@@ -225,21 +254,8 @@ export function PdvScreen({
     });
   }
 
-  function openPaymentModal() {
-    setPaymentModalNonce((n) => n + 1);
-    setPaymentModalOpen(true);
-  }
-
-  function confirmPayment(payment: { method: PaymentMethod; label: string; amount: number }) {
-    setPayments((current) => [
-      ...current,
-      { id: Math.max(0, ...current.map((p) => p.id)) + 1, ...payment },
-    ]);
-    setPaymentModalOpen(false);
-  }
-
-  function removePaymentLine(id: number) {
-    setPayments((current) => current.filter((p) => p.id !== id));
+  function setPaymentAmount(key: PaymentSlotKey, amount: number) {
+    setAmounts((current) => ({ ...current, [key]: amount }));
   }
 
   function finalizeSale() {
@@ -290,9 +306,10 @@ export function PdvScreen({
           quantity: line.quantity,
         })),
         discount,
-        payments: payments
-          .filter((p) => p.amount > 0)
-          .map((p) => ({ method: p.method, amount: p.amount })),
+        payments: PAYMENT_SLOTS.filter((slot) => amounts[slot.key] > 0).map((slot) => ({
+          method: slot.method,
+          amount: amounts[slot.key],
+        })),
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
       });
@@ -320,8 +337,7 @@ export function PdvScreen({
         setCustomer(null);
         setCustomerTerm("");
         setCustomerResults([]);
-        setPayments([]);
-        setPaymentModalOpen(false);
+        setAmounts(EMPTY_PAYMENTS);
         setCashReceived("");
         setFiadoDueDate("");
         setSellerId(null);
@@ -576,13 +592,12 @@ export function PdvScreen({
                   type="button"
                   onClick={() => {
                     setCustomer(null);
-                    setPayments((current) =>
-                      current.map((p) =>
-                        p.method === "STORE_CREDIT" || p.method === "FIADO"
-                          ? { ...p, method: "CASH", label: "Dinheiro" }
-                          : p
-                      )
-                    );
+                    setAmounts((current) => ({
+                      ...current,
+                      cash: round2(current.cash + current.store_credit + current.fiado),
+                      store_credit: 0,
+                      fiado: 0,
+                    }));
                   }}
                   className="text-xs text-red-600 hover:underline"
                 >
@@ -655,12 +670,8 @@ export function PdvScreen({
                     step="0.01"
                     min={0}
                     max={subtotal}
-                    disabled={payments.length > 0}
-                    title={
-                      payments.length > 0
-                        ? "Remova as formas de pagamento para alterar o desconto"
-                        : undefined
-                    }
+                    disabled={paid > 0}
+                    title={paid > 0 ? "Zere as formas de pagamento para alterar o desconto" : undefined}
                     value={discount || ""}
                     onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
                     className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
@@ -705,40 +716,48 @@ export function PdvScreen({
             <div className="mb-3 space-y-2">
               <Label className="mb-0">Formas de pagamento</Label>
 
-              {payments.length === 0 ? (
-                <Button type="button" variant="secondary" disabled={!sellerId} onClick={openPaymentModal}>
-                  Selecionar forma de pagamento
-                </Button>
-              ) : (
-                <>
-                  {payments.map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium text-slate-900">{payment.label}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-900">{formatBRL(payment.amount)}</span>
-                        <button
-                          type="button"
-                          onClick={() => removePaymentLine(payment.id)}
-                          className="text-xs text-red-600 hover:underline"
-                        >
-                          ✕
-                        </button>
-                      </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {PAYMENT_SLOTS.map((slot) => {
+                  const eligible =
+                    slot.key === "store_credit"
+                      ? !!customer && customer.creditBalance > 0
+                      : slot.key === "fiado"
+                        ? canFiado && !!customer
+                        : true;
+                  const disabled = !sellerId || !eligible;
+                  return (
+                    <div key={slot.key}>
+                      <label
+                        htmlFor={`payment-${slot.key}`}
+                        className="mb-1 block text-xs text-slate-600"
+                      >
+                        {slot.label}
+                      </label>
+                      <input
+                        id={`payment-${slot.key}`}
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        disabled={disabled}
+                        title={
+                          !sellerId
+                            ? "Selecione um vendedor"
+                            : !eligible
+                              ? slot.key === "store_credit"
+                                ? "Cliente sem crédito de loja disponível"
+                                : "Selecione um cliente elegível para fiado"
+                              : undefined
+                        }
+                        value={amounts[slot.key] || ""}
+                        onChange={(e) =>
+                          setPaymentAmount(slot.key, Math.max(0, Number(e.target.value) || 0))
+                        }
+                        className="h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                      />
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={openPaymentModal}
-                    disabled={!sellerId || remaining <= 0.005}
-                    className="text-xs font-medium text-slate-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
-                  >
-                    + Adicionar outra forma
-                  </button>
-                </>
-              )}
+                  );
+                })}
+              </div>
 
               {sellerId && Math.abs(remaining) > 0.005 && (
                 <p className={remaining > 0 ? "text-xs text-amber-600" : "text-xs text-red-600"}>
@@ -812,16 +831,6 @@ export function PdvScreen({
         }}
       />
 
-      <PaymentMethodModal
-        open={paymentModalOpen}
-        onClose={() => setPaymentModalOpen(false)}
-        remaining={remaining}
-        hasCustomer={!!customer}
-        customerCreditBalance={customer?.creditBalance ?? 0}
-        canFiado={canFiado}
-        resetKey={paymentModalNonce}
-        onConfirm={confirmPayment}
-      />
       </div>
     </div>
   );
