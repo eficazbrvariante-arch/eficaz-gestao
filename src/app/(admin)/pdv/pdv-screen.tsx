@@ -8,11 +8,11 @@ import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { FormBanner } from "@/components/ui/form-banner";
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
+import { PaymentMethodModal, type PaymentMethod } from "./payment-method-modal";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -25,18 +25,7 @@ type CartLine = {
   stockQty: number;
 };
 
-type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
-
-const METHOD_LABELS: Record<PaymentMethod, string> = {
-  CASH: "Dinheiro",
-  PIX: "PIX",
-  DEBIT: "Cartão de débito",
-  CREDIT: "Cartão de crédito",
-  STORE_CREDIT: "Crédito de loja",
-  FIADO: "Fiado",
-};
-
-type PaymentLine = { id: number; method: PaymentMethod; amount: number };
+type PaymentLine = { id: number; method: PaymentMethod; label: string; amount: number };
 
 type CustomerOption = {
   id: string;
@@ -79,16 +68,18 @@ export function PdvScreen({
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
 
-  const [payments, setPayments] = useState<PaymentLine[]>([
-    { id: 1, method: "CASH", amount: 0 },
-  ]);
+  const [payments, setPayments] = useState<PaymentLine[]>([]);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  // Incrementado a cada abertura do modal — vira `key` do formulário interno
+  // dele, forçando um remount limpo em vez de resetar estado por `useEffect`.
+  const [paymentModalNonce, setPaymentModalNonce] = useState(0);
   const [cashReceived, setCashReceived] = useState<number | "">("");
   const [fiadoDueDate, setFiadoDueDate] = useState("");
 
   // Vendedor da venda: nunca inferido de quem operou o caixa — é sempre
   // escolhido explicitamente aqui, e revalidado no servidor em
   // `createSaleAction`. Enquanto não houver um vendedor, a seção de
-  // pagamento fica desabilitada (ver `availableMethods`/inputs abaixo).
+  // pagamento fica desabilitada (ver os `disabled={!sellerId}` abaixo).
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
@@ -147,36 +138,19 @@ export function PdvScreen({
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
   const total = round2(Math.max(0, subtotal - discount));
 
-  // Com uma única forma de pagamento o valor é sempre o total da venda (derivado, não
-  // guardado em estado). Ao dividir o pagamento, cada linha passa a ter valor explícito.
-  const isSplit = payments.length > 1;
-  const effectivePayments = isSplit
-    ? payments
-    : [{ ...payments[0], amount: total }];
-
-  const paid = round2(effectivePayments.reduce((sum, p) => sum + (p.amount || 0), 0));
+  const paid = round2(payments.reduce((sum, p) => sum + (p.amount || 0), 0));
   const remaining = round2(total - paid);
   const cashPortion = round2(
-    effectivePayments
-      .filter((p) => p.method === "CASH")
-      .reduce((sum, p) => sum + (p.amount || 0), 0)
+    payments.filter((p) => p.method === "CASH").reduce((sum, p) => sum + (p.amount || 0), 0)
   );
   const storeCreditPortion = round2(
-    effectivePayments
-      .filter((p) => p.method === "STORE_CREDIT")
-      .reduce((sum, p) => sum + (p.amount || 0), 0)
+    payments.filter((p) => p.method === "STORE_CREDIT").reduce((sum, p) => sum + (p.amount || 0), 0)
   );
   const fiadoPortion = round2(
-    effectivePayments.filter((p) => p.method === "FIADO").reduce((sum, p) => sum + (p.amount || 0), 0)
+    payments.filter((p) => p.method === "FIADO").reduce((sum, p) => sum + (p.amount || 0), 0)
   );
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
-
-  const availableMethods = (Object.keys(METHOD_LABELS) as PaymentMethod[]).filter((method) => {
-    if (method === "STORE_CREDIT") return customer && customer.creditBalance > 0;
-    if (method === "FIADO") return canFiado && customer;
-    return true;
-  });
 
   function addToCart(product: PdvProduct, variantId: string | null) {
     const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
@@ -251,31 +225,21 @@ export function PdvScreen({
     });
   }
 
-  function updatePayment(id: number, patch: Partial<PaymentLine>) {
-    setPayments((current) => current.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  function openPaymentModal() {
+    setPaymentModalNonce((n) => n + 1);
+    setPaymentModalOpen(true);
   }
 
-  function addPaymentLine() {
-    setPayments((current) => {
-      // Ao sair do modo "pagamento único", a primeira linha passa a carregar o total
-      // explicitamente, para o operador redistribuir os valores manualmente.
-      const base =
-        current.length === 1 ? [{ ...current[0], amount: total }] : current;
-      return [
-        ...base,
-        {
-          id: Math.max(0, ...base.map((p) => p.id)) + 1,
-          method: "PIX",
-          amount: 0,
-        },
-      ];
-    });
+  function confirmPayment(payment: { method: PaymentMethod; label: string; amount: number }) {
+    setPayments((current) => [
+      ...current,
+      { id: Math.max(0, ...current.map((p) => p.id)) + 1, ...payment },
+    ]);
+    setPaymentModalOpen(false);
   }
 
   function removePaymentLine(id: number) {
-    setPayments((current) =>
-      current.length === 1 ? current : current.filter((p) => p.id !== id)
-    );
+    setPayments((current) => current.filter((p) => p.id !== id));
   }
 
   function finalizeSale() {
@@ -326,7 +290,7 @@ export function PdvScreen({
           quantity: line.quantity,
         })),
         discount,
-        payments: effectivePayments
+        payments: payments
           .filter((p) => p.amount > 0)
           .map((p) => ({ method: p.method, amount: p.amount })),
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
@@ -356,7 +320,8 @@ export function PdvScreen({
         setCustomer(null);
         setCustomerTerm("");
         setCustomerResults([]);
-        setPayments([{ id: 1, method: "CASH", amount: 0 }]);
+        setPayments([]);
+        setPaymentModalOpen(false);
         setCashReceived("");
         setFiadoDueDate("");
         setSellerId(null);
@@ -614,7 +579,7 @@ export function PdvScreen({
                     setPayments((current) =>
                       current.map((p) =>
                         p.method === "STORE_CREDIT" || p.method === "FIADO"
-                          ? { ...p, method: "CASH" }
+                          ? { ...p, method: "CASH", label: "Dinheiro" }
                           : p
                       )
                     );
@@ -690,9 +655,15 @@ export function PdvScreen({
                     step="0.01"
                     min={0}
                     max={subtotal}
+                    disabled={payments.length > 0}
+                    title={
+                      payments.length > 0
+                        ? "Remova as formas de pagamento para alterar o desconto"
+                        : undefined
+                    }
                     value={discount || ""}
                     onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-                    className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm"
+                    className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
                   />
                 </div>
               ) : (
@@ -732,61 +703,42 @@ export function PdvScreen({
             {/* A seleção do vendedor acontece antes da forma de pagamento: sem
                 vendedor escolhido, os campos abaixo ficam desabilitados. */}
             <div className="mb-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="mb-0">Formas de pagamento</Label>
-                <button
-                  type="button"
-                  onClick={addPaymentLine}
-                  disabled={!sellerId}
-                  className="text-xs font-medium text-slate-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
-                >
-                  + Dividir pagamento
-                </button>
-              </div>
+              <Label className="mb-0">Formas de pagamento</Label>
 
-              {effectivePayments.map((payment) => (
-                <div key={payment.id} className="flex gap-2">
-                  <Select
-                    value={payment.method}
-                    disabled={!sellerId}
-                    onChange={(e) =>
-                      updatePayment(payment.id, { method: e.target.value as PaymentMethod })
-                    }
-                  >
-                    {availableMethods.map((method) => (
-                      <option key={method} value={method}>
-                        {METHOD_LABELS[method]}
-                      </option>
-                    ))}
-                  </Select>
-                  {isSplit ? (
-                    <input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      disabled={!sellerId}
-                      value={payment.amount || ""}
-                      onChange={(e) =>
-                        updatePayment(payment.id, { amount: Number(e.target.value) || 0 })
-                      }
-                      className="w-28 shrink-0 rounded-md border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50"
-                    />
-                  ) : (
-                    <div className="flex w-28 shrink-0 items-center justify-end rounded-md bg-slate-50 px-2 text-sm font-medium text-slate-900">
-                      {formatBRL(payment.amount)}
-                    </div>
-                  )}
-                  {isSplit && (
-                    <button
-                      type="button"
-                      onClick={() => removePaymentLine(payment.id)}
-                      className="shrink-0 text-xs text-red-600 hover:underline"
+              {payments.length === 0 ? (
+                <Button type="button" variant="secondary" disabled={!sellerId} onClick={openPaymentModal}>
+                  Selecionar forma de pagamento
+                </Button>
+              ) : (
+                <>
+                  {payments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm"
                     >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+                      <span className="font-medium text-slate-900">{payment.label}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-900">{formatBRL(payment.amount)}</span>
+                        <button
+                          type="button"
+                          onClick={() => removePaymentLine(payment.id)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={openPaymentModal}
+                    disabled={!sellerId || remaining <= 0.005}
+                    className="text-xs font-medium text-slate-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
+                  >
+                    + Adicionar outra forma
+                  </button>
+                </>
+              )}
 
               {sellerId && Math.abs(remaining) > 0.005 && (
                 <p className={remaining > 0 ? "text-xs text-amber-600" : "text-xs text-red-600"}>
@@ -858,6 +810,17 @@ export function PdvScreen({
           setSellerName(seller.name);
           setSellerModalOpen(false);
         }}
+      />
+
+      <PaymentMethodModal
+        open={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        remaining={remaining}
+        hasCustomer={!!customer}
+        customerCreditBalance={customer?.creditBalance ?? 0}
+        canFiado={canFiado}
+        resetKey={paymentModalNonce}
+        onConfirm={confirmPayment}
       />
       </div>
     </div>
