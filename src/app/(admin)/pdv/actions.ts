@@ -122,7 +122,9 @@ export async function listActiveSellersAction(): Promise<PdvSellerOption[]> {
   return sellers.filter((seller) => canSell(seller.role));
 }
 
-export async function createSaleAction(input: CreateSaleInput) {
+export async function createSaleAction(
+  input: CreateSaleInput
+): Promise<{ error: string } | { saleId: string; number: number; changeAmount: number }> {
   const user = await requireUser();
   if (!canSell(user.role)) {
     return { error: "Seu perfil não tem permissão para realizar vendas." };

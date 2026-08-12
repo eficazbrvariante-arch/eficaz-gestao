@@ -1,5 +1,113 @@
 # Relatórios de sessão
 
+## 2026-08-12 — PDV volta sozinho pra nova venda ao finalizar
+
+**Pedido do usuário:** ao finalizar uma venda no PDV, o sistema navegava para
+a página de comprovante (`/vendas/[id]?nova=1`) e ficava lá — o operador
+precisava clicar em "Nova venda" pra voltar. Pedido: voltar direto pro PDV,
+pronto pra próxima venda, sem esse passo manual.
+
+**O que mudou:**
+1. `src/app/(admin)/pdv/pdv-screen.tsx`: ao finalizar a venda com sucesso, o
+   PDV não navega mais para o comprovante — reseta o próprio estado
+   (carrinho, cliente, pagamentos, vendedor — este último força nova seleção
+   por venda, mesmo comportamento de antes) e chama `router.refresh()` só
+   pra atualizar o resumo "Vendas neste caixa" do topo, sem perder o estado
+   do formulário. Um aviso verde aparece no lugar ("Venda #X registrada com
+   sucesso" + troco, se houver) com um link "Imprimir comprovante" (abre o
+   recibo em nova aba) e um botão de fechar — cobre quem ainda precisa
+   imprimir, sem travar a volta ao PDV.
+2. `src/app/(admin)/pdv/actions.ts`: `createSaleAction` ganhou tipo de
+   retorno explícito (`{ error: string } | { saleId; number; changeAmount }`)
+   — sem isso o TypeScript inferia `saleId`/`number` como possivelmente
+   `undefined` mesmo depois do narrowing por `"saleId" in result`, e o novo
+   código (que agora usa esses campos num objeto tipado, não só numa
+   template string) não compilava.
+
+**Testado:** `lint`, `typecheck` e `build:app` sem erros nem warnings novos.
+Testado manualmente no navegador contra `dev-local`: criado um usuário ADMIN
+temporário só pra login (tenant real não tinha credencial conhecida),
+aberto o caixa, feita uma venda completa de R$7,00 com R$10,00 em dinheiro —
+confirmado que a tela fica no PDV, carrinho/vendedor resetados, aviso "Venda
+#1 registrada com sucesso · Troco: R$ 3,00" aparece, "Vendas neste caixa" no
+topo atualiza pra "1 · R$ 7,00", e "Imprimir comprovante" abre o recibo
+correto. Usuário de teste, a venda de teste e o caixa aberto para o teste
+foram removidos do `dev-local` depois (estoque devolvido).
+
+**Observação:** durante o teste, havia um processo Node órfão (de uma sessão
+anterior) preso na porta 3000 sem responder — encerrado com autorização do
+usuário para conseguir subir um servidor de dev limpo.
+
+**Não commitado** — script novo (`scripts/reset-vendas-pedidos.mts`, de uma
+sessão anterior) e as mudanças desta sessão seguem no working tree; avisar
+se quiser que eu commite.
+
+## 2026-08-11 — Reset de vendas/pedidos/caixa para testes práticos + bug do Prisma em scripts
+
+**Pedido do usuário:** zerar a movimentação da loja real (EficazBr Eletrônicos)
+para começar testes práticos "do zero" no dia seguinte — cancelar todos os
+pedidos do catálogo online, apagar todo o histórico de vendas e zerar o
+crédito de loja do cliente `@eficazbr`. Confirmado com o usuário (várias
+rodadas de pergunta) que era para valer em **produção**, com backup antes, e
+que o escopo se estendia a: caixa (aberturas/fechamentos), fiado e crédito de
+*todos* os clientes (não só `@eficazbr`), devolução do estoque das vendas/pedidos
+desfeitos, e reset da numeração sequencial de venda/pedido para 0.
+
+**Descoberta importante — Prisma Client quebrado em scripts standalone:**
+qualquer script rodado via `npx tsx scripts/*.mts` (inclusive `limpar-dados-demo.mts`,
+código já existente, não relacionado a esta mudança) falha com `ECONNREFUSED`
+em **qualquer** query, mesmo `select 1`. Isolado com debug (`DEBUG=prisma:*`):
+o Prisma Client (`@prisma/adapter-pg` + gerador `prisma-client`, ambos 7.9.1)
+reporta `ECONNREFUSED` mesmo passando pelo `Pool` do `pg` correto — mas uma
+conexão `pg` crua, com a mesma `DATABASE_URL` e até a mesma query SQL gerada
+pelo Prisma, funciona perfeitamente. Não é a sandbox (testado com
+`dangerouslyDisableSandbox`), não é a connection string, não é lógica do
+script. Suspeita: incompatibilidade entre o gerador `prisma-client`/`adapter-pg`
+7.9.1 e Node v24.18.1 (versão recente) neste ambiente. **Não corrigido** —
+afeta todos os scripts de manutenção existentes (`limpar-dados-demo.mts`,
+`limpar-sessoes-expiradas.mts` etc.), não só os novos. Vale investigar numa
+sessão futura (checar changelog do Prisma/adapter-pg para Node 24, ou tentar
+Node 22 LTS como teste).
+
+**O que mudou:**
+1. Criado `scripts/reset-vendas-pedidos.mts` — usa `pg` diretamente (SQL puro
+   parametrizado), contornando o bug acima. Modo dry-run por padrão, exige
+   `--confirmar` para executar. Filtra pelo tenant `subdomain = "eficazbr"`
+   (o banco tem também um tenant de teste, `Teste123`, que existe tanto em
+   `dev-local` quanto em produção — não tocado, por pedido explícito do
+   usuário). Replica exatamente a lógica de estorno de estoque de
+   `cancelSale`/`revertStockDeduction` (`sale-service.ts`/`order-service.ts`).
+   Não commitado (arquivo novo, só commitar se o usuário pedir).
+2. **Backup de produção:** branch Neon `backup-antes-reset-vendas-20260811`
+   (`br-autumn-forest-acls1ei4`), criado a partir da branch de produção
+   (`br-super-breeze-accw4gep`) no estado exato anterior ao reset — permite
+   restaurar se precisar consultar algo do histórico apagado.
+3. **Reset executado em produção** (tenant EficazBr Eletrônicos): 17 pedidos
+   marcados `CANCELLED` (6 já estavam, 11 `NEW`), 11 vendas apagadas (6
+   concluídas — estoque de 6 produtos devolvido), 2 caixas apagados, 3
+   movimentações de crédito apagadas, saldo de crédito e total gasto zerados
+   para todos os clientes (o cliente `@eficazbr` tinha saldo > 0, confirmado
+   zerado depois), numeração de venda e pedido reiniciada para 0.
+
+**Testado:** script validado com dry-run e depois `--confirmar` completo no
+banco `dev-local` primeiro (mesmo tenant `eficazbr`, dados equivalentes)
+antes de tocar em produção — conferido depois: vendas=0, pedidos todos
+`CANCELLED`, caixas=0, nenhum cliente com crédito residual, sequências
+zeradas. Repetido o mesmo dry-run em produção (números conferidos com o
+usuário antes de rodar) e depois o `--confirmar` real, com verificação final
+direta no banco de produção confirmando o mesmo resultado, incluindo
+`creditBalance`/`totalSpent` do cliente `@eficazbr` em `0.00`.
+
+**Pendência:** o bug do Prisma Client em scripts standalone (acima) continua
+sem correção — os scripts de manutenção antigos (`limpar-dados-demo.mts` etc.)
+também estão quebrados até isso ser investigado. `dev-local` do tenant
+`eficazbr` também ficou com vendas/pedidos/caixa zerados como efeito colateral
+de validar o script lá antes de produção (branch de desenvolvimento,
+descartável, sem impacto).
+
+**Não commitado** (nem o script novo, nem este relatório) — mudança foi só em
+dado de produção via script, nenhum arquivo de código do app foi alterado.
+
 ## 2026-08-11 — E-mail transacional, cupom de venda, Ponto multiusuário e cadastro de cliente
 
 **O que mudou:**

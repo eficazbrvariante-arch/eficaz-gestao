@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { formatBRL } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,15 @@ export function PdvScreen({
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
+
+  // Aviso de sucesso depois de finalizar uma venda — o PDV fica pronto pra
+  // próxima venda na hora, sem navegar pra página do comprovante; este
+  // banner só oferece o link de impressão pra quem precisar dele.
+  const [lastSale, setLastSale] = useState<{
+    saleId: string;
+    number: number;
+    changeAmount: number;
+  } | null>(null);
 
   // Sugestões em tempo real conforme o operador digita (busca parcial pelo
   // nome). Separado do Enter/leitor de código de barras, que continua
@@ -316,15 +326,63 @@ export function PdvScreen({
         return;
       }
       if ("saleId" in result) {
-        router.push(`/vendas/${result.saleId}?nova=1`);
+        // Atualiza os dados vindos do servidor (ex.: "Vendas neste caixa" no
+        // topo da página) sem desmontar o PDV — o estado abaixo é resetado
+        // manualmente, na hora, pra já deixar pronto pra próxima venda.
+        router.refresh();
+
+        setLastSale({
+          saleId: result.saleId,
+          number: result.number,
+          changeAmount: Number(result.changeAmount),
+        });
+
+        setCart([]);
+        setDiscount(0);
+        setError(undefined);
+        setCustomer(null);
+        setCustomerTerm("");
+        setCustomerResults([]);
+        setPayments([{ id: 1, method: "CASH", amount: 0 }]);
+        setCashReceived("");
+        setFiadoDueDate("");
+        setSellerId(null);
+        setSellerName(null);
+
+        searchRef.current?.focus();
       }
     });
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-      {/* Coluna esquerda: busca e carrinho */}
-      <div className="lg:col-span-3">
+    <div>
+      {lastSale && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span>
+            Venda #{lastSale.number} registrada com sucesso.
+            {lastSale.changeAmount > 0 && (
+              <strong className="ml-1">Troco: {formatBRL(lastSale.changeAmount)}</strong>
+            )}
+          </span>
+          <div className="flex items-center gap-3">
+            <Link href={`/vendas/${lastSale.saleId}`} target="_blank" className="font-medium underline">
+              Imprimir comprovante
+            </Link>
+            <button
+              type="button"
+              onClick={() => setLastSale(null)}
+              className="text-emerald-700 hover:text-emerald-900"
+              aria-label="Fechar aviso"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Coluna esquerda: busca e carrinho */}
+        <div className="lg:col-span-3">
         <div ref={searchBoxRef} className="relative mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <Label htmlFor="pdv-search">Produto (nome, código interno ou código de barras)</Label>
           <div className="flex gap-2">
@@ -778,6 +836,7 @@ export function PdvScreen({
           setSellerModalOpen(false);
         }}
       />
+      </div>
     </div>
   );
 }
