@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Viewport } from "next";
-import { requireUser } from "@/lib/session";
+import { requireTenant } from "@/lib/session";
 import { canApplyDiscount, canManageFiado, canSell } from "@/lib/permissions";
 import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
 };
 
 export default async function PdvPage() {
-  const user = await requireUser();
+  const { user, tenant } = await requireTenant();
 
   if (!canSell(user.role)) {
     return (
@@ -93,7 +93,11 @@ export default async function PdvPage() {
         </div>
       )}
 
-      <PdvScreen canDiscount={canApplyDiscount(user.role)} canFiado={canManageFiado(user.role)} />
+      <PdvScreen
+        canDiscount={canApplyDiscount(user.role)}
+        canFiado={canManageFiado(user.role)}
+        autoPrintReceipt={tenant.autoPrintReceipt}
+      />
     </div>
   );
 }

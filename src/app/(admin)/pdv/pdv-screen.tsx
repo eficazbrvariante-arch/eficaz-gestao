@@ -53,10 +53,14 @@ function round2(value: number) {
 export function PdvScreen({
   canDiscount,
   canFiado,
+  autoPrintReceipt,
 }: {
   canDiscount: boolean;
   /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
   canFiado: boolean;
+  /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
+   *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */
+  autoPrintReceipt: boolean;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -97,6 +101,14 @@ export function PdvScreen({
     number: number;
     changeAmount: number;
   } | null>(null);
+
+  // Id da venda a imprimir sozinha, via iframe invisível carregando o
+  // comprovante (que já dispara `window.print()` sozinho quando
+  // `autoPrintReceipt` está ligado — ver `AutoPrint` em `vendas/[id]`). Assim
+  // o cupom sai sem sair do PDV. `key={printSaleId}` força o iframe a
+  // recarregar do zero a cada venda nova, então cada uma dispara a impressão
+  // de novo mesmo que o id mude rápido.
+  const [printSaleId, setPrintSaleId] = useState<string | null>(null);
 
   // Sugestões em tempo real conforme o operador digita (busca parcial pelo
   // nome). Separado do Enter/leitor de código de barras, que continua
@@ -336,6 +348,7 @@ export function PdvScreen({
           number: result.number,
           changeAmount: Number(result.changeAmount),
         });
+        if (autoPrintReceipt) setPrintSaleId(result.saleId);
 
         setCart([]);
         setDiscount(0);
@@ -378,6 +391,16 @@ export function PdvScreen({
             </button>
           </div>
         </div>
+      )}
+
+      {printSaleId && (
+        <iframe
+          key={printSaleId}
+          src={`/vendas/${printSaleId}?nova=1`}
+          aria-hidden="true"
+          tabIndex={-1}
+          style={{ position: "fixed", top: 0, left: "-10000px", width: "380px", height: "600px", border: "none" }}
+        />
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
