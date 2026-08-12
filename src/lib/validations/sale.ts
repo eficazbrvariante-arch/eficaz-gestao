@@ -45,3 +45,14 @@ export const findSaleByNumberSchema = z.object({
   number: z.coerce.number().int().positive("Informe um número de cupom válido"),
 });
 export type FindSaleByNumberInput = z.infer<typeof findSaleByNumberSchema>;
+
+export const reportSaleItemDefectSchema = z.object({
+  saleItemId: z.string().trim().min(1, "Selecione o item com defeito"),
+  quantity: z.coerce.number().int().positive("Informe a quantidade com defeito"),
+  reason: z.string().trim().min(3, "Descreva o motivo do defeito"),
+  photoUrls: z.array(z.string().trim().min(1)).min(1, "Adicione ao menos uma foto do defeito"),
+  /** Só é obrigatório quando a venda ainda não tem cliente vinculado. */
+  customerId: z.string().trim().optional().or(z.literal("")),
+});
+export type ReportSaleItemDefectInput = z.infer<typeof reportSaleItemDefectSchema>;
+export type ReportSaleItemDefectFormValues = z.input<typeof reportSaleItemDefectSchema>;

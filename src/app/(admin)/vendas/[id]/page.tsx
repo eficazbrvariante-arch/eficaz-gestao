@@ -32,7 +32,7 @@ export default async function ComprovantePage({
     prisma.sale.findFirst({
       where: { id, tenantId: user.tenantId },
       include: {
-        items: true,
+        items: { include: { defects: true } },
         payments: true,
         customer: true,
         seller: { select: { name: true } },
@@ -54,6 +54,12 @@ export default async function ComprovantePage({
   });
 
   const isCancelled = sale.status === "CANCELLED";
+
+  const defectItems = sale.items.map((item) => ({
+    id: item.id,
+    nameSnapshot: item.nameSnapshot,
+    remaining: item.quantity - item.defects.reduce((sum, d) => sum + d.quantity, 0),
+  }));
 
   const shouldAutoPrint = nova === "1" && !isCancelled && tenant.autoPrintReceipt;
 
@@ -79,6 +85,7 @@ export default async function ComprovantePage({
           canViewAllSales={canViewAllSales(user.role)}
           isCancelled={isCancelled}
           openCancelForm={cancelar === "1"}
+          items={isCancelled ? [] : defectItems}
         />
       </div>
 
@@ -151,15 +158,26 @@ export default async function ComprovantePage({
             </tr>
           </thead>
           <tbody>
-            {sale.items.map((item) => (
-              <tr key={item.id} className="border-t border-slate-100">
-                <td className="py-1.5 text-slate-900">{item.nameSnapshot}</td>
-                <td className="py-1.5 text-center text-slate-600">{item.quantity}</td>
-                <td className="py-1.5 text-right text-slate-600">{formatBRL(item.unitPrice)}</td>
-                <td className="py-1.5"></td>
-                <td className="py-1.5 text-right text-slate-900">{formatBRL(item.total)}</td>
-              </tr>
-            ))}
+            {sale.items.map((item) => {
+              const defectQty = item.defects.reduce((sum, d) => sum + d.quantity, 0);
+              return (
+                <tr key={item.id} className="border-t border-slate-100">
+                  <td className="py-1.5 text-slate-900">
+                    {item.nameSnapshot}
+                    {defectQty > 0 && (
+                      <span className="ml-1.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                        Trocado por defeito
+                        {defectQty < item.quantity ? ` (${defectQty}/${item.quantity})` : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1.5 text-center text-slate-600">{item.quantity}</td>
+                  <td className="py-1.5 text-right text-slate-600">{formatBRL(item.unitPrice)}</td>
+                  <td className="py-1.5"></td>
+                  <td className="py-1.5 text-right text-slate-900">{formatBRL(item.total)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
