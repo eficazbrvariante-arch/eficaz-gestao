@@ -4,9 +4,21 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { canManageFiado } from "@/lib/permissions";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
 import { passwordSchema } from "@/lib/validations/customer-auth";
-import { adminSetCustomerPassword, generateRandomPassword } from "@/modules/customers/customer-service";
+import {
+  createFiadoEntrySchema,
+  grantStoreCreditSchema,
+  type CreateFiadoEntryInput,
+  type GrantStoreCreditInput,
+} from "@/lib/validations/fiado";
+import {
+  adminSetCustomerPassword,
+  generateRandomPassword,
+  grantManualStoreCredit,
+} from "@/modules/customers/customer-service";
+import { createFiadoEntry, markFiadoEntryPaid } from "@/modules/fiado/fiado-service";
 import { buildWhatsappLink } from "@/lib/whatsapp";
 
 /** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia. */
@@ -137,4 +149,69 @@ export async function searchCustomersAction(query: string) {
   });
 
   return customers.map((c) => ({ ...c, creditBalance: Number(c.creditBalance) }));
+}
+
+/** Lança um fiado manual (fora do PDV, ex.: produto entregue sem passar pela venda). Só ADMIN. */
+export async function createFiadoEntryAction(customerId: string, input: CreateFiadoEntryInput) {
+  const user = await requireUser();
+  if (!canManageFiado(user.role)) {
+    return { error: "Seu perfil não tem permissão para lançar fiado." };
+  }
+
+  const parsed = createFiadoEntrySchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (!customer) return { error: "Cliente não encontrado." };
+
+  await createFiadoEntry(user.tenantId, {
+    customerId,
+    amount: parsed.data.amount,
+    dueDate: parsed.data.dueDate,
+    note: parsed.data.note || null,
+    createdById: user.id,
+  });
+
+  revalidatePath(`/clientes/${customerId}`);
+  return { success: true as const };
+}
+
+/** Marca um lançamento de fiado como pago. Só ADMIN. */
+export async function markFiadoEntryPaidAction(customerId: string, entryId: string) {
+  const user = await requireUser();
+  if (!canManageFiado(user.role)) {
+    return { error: "Seu perfil não tem permissão para gerenciar fiado." };
+  }
+
+  const result = await markFiadoEntryPaid(user.tenantId, entryId);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath(`/clientes/${customerId}`);
+  return { success: true as const };
+}
+
+/** Concede crédito de loja manualmente (ex.: crédito positivo de um fiado). Só ADMIN. */
+export async function grantStoreCreditAction(customerId: string, input: GrantStoreCreditInput) {
+  const user = await requireUser();
+  if (!canManageFiado(user.role)) {
+    return { error: "Seu perfil não tem permissão para conceder crédito." };
+  }
+
+  const parsed = grantStoreCreditSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const result = await grantManualStoreCredit(
+    user.tenantId,
+    customerId,
+    parsed.data.amount,
+    parsed.data.reason,
+    user.id
+  );
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath(`/clientes/${customerId}`);
+  return { success: true as const };
 }

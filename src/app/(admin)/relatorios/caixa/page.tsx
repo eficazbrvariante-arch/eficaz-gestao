@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canViewReports } from "@/lib/permissions";
 import { formatBRL, formatDateTime, formatISODate, periodRange } from "@/lib/format";
-import { getCashRegisterReport } from "@/modules/reports/report-service";
+import { getCashRegisterReport, getStoreCreditUsage } from "@/modules/reports/report-service";
 import { StatCard } from "@/components/admin/stat-card";
 import { ReportTabs, PeriodPicker, ExportButton } from "../report-nav";
 import { resolvePeriod } from "../period";
@@ -24,7 +25,7 @@ export default async function RelatorioCaixaPage({
   const period = resolvePeriod(await searchParams);
   const { start, end } = periodRange(period.from, period.to);
 
-  const [report, movements] = await Promise.all([
+  const [report, movements, storeCreditUsage] = await Promise.all([
     getCashRegisterReport(user.tenantId, period),
     prisma.cashMovement.findMany({
       where: { tenantId: user.tenantId, createdAt: { gte: start, lt: end } },
@@ -32,7 +33,9 @@ export default async function RelatorioCaixaPage({
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
+    getStoreCreditUsage(user.tenantId, period),
   ]);
+  const storeCreditTotal = storeCreditUsage.reduce((sum, row) => sum + row.amount, 0);
 
   // Diferenças de caixa: quanto sobrou ou faltou na conferência do fechamento.
   const closed = report.registers.filter((r) => r.difference !== null);
@@ -205,6 +208,40 @@ export default async function RelatorioCaixaPage({
           </table>
         )}
       </section>
+
+      {storeCreditUsage.length > 0 && (
+        <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 shadow-sm">
+          <div className="border-b border-amber-200 px-5 py-3 text-sm font-semibold text-amber-900">
+            Uso de crédito de loja no período — {formatBRL(storeCreditTotal)} não são dinheiro novo
+          </div>
+          <table className="w-full text-sm">
+            <thead className="border-b border-amber-200 text-left text-amber-800">
+              <tr>
+                <th className="px-5 py-2 font-medium">Data</th>
+                <th className="px-3 py-2 font-medium">Cliente</th>
+                <th className="px-3 py-2 font-medium">Venda</th>
+                <th className="px-5 py-2 text-right font-medium">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {storeCreditUsage.map((row) => (
+                <tr key={row.id} className="border-b border-amber-100 last:border-0">
+                  <td className="px-5 py-2 text-amber-900">{formatDateTime(row.createdAt)}</td>
+                  <td className="px-3 py-2 text-amber-900">{row.customerName}</td>
+                  <td className="px-3 py-2 text-amber-900">
+                    <Link href={`/vendas/${row.saleId}`} className="hover:underline">
+                      #{row.saleNumber}
+                    </Link>
+                  </td>
+                  <td className="px-5 py-2 text-right font-medium text-amber-900">
+                    {formatBRL(row.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
     </div>
   );
 }

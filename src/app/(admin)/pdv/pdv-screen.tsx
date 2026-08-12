@@ -24,7 +24,7 @@ type CartLine = {
   stockQty: number;
 };
 
-type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT";
+type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Dinheiro",
@@ -32,6 +32,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   DEBIT: "Cartão de débito",
   CREDIT: "Cartão de crédito",
   STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
 };
 
 type PaymentLine = { id: number; method: PaymentMethod; amount: number };
@@ -48,7 +49,14 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
+export function PdvScreen({
+  canDiscount,
+  canFiado,
+}: {
+  canDiscount: boolean;
+  /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
+  canFiado: boolean;
+}) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -70,6 +78,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
     { id: 1, method: "CASH", amount: 0 },
   ]);
   const [cashReceived, setCashReceived] = useState<number | "">("");
+  const [fiadoDueDate, setFiadoDueDate] = useState("");
 
   // Vendedor da venda: nunca inferido de quem operou o caixa — é sempre
   // escolhido explicitamente aqui, e revalidado no servidor em
@@ -135,12 +144,17 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
       .filter((p) => p.method === "STORE_CREDIT")
       .reduce((sum, p) => sum + (p.amount || 0), 0)
   );
+  const fiadoPortion = round2(
+    effectivePayments.filter((p) => p.method === "FIADO").reduce((sum, p) => sum + (p.amount || 0), 0)
+  );
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
 
-  const availableMethods = (Object.keys(METHOD_LABELS) as PaymentMethod[]).filter(
-    (method) => method !== "STORE_CREDIT" || (customer && customer.creditBalance > 0)
-  );
+  const availableMethods = (Object.keys(METHOD_LABELS) as PaymentMethod[]).filter((method) => {
+    if (method === "STORE_CREDIT") return customer && customer.creditBalance > 0;
+    if (method === "FIADO") return canFiado && customer;
+    return true;
+  });
 
   function addToCart(product: PdvProduct, variantId: string | null) {
     const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
@@ -271,6 +285,14 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
       );
       return;
     }
+    if (fiadoPortion > 0 && !customer) {
+      setError("Selecione um cliente para vender fiado.");
+      return;
+    }
+    if (fiadoPortion > 0 && !fiadoDueDate) {
+      setError("Informe a data prevista de pagamento do fiado.");
+      return;
+    }
 
     startTransition(async () => {
       const result = await createSaleAction({
@@ -286,6 +308,7 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
           .filter((p) => p.amount > 0)
           .map((p) => ({ method: p.method, amount: p.amount })),
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
+        fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
       });
 
       if ("error" in result && result.error) {
@@ -508,7 +531,11 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                   onClick={() => {
                     setCustomer(null);
                     setPayments((current) =>
-                      current.map((p) => (p.method === "STORE_CREDIT" ? { ...p, method: "CASH" } : p))
+                      current.map((p) =>
+                        p.method === "STORE_CREDIT" || p.method === "FIADO"
+                          ? { ...p, method: "CASH" }
+                          : p
+                      )
                     );
                   }}
                   className="text-xs text-red-600 hover:underline"
@@ -688,6 +715,20 @@ export function PdvScreen({ canDiscount }: { canDiscount: boolean }) {
                 </p>
               )}
             </div>
+
+            {fiadoPortion > 0 && (
+              <div className="mb-3 rounded-md bg-amber-50 p-3">
+                <Label htmlFor="fiado-due-date">Data prevista de pagamento (fiado)</Label>
+                <input
+                  id="fiado-due-date"
+                  type="date"
+                  disabled={!sellerId}
+                  value={fiadoDueDate}
+                  onChange={(e) => setFiadoDueDate(e.target.value)}
+                  className="h-9 w-full rounded border border-slate-300 px-2 text-sm disabled:bg-slate-50"
+                />
+              </div>
+            )}
 
             {cashPortion > 0 && (
               <div className="mb-3 rounded-md bg-slate-50 p-3">

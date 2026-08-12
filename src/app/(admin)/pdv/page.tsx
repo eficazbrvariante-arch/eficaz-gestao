@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Viewport } from "next";
 import { requireUser } from "@/lib/session";
-import { canApplyDiscount, canSell } from "@/lib/permissions";
+import { canApplyDiscount, canManageFiado, canSell } from "@/lib/permissions";
 import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
 import { formatBRL, formatDateTime } from "@/lib/format";
@@ -93,7 +93,7 @@ export default async function PdvPage() {
         </div>
       )}
 
-      <PdvScreen canDiscount={canApplyDiscount(user.role)} />
+      <PdvScreen canDiscount={canApplyDiscount(user.role)} canFiado={canManageFiado(user.role)} />
     </div>
   );
 }

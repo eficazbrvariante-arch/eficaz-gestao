@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateSaleInput } from "@/lib/validations/sale";
+import { createFiadoEntry } from "@/modules/fiado/fiado-service";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
 const CENT = 0.005;
@@ -14,6 +15,12 @@ export type CreateSaleContext = {
   cashRegisterId: string;
   /** Se falso, qualquer desconto informado é rejeitado. */
   allowDiscount: boolean;
+  /** Se falso, pagamento com a forma "Fiado" é rejeitado. */
+  allowFiado: boolean;
+  /** Quem está operando o caixa (pode ser diferente de `sellerId`, o
+   *  vendedor da comissão) — é quem fica registrado como autor do
+   *  `FiadoEntry`, já que só ADMIN chega a este ponto com fiado > 0. */
+  operatorId: string;
 };
 
 export type CreateSaleResult =
@@ -168,6 +175,21 @@ export async function createSale(
     }
   }
 
+  const fiadoAmount = round2(
+    input.payments.filter((p) => p.method === "FIADO").reduce((sum, p) => sum + p.amount, 0)
+  );
+  if (fiadoAmount > 0) {
+    if (!ctx.allowFiado) {
+      return { ok: false, error: "Seu perfil não tem permissão para vender fiado." };
+    }
+    if (!customerId) {
+      return { ok: false, error: "Selecione um cliente para vender fiado." };
+    }
+    if (!input.fiadoDueDate) {
+      return { ok: false, error: "Informe a data prevista de pagamento do fiado." };
+    }
+  }
+
   try {
     const sale = await prisma.$transaction(async (tx) => {
       // Incremento atômico garante numeração única mesmo com vendas simultâneas.
@@ -267,6 +289,21 @@ export async function createSale(
             reason: `Usado como pagamento na venda #${created.number}`,
           },
         });
+      }
+
+      if (fiadoAmount > 0 && customerId) {
+        await createFiadoEntry(
+          ctx.tenantId,
+          {
+            customerId,
+            amount: fiadoAmount,
+            dueDate: input.fiadoDueDate,
+            saleId: created.id,
+            createdById: ctx.operatorId,
+            note: `Venda #${created.number}`,
+          },
+          tx
+        );
       }
 
       return created;

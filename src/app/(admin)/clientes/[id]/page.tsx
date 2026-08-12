@@ -2,9 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { canManageFiado } from "@/lib/permissions";
 import { formatBRL, formatDateTime } from "@/lib/format";
+import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { CustomerForm } from "../customer-form";
 import { ResetCustomerPasswordPanel } from "../reset-password-panel";
+import { FiadoPanel } from "../fiado-panel";
 
 export default async function FichaClientePage({
   params,
@@ -30,6 +33,20 @@ export default async function FichaClientePage({
     },
   });
   if (!customer) notFound();
+
+  const showFiado = canManageFiado(user.role);
+  const fiadoEntries = showFiado ? await listFiadoEntriesByCustomer(user.tenantId, customer.id) : [];
+  const fiadoRows = fiadoEntries.map((entry) => ({
+    id: entry.id,
+    amount: Number(entry.amount),
+    status: entry.status,
+    overdue: isFiadoOverdue(entry),
+    dueDate: entry.dueDate,
+    note: entry.note,
+    createdAt: entry.createdAt,
+    saleId: entry.saleId,
+    saleNumber: entry.sale?.number ?? null,
+  }));
 
   const CREDIT_MOVEMENT_LABELS: Record<string, string> = {
     GRANTED: "Crédito gerado",
@@ -177,6 +194,17 @@ export default async function FichaClientePage({
           </tbody>
         </table>
       </div>
+
+      {showFiado && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+            Fiado
+          </div>
+          <div className="p-4">
+            <FiadoPanel customerId={customer.id} entries={fiadoRows} />
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">Acesso à loja online</h2>

@@ -21,6 +21,15 @@ const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_USERNAME = 5;
 const MAX_ATTEMPTS_PER_IP = 20;
 
+/** Saldo de crédito de loja do cliente — usado na própria "Minha conta" da loja online. */
+export async function getCustomerCreditBalance(tenantId: string, customerId: string): Promise<number> {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { creditBalance: true },
+  });
+  return customer ? Number(customer.creditBalance) : 0;
+}
+
 export async function isUsernameAvailable(tenantId: string, usernameRaw: string): Promise<boolean> {
   const username = normalizeUsername(usernameRaw);
   const existing = await prisma.customer.findUnique({
@@ -262,6 +271,47 @@ export async function resetCustomerPassword(
   });
 
   await revokeAllCustomerSessions(customer.id);
+
+  return { ok: true };
+}
+
+export type GrantStoreCreditResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Concede crédito de loja manualmente (ex.: crédito positivo de um fiado
+ * quitado a maior, cortesia). Reaproveita o mesmo saldo/extrato/forma de
+ * pagamento (`STORE_CREDIT`) já usado pelo crédito gerado por cancelamento —
+ * só ADMIN pode chamar isso (ver `canManageFiado`), verificado por quem chama.
+ */
+export async function grantManualStoreCredit(
+  tenantId: string,
+  customerId: string,
+  amount: number,
+  reason: string,
+  grantedByUserId: string
+): Promise<GrantStoreCreditResult> {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { id: true },
+  });
+  if (!customer) return { ok: false, error: "Cliente não encontrado." };
+
+  await prisma.$transaction([
+    prisma.customer.update({
+      where: { id: customerId },
+      data: { creditBalance: { increment: amount } },
+    }),
+    prisma.customerCreditMovement.create({
+      data: {
+        tenantId,
+        customerId,
+        type: "GRANTED",
+        amount,
+        userId: grantedByUserId,
+        reason,
+      },
+    }),
+  ]);
 
   return { ok: true };
 }

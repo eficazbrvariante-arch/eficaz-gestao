@@ -114,6 +114,7 @@ model Tenant {
   auditLogs             AuditLog[]
   repairOrders          RepairOrder[]
   creditMovements       CustomerCreditMovement[]
+  fiadoEntries          FiadoEntry[]
   devices               Device[]
   visitorSessions       VisitorSession[]
   analyticsEvents       AnalyticsEvent[]
@@ -204,6 +205,7 @@ model User {
   auditLogs            AuditLog[]
   repairOrdersCreated  RepairOrder[]            @relation("RepairOrderCreatedBy")
   creditMovements      CustomerCreditMovement[]
+  fiadoEntriesCreated  FiadoEntry[]
   devicesRequested     Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged Device[]                 @relation("DeviceStatusChangedBy")
 
@@ -639,6 +641,7 @@ model Customer {
   sales            Sale[]
   orders           Order[]
   creditMovements  CustomerCreditMovement[]
+  fiadoEntries     FiadoEntry[]
   repairOrders     RepairOrder[]
   sessions         CustomerSession[]
   reviews          ProductReview[]
@@ -914,6 +917,7 @@ model Sale {
   payments        Payment[]
   stockMovements  StockMovement[]
   creditMovements CustomerCreditMovement[]
+  fiadoEntries    FiadoEntry[]
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -945,16 +949,61 @@ enum PaymentMethod {
   PIX
   DEBIT
   CREDIT
-  /// Crédito de loja (saldo do cliente, gerado por cancelamento de venda).
+  /// Crédito de loja (saldo do cliente, gerado por cancelamento de venda ou
+  /// concedido manualmente pelo administrador).
   STORE_CREDIT
+  /// Fiado: cliente leva o produto agora, paga depois — vira um `FiadoEntry`
+  /// pendente. Só disponível pra quem pode conceder fiado (ver
+  /// `canManageFiado`) e com cliente selecionado na venda.
+  FIADO
 }
 
-/// GRANTED: crédito gerado (ex.: cancelamento de venda). REDEEMED: usado como
-/// forma de pagamento numa venda nova. O valor em `CustomerCreditMovement.amount`
-/// é sempre positivo — o sinal é implícito pelo tipo.
+/// GRANTED: crédito gerado (ex.: cancelamento de venda, ou concedido
+/// manualmente pelo administrador). REDEEMED: usado como forma de pagamento
+/// numa venda nova. O valor em `CustomerCreditMovement.amount` é sempre
+/// positivo — o sinal é implícito pelo tipo.
 enum CreditMovementType {
   GRANTED
   REDEEMED
+}
+
+/// PAID é um estado final (nunca mais some da lista, só muda o status).
+/// "Vencido" não é um valor guardado — é calculado a partir de PENDING +
+/// `dueDate` no passado (ver `isFiadoOverdue`), pra nunca ficar desatualizado.
+enum FiadoStatus {
+  PENDING
+  PAID
+}
+
+/// Fiado: venda feita "na confiança", cliente paga depois. Sempre lançado por
+/// um ADMIN (`canManageFiado`) — seja automaticamente ao fechar uma venda no
+/// PDV com a forma de pagamento "Fiado" (`saleId` preenchido), seja manual
+/// pela ficha do cliente (`saleId` nulo, ex.: produto entregue fora do PDV).
+model FiadoEntry {
+  id          String      @id @default(cuid())
+  tenantId    String
+  customerId  String
+  amount      Decimal     @db.Decimal(12, 2)
+  status      FiadoStatus @default(PENDING)
+  /// Data prevista de pagamento. Só relevante enquanto `status` é PENDING —
+  /// depois dela, o lançamento pendente aparece como "Vencido" na UI.
+  dueDate     DateTime?
+  note        String?
+  /// Preenchido só quando o lançamento nasceu de uma venda no PDV (forma de
+  /// pagamento "Fiado"); nulo nos lançamentos manuais.
+  saleId      String?
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale      Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, status, dueDate])
+  @@map("fiado_entries")
 }
 
 model Payment {

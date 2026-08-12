@@ -4,8 +4,10 @@ import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
 import { getCustomerSession } from "@/modules/customers/customer-session";
 import { listCustomerOrders } from "@/modules/orders/order-service";
 import { listReviewableProducts } from "@/modules/catalog/review-service";
+import { getCustomerCreditBalance } from "@/modules/customers/customer-service";
+import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
-import { formatBRL, formatDateTime } from "@/lib/format";
+import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import { LogoutButton } from "./logout-button";
 import { ReviewForm } from "./review-form";
 import { ChangePasswordForm } from "./change-password-form";
@@ -25,10 +27,13 @@ export default async function CustomerAccountPage({
     redirect(`${base}/conta/entrar?returnTo=${encodeURIComponent(`${base}/conta`)}`);
   }
 
-  const [orders, reviewableProducts] = await Promise.all([
+  const [orders, reviewableProducts, creditBalance, fiadoEntries] = await Promise.all([
     listCustomerOrders(store.id, session.customerId),
     listReviewableProducts(store.id, session.customerId),
+    getCustomerCreditBalance(store.id, session.customerId),
+    listFiadoEntriesByCustomer(store.id, session.customerId),
   ]);
+  const pendingFiado = fiadoEntries.filter((entry) => entry.status === "PENDING");
 
   return (
     <div>
@@ -39,6 +44,37 @@ export default async function CustomerAccountPage({
         </div>
         <LogoutButton subdomain={subdomain} />
       </div>
+
+      {(pendingFiado.length > 0 || creditBalance > 0) && (
+        <div className="mb-8 rounded-xl border border-slate-200 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Fiado e crédito</h2>
+
+          {creditBalance > 0 && (
+            <p className="mb-3 text-sm font-medium text-emerald-700">
+              Você tem {formatBRL(creditBalance)} em crédito de loja disponível.
+            </p>
+          )}
+
+          {pendingFiado.length > 0 && (
+            <ul className="space-y-2 text-sm">
+              {pendingFiado.map((entry) => {
+                const overdue = isFiadoOverdue(entry);
+                return (
+                  <li key={entry.id} className="flex justify-between gap-2">
+                    <span className={overdue ? "font-medium text-red-600" : "text-slate-700"}>
+                      {overdue ? "Vencido" : "A pagar"}
+                      {entry.dueDate ? ` até ${formatDate(entry.dueDate)}` : ""}
+                    </span>
+                    <span className="shrink-0 font-medium text-slate-900">
+                      {formatBRL(Number(entry.amount))}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {reviewableProducts.length > 0 && (
         <div className="mb-8">

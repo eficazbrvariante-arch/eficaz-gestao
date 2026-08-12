@@ -14,6 +14,7 @@ const METHOD_LABELS: Record<string, string> = {
   DEBIT: "Cartão de débito",
   CREDIT: "Cartão de crédito",
   STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
 };
 
 export default async function ComprovantePage({

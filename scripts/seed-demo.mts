@@ -158,6 +158,7 @@ const caixa = await prisma.cashRegister.create({
 
 const ctx = (sellerId: string) => ({
   tenantId: tenant.id, sellerId, cashRegisterId: caixa.id, allowDiscount: true,
+  allowFiado: true, operatorId: sellerId,
 });
 
 // Venda 1: dinheiro com troco (admin)

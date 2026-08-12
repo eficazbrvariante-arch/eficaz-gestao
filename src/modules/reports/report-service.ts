@@ -480,3 +480,45 @@ export async function getCashRegisterReport(tenantId: string, period: Period) {
     supplies: sumByType("SUPPLY"),
   };
 }
+
+export type StoreCreditUsageRow = {
+  id: string;
+  saleId: string;
+  saleNumber: number;
+  customerName: string;
+  amount: number;
+  createdAt: Date;
+};
+
+/**
+ * Vendas do período pagas (total ou parcialmente) com crédito de loja — esse
+ * valor não é dinheiro novo entrando no caixa, é saldo que o cliente já
+ * tinha, sendo consumido. Mostrado à parte no relatório de Caixa pra quem
+ * fecha o caixa não estranhar a diferença entre venda e dinheiro recebido.
+ */
+export async function getStoreCreditUsage(
+  tenantId: string,
+  period: Period
+): Promise<StoreCreditUsageRow[]> {
+  const { start, end } = periodRange(period.from, period.to);
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      method: "STORE_CREDIT",
+      sale: { tenantId, status: "COMPLETED", createdAt: { gte: start, lt: end } },
+    },
+    include: {
+      sale: { select: { number: true, createdAt: true, customer: { select: { name: true } } } },
+    },
+    orderBy: { sale: { createdAt: "desc" } },
+  });
+
+  return payments.map((payment) => ({
+    id: payment.id,
+    saleId: payment.saleId,
+    saleNumber: payment.sale.number,
+    customerName: payment.sale.customer?.name ?? "Cliente removido",
+    amount: toNumber(payment.amount),
+    createdAt: payment.sale.createdAt,
+  }));
+}

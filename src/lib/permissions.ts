@@ -160,3 +160,13 @@ export function canWaiveAttendanceSelfie(role: UserRole) {
 export function canViewAttendancePanel(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
+
+/**
+ * Lançar, listar e marcar como pago um fiado (venda "na confiança", cliente
+ * paga depois) — inclusive escolher "Fiado" como forma de pagamento no PDV, e
+ * conceder crédito de loja manualmente. Só ADMIN, diferente da maioria das
+ * outras permissões: nem Gerente pode conceder crédito por conta própria.
+ */
+export function canManageFiado(role: UserRole) {
+  return role === "ADMIN";
+}

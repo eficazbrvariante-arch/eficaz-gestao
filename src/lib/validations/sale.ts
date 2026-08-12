@@ -7,7 +7,7 @@ export const saleItemSchema = z.object({
 });
 
 export const salePaymentSchema = z.object({
-  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT", "STORE_CREDIT"]),
+  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT", "STORE_CREDIT", "FIADO"]),
   amount: z.coerce.number().positive(),
 });
 
@@ -24,6 +24,10 @@ export const createSaleSchema = z.object({
   payments: z.array(salePaymentSchema).min(1, "Informe a forma de pagamento"),
   /** Quanto o cliente entregou em dinheiro (para cálculo do troco). */
   cashReceived: z.coerce.number().min(0).optional(),
+  /** Data prevista de pagamento do fiado — exigida só quando há pagamento
+   *  com method "FIADO" (checado em `createSale`, não aqui: o valor mínimo
+   *  válido depende de haver ou não parcela em fiado). `YYYY-MM-DD`. */
+  fiadoDueDate: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().optional().or(z.literal("")),
 });
 
