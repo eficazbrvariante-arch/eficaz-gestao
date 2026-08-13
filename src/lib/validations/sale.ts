@@ -4,6 +4,8 @@ export const saleItemSchema = z.object({
   productId: z.string().trim().min(1),
   variantId: z.string().trim().optional().or(z.literal("")),
   quantity: z.coerce.number().int().positive("Quantidade deve ser maior que zero"),
+  /** Desconto concedido só neste item (R$), não na nota inteira. */
+  discount: z.coerce.number().min(0).default(0),
 });
 
 export const salePaymentSchema = z.object({
@@ -20,7 +22,6 @@ export const createSaleSchema = z.object({
   /** Auxiliar opcional da venda (estrutura para comissão dividida no futuro). */
   assistantSellerId: z.string().trim().optional().or(z.literal("")),
   items: z.array(saleItemSchema).min(1, "Adicione pelo menos um produto"),
-  discount: z.coerce.number().min(0).default(0),
   payments: z.array(salePaymentSchema).min(1, "Informe a forma de pagamento"),
   /** Quanto o cliente entregou em dinheiro (para cálculo do troco). */
   cashReceived: z.coerce.number().min(0).optional(),

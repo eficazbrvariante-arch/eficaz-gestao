@@ -65,12 +65,14 @@ export async function createSale(
     quantity: number;
     unitPrice: number;
     unitCost: number;
+    discount: number;
     total: number;
   };
 
   const resolvedItems: ResolvedItem[] = [];
   let subtotal = 0;
   let costTotal = 0;
+  let discount = 0;
 
   for (const item of input.items) {
     const product = productMap.get(item.productId);
@@ -89,7 +91,20 @@ export async function createSale(
     const basePrice = Number(product.promoPrice ?? product.salePrice);
     const unitPrice = round2(basePrice + Number(variant?.priceAdjustment ?? 0));
     const unitCost = Number(product.costPrice);
-    const total = round2(unitPrice * item.quantity);
+    const grossTotal = round2(unitPrice * item.quantity);
+
+    const itemDiscount = round2(item.discount ?? 0);
+    if (itemDiscount > 0 && !ctx.allowDiscount) {
+      return { ok: false, error: "Seu perfil não tem permissão para conceder descontos." };
+    }
+    if (itemDiscount > grossTotal + CENT) {
+      return {
+        ok: false,
+        error: `O desconto de "${product.name}" não pode ser maior que o valor do item.`,
+      };
+    }
+
+    const total = round2(grossTotal - itemDiscount);
 
     resolvedItems.push({
       productId: product.id,
@@ -98,19 +113,13 @@ export async function createSale(
       quantity: item.quantity,
       unitPrice,
       unitCost,
+      discount: itemDiscount,
       total,
     });
 
-    subtotal = round2(subtotal + total);
+    subtotal = round2(subtotal + grossTotal);
+    discount = round2(discount + itemDiscount);
     costTotal = round2(costTotal + unitCost * item.quantity);
-  }
-
-  const discount = round2(input.discount ?? 0);
-  if (discount > 0 && !ctx.allowDiscount) {
-    return { ok: false, error: "Seu perfil não tem permissão para conceder descontos." };
-  }
-  if (discount > subtotal + CENT) {
-    return { ok: false, error: "O desconto não pode ser maior que o subtotal." };
   }
 
   const total = round2(subtotal - discount);
@@ -222,6 +231,7 @@ export async function createSale(
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               unitCost: item.unitCost,
+              discount: item.discount,
               total: item.total,
             })),
           },

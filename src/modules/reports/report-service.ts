@@ -268,9 +268,9 @@ export type ProductPerformance = {
  * Agrupado pelo nome registrado no momento da venda, que é o que aparece no
  * comprovante do cliente.
  *
- * O desconto dado na venda inteira é **rateado** entre os itens, na proporção do
- * valor de cada um. Sem esse rateio, a soma do faturamento por produto ficaria
- * maior que o faturamento real do período.
+ * `SaleItem.total` já sai líquido do desconto daquele item (o desconto é dado
+ * por item, não na nota inteira — ver `SaleItem.discount`), então o
+ * faturamento por produto é a soma direta de `total`, sem rateio.
  */
 export async function getProductPerformance(
   tenantId: string,
@@ -282,13 +282,7 @@ export async function getProductPerformance(
   const [saleItems, orderItems] = await Promise.all([
     prisma.saleItem.findMany({
       where: { sale: { tenantId, status: "COMPLETED", createdAt } },
-      select: {
-        nameSnapshot: true,
-        quantity: true,
-        total: true,
-        unitCost: true,
-        sale: { select: { subtotal: true, discount: true } },
-      },
+      select: { nameSnapshot: true, quantity: true, total: true, unitCost: true },
     }),
     prisma.orderItem.findMany({
       where: { order: { tenantId, status: "COMPLETED", createdAt } },
@@ -313,12 +307,7 @@ export async function getProductPerformance(
   };
 
   for (const item of saleItems) {
-    const itemTotal = toNumber(item.total);
-    const subtotal = toNumber(item.sale.subtotal);
-    const discount = toNumber(item.sale.discount);
-    // Parcela do desconto que cabe a este item.
-    const share = subtotal > 0 ? (itemTotal / subtotal) * discount : 0;
-    accumulate(item.nameSnapshot, item.quantity, itemTotal - share, toNumber(item.unitCost));
+    accumulate(item.nameSnapshot, item.quantity, toNumber(item.total), toNumber(item.unitCost));
   }
 
   // Pedidos do catálogo não têm desconto no total — só taxa de entrega, que

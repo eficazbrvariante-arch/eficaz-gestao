@@ -22,6 +22,8 @@ type CartLine = {
   unitPrice: number;
   quantity: number;
   stockQty: number;
+  /** Desconto (R$) concedido só neste item — não existe mais desconto na nota inteira. */
+  discount: number;
 };
 
 type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
@@ -99,7 +101,6 @@ export function PdvScreen({
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [discount, setDiscount] = useState(0);
   const [error, setError] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
@@ -171,6 +172,7 @@ export function PdvScreen({
   }, [suggestionsOpen]);
 
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
+  const discount = round2(cart.reduce((sum, line) => sum + (line.discount || 0), 0));
   const total = round2(Math.max(0, subtotal - discount));
 
   const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
@@ -205,6 +207,7 @@ export function PdvScreen({
           unitPrice,
           quantity: 1,
           stockQty: availableStock,
+          discount: 0,
         },
       ];
     });
@@ -238,7 +241,28 @@ export function PdvScreen({
 
   function changeQuantity(key: string, quantity: number) {
     setCart((current) =>
-      current.map((line) => (line.key === key ? { ...line, quantity: Math.max(1, quantity) } : line))
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const newQuantity = Math.max(1, quantity);
+        // O desconto nunca pode passar do valor bruto da linha — se a
+        // quantidade cair, ele é reajustado pra baixo junto.
+        const maxDiscount = round2(line.unitPrice * newQuantity);
+        return {
+          ...line,
+          quantity: newQuantity,
+          discount: Math.min(line.discount, maxDiscount),
+        };
+      })
+    );
+  }
+
+  function changeDiscount(key: string, discount: number) {
+    setCart((current) =>
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const maxDiscount = round2(line.unitPrice * line.quantity);
+        return { ...line, discount: Math.min(Math.max(0, discount), maxDiscount) };
+      })
     );
   }
 
@@ -335,8 +359,8 @@ export function PdvScreen({
           productId: line.productId,
           variantId: line.variantId ?? "",
           quantity: line.quantity,
+          discount: line.discount,
         })),
-        discount,
         payments: PAYMENT_SLOTS.filter((slot) => amounts[slot.key] > 0).map((slot) => ({
           method: slot.method,
           amount: amounts[slot.key],
@@ -363,7 +387,6 @@ export function PdvScreen({
         if (autoPrintReceipt) setPrintSaleId(result.saleId);
 
         setCart([]);
-        setDiscount(0);
         setError(undefined);
         setCustomer(null);
         setCustomerTerm("");
@@ -540,6 +563,17 @@ export function PdvScreen({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              {cart.length > 0 && (
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="px-4 py-2 font-medium">Produto</th>
+                    <th className="px-2 py-2 font-medium">Qtd</th>
+                    {canDiscount && <th className="px-2 py-2 font-medium text-right">Desconto</th>}
+                    <th className="px-4 py-2 font-medium text-right">Total</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+              )}
               <tbody>
                 {cart.map((line) => (
                   <tr key={line.key} className="border-b border-slate-100 last:border-0">
@@ -574,8 +608,35 @@ export function PdvScreen({
                         </button>
                       </div>
                     </td>
+                    {canDiscount && (
+                      <td className="px-2 py-3">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          max={round2(line.unitPrice * line.quantity)}
+                          disabled={paid > 0}
+                          title={
+                            paid > 0
+                              ? "Zere as formas de pagamento para alterar o desconto"
+                              : "Desconto neste item (R$)"
+                          }
+                          placeholder="Desconto"
+                          value={line.discount || ""}
+                          onChange={(e) =>
+                            changeDiscount(line.key, Math.max(0, Number(e.target.value) || 0))
+                          }
+                          className="h-7 w-20 rounded border border-slate-300 px-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right font-medium text-slate-900">
-                      {formatBRL(line.unitPrice * line.quantity)}
+                      {formatBRL(round2(line.unitPrice * line.quantity - line.discount))}
+                      {line.discount > 0 && (
+                        <p className="text-xs font-normal text-slate-400">
+                          -{formatBRL(line.discount)} desc.
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -693,28 +754,11 @@ export function PdvScreen({
                 <span>Subtotal</span>
                 <span>{formatBRL(subtotal)}</span>
               </div>
-              {canDiscount ? (
-                <div className="flex items-center justify-between gap-2 py-1">
-                  <span className="text-slate-600">Desconto (R$)</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    max={subtotal}
-                    disabled={paid > 0}
-                    title={paid > 0 ? "Zere as formas de pagamento para alterar o desconto" : undefined}
-                    value={discount || ""}
-                    onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-                    className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
-                  />
+              {discount > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Desconto (nos itens)</span>
+                  <span>-{formatBRL(discount)}</span>
                 </div>
-              ) : (
-                discount > 0 && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Desconto</span>
-                    <span>-{formatBRL(discount)}</span>
-                  </div>
-                )
               )}
               <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-semibold text-slate-900">
                 <span>Total</span>
