@@ -258,6 +258,24 @@ export function PdvScreen({
     setAmounts((current) => ({ ...current, [key]: amount }));
   }
 
+  /** O campo "Dinheiro" é o valor que o cliente entregou em espécie, não o
+   *  valor que sobra pra completar a venda — por isso, se digitar mais do
+   *  que falta (ex.: total R$29,99, cliente entrega R$50), a parcela em
+   *  dinheiro é travada no que falta e o excedente vira troco automático,
+   *  em vez de acusar "excede o total". */
+  function setCashAmount(raw: number) {
+    const otherPaid = round2(
+      PAYMENT_SLOTS.reduce(
+        (sum, slot) => sum + (slot.key === "cash" ? 0 : amounts[slot.key] || 0),
+        0
+      )
+    );
+    const neededForCash = round2(Math.max(0, total - otherPaid));
+    const effectiveCash = Math.min(raw, neededForCash);
+    setAmounts((current) => ({ ...current, cash: effectiveCash }));
+    setCashReceived(raw > 0 ? raw : "");
+  }
+
   /** Ao selecionar um cliente com crédito de loja, pré-preenche o campo
    *  sozinho (menor valor entre o saldo disponível e o total da venda) —
    *  o vendedor não precisa calcular/digitar, mas pode ajustar depois. */
@@ -762,9 +780,14 @@ export function PdvScreen({
                               : undefined
                         }
                         value={amounts[slot.key] || ""}
-                        onChange={(e) =>
-                          setPaymentAmount(slot.key, Math.max(0, Number(e.target.value) || 0))
-                        }
+                        onChange={(e) => {
+                          const value = Math.max(0, Number(e.target.value) || 0);
+                          if (slot.key === "cash") {
+                            setCashAmount(value);
+                          } else {
+                            setPaymentAmount(slot.key, value);
+                          }
+                        }}
                         className="h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
                       />
                     </div>
