@@ -7,8 +7,16 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function servicesTotal(items: { unitPrice: number; quantity: number }[]) {
-  return round2(items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
+/** Aceita `number`/`string` (input já validado) ou `Decimal` (lido direto do Prisma). */
+type Numeric = number | string | { toString(): string };
+
+export function servicesTotal(items: { unitPrice: Numeric; quantity: number }[]) {
+  return round2(items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0));
+}
+
+/** Total da OS (serviços − desconto) — nunca persistido, sempre recalculado. */
+export function repairOrderTotal(items: { unitPrice: Numeric; quantity: number }[], discount: Numeric) {
+  return round2(Math.max(0, servicesTotal(items) - Number(discount)));
 }
 
 /** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia. */
@@ -138,6 +146,10 @@ export async function updateRepairOrder(
           internalNotes: input.internalNotes || null,
           estimatedAt: parseDateOnly(input.estimatedAt),
           discount: input.discount,
+          // O PDF cacheado fica desatualizado sempre que itens/desconto mudam
+          // (afeta o total) — `null` força `ensureRepairOrderReceiptUrl` a
+          // gerar de novo na próxima vez que alguém pedir o comprovante.
+          receiptPdfUrl: null,
           // Omitido (não `null`) quando quem chamou não pode mexer no custo: um
           // update parcial do Prisma não toca no campo se a chave não existir,
           // preservando o valor gravado por quem tinha permissão antes.
@@ -176,14 +188,27 @@ export async function updateRepairOrderStatus(
   if (!existing) return { ok: false, error: "Ordem de serviço não encontrada." };
   if (existing.status === status) return { ok: true };
 
+  // "Entregue" só acontece através do acerto financeiro (ver `deliverRepairOrder`,
+  // em `repair-payment-service.ts`) — nunca como uma troca de status solta, pra
+  // nunca liberar um aparelho com saldo pendente sem passar pela cobrança. Pelo
+  // mesmo motivo, uma OS já entregue não sai desse status por aqui: sem essa
+  // trava, dava pra "reabrir" a OS chamando a action direto e rodar
+  // `deliverRepairOrder` de novo sobre um aparelho que já saiu da loja.
+  if (status === "DELIVERED" || existing.status === "DELIVERED") {
+    return {
+      ok: false,
+      error:
+        existing.status === "DELIVERED"
+          ? "Esta OS já foi entregue e não pode voltar a um status anterior."
+          : "Para marcar como entregue, conclua o acerto financeiro da OS.",
+    };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.repairOrder.update({
         where: { id },
-        data: {
-          status,
-          pickedUpAt: status === "DELIVERED" ? new Date() : undefined,
-        },
+        data: { status, receiptPdfUrl: null },
       });
       await tx.repairOrderEvent.create({
         data: {

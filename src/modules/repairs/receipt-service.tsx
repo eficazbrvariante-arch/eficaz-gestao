@@ -1,8 +1,10 @@
 import { put } from "@vercel/blob";
 import { renderToBuffer } from "@react-pdf/renderer";
+import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { REPAIR_ORDER_STATUS_LABELS } from "@/lib/validations/repair-order";
+import { getRepairOrderFinancials } from "./repair-payment-service";
 import { RepairOrderReceiptDocument, type RepairOrderReceiptData } from "./receipt-pdf";
 
 function round2(value: number) {
@@ -69,6 +71,23 @@ export async function ensureRepairOrderReceiptUrl(
     order.tenant.addressState,
   ].filter(Boolean);
 
+  const financials = await getRepairOrderFinancials(order.tenantId, order.id);
+
+  // Aponta pro próprio link público deste comprovante — quem escaneia o QR
+  // do cupom impresso cai na mesma página que recebe por WhatsApp/e-mail.
+  // Nunca falha a geração do PDF por causa do QR: sem ele, o comprovante
+  // ainda sai certo, só sem o código.
+  const receiptOrigin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  let qrCodeDataUrl: string | null = null;
+  try {
+    qrCodeDataUrl = await QRCode.toDataURL(`${receiptOrigin}/comprovante/${order.id}`, {
+      margin: 0,
+      width: 160,
+    });
+  } catch {
+    qrCodeDataUrl = null;
+  }
+
   const data: RepairOrderReceiptData = {
     number: order.number,
     statusLabel: REPAIR_ORDER_STATUS_LABELS[order.status],
@@ -88,7 +107,16 @@ export async function ensureRepairOrderReceiptUrl(
     subtotal,
     discount,
     total,
+    payments: (financials?.payments ?? []).map((p) => ({
+      method: p.method,
+      amount: p.amount,
+      date: formatDate(p.createdAt),
+    })),
+    paid: financials?.paid ?? 0,
+    balance: financials?.balance ?? total,
+    situation: financials?.situation ?? "PENDENTE",
     photoUrls: order.photos.map((photo) => photo.url),
+    qrCodeDataUrl,
     tenant: {
       name: order.tenant.tradeName || order.tenant.name,
       logoUrl: order.tenant.logoUrl,

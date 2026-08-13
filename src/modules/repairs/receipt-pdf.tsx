@@ -16,7 +16,14 @@ export type RepairOrderReceiptData = {
   subtotal: number;
   discount: number;
   total: number;
+  /** Recebimentos já registrados (entrada + saldo na entrega) — vazio se nada foi pago ainda. */
+  payments: { method: string; amount: number; date: string }[];
+  paid: number;
+  balance: number;
+  situation: "QUITADO" | "PENDENTE" | "SEM_COBRANCA";
   photoUrls: string[];
+  /** Data URI (PNG) apontando pro comprovante público — nulo se não deu pra gerar. */
+  qrCodeDataUrl: string | null;
   tenant: {
     name: string;
     logoUrl: string | null;
@@ -25,6 +32,15 @@ export type RepairOrderReceiptData = {
     phone: string | null;
     address: string | null;
   };
+};
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de Débito",
+  CREDIT: "Cartão de Crédito",
+  STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
 };
 
 const styles = StyleSheet.create({
@@ -141,7 +157,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   footerText: { fontSize: 8, color: "#94a3b8" },
+  qrImage: { width: 56, height: 56, marginTop: 6 },
+  situationBadge: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    color: "#ffffff",
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 3,
+  },
 });
+
+const SITUATION_LABELS: Record<RepairOrderReceiptData["situation"], string> = {
+  QUITADO: "QUITADO",
+  PENDENTE: "SALDO PENDENTE",
+  SEM_COBRANCA: "SEM COBRANÇA",
+};
+const SITUATION_COLORS: Record<RepairOrderReceiptData["situation"], string> = {
+  QUITADO: "#047857",
+  PENDENTE: "#b45309",
+  SEM_COBRANCA: "#64748b",
+};
 
 export function RepairOrderReceiptDocument({ order }: { order: RepairOrderReceiptData }) {
   const primary = order.tenant.primaryColor || "#0f172a";
@@ -172,6 +210,10 @@ export function RepairOrderReceiptDocument({ order }: { order: RepairOrderReceip
             <Text style={[styles.statusBadge, { backgroundColor: secondary }]}>
               {order.statusLabel}
             </Text>
+            {order.qrCodeDataUrl && (
+              // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer's <Image>, não a tag HTML: não tem prop `alt`.
+              <Image src={order.qrCodeDataUrl} style={styles.qrImage} />
+            )}
           </View>
         </View>
 
@@ -240,6 +282,31 @@ export function RepairOrderReceiptDocument({ order }: { order: RepairOrderReceip
             </View>
           </View>
         </View>
+
+        {order.payments.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Pagamentos</Text>
+            {order.payments.map((payment, index) => (
+              <View key={index} style={[styles.totalsRow, { width: "100%" }]}>
+                <Text style={styles.totalsLabel}>
+                  {payment.date} — {PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}
+                </Text>
+                <Text style={styles.totalsValue}>{formatBRL(payment.amount)}</Text>
+              </View>
+            ))}
+            <View style={[styles.totalsRow, { width: "100%", marginTop: 4 }]}>
+              <Text style={styles.totalsLabel}>Total recebido</Text>
+              <Text style={styles.totalsValue}>{formatBRL(order.paid)}</Text>
+            </View>
+            <View style={[styles.totalsRow, { width: "100%" }]}>
+              <Text style={styles.totalsLabel}>Saldo</Text>
+              <Text style={styles.totalsValue}>{formatBRL(order.balance)}</Text>
+            </View>
+            <Text style={[styles.situationBadge, { backgroundColor: SITUATION_COLORS[order.situation] }]}>
+              {SITUATION_LABELS[order.situation]}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Previsão de entrega</Text>

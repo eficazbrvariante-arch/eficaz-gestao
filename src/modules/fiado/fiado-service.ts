@@ -23,14 +23,17 @@ type CreateFiadoEntryData = {
   dueDate?: string | null;
   note?: string | null;
   saleId?: string | null;
+  /** Preenchido quando o fiado nasce do acerto financeiro de uma OS de assistência técnica. */
+  repairOrderId?: string | null;
   createdById: string;
 };
 
 /**
- * Lança um fiado — chamado tanto na hora de fechar uma venda no PDV com a
- * forma de pagamento "Fiado" (dentro da mesma transação, `saleId` preenchido)
- * quanto manualmente pela ficha do cliente (`saleId` nulo). Aceita um client
- * de transação opcional pra poder ser reaproveitado nos dois casos.
+ * Lança um fiado — chamado na hora de fechar uma venda no PDV ou entregar uma
+ * OS de assistência técnica com a forma de pagamento "Fiado" (dentro da mesma
+ * transação, `saleId`/`repairOrderId` preenchido), ou manualmente pela ficha
+ * do cliente (ambos nulos). Aceita um client de transação opcional pra poder
+ * ser reaproveitado nesses casos.
  */
 export async function createFiadoEntry(
   tenantId: string,
@@ -45,6 +48,7 @@ export async function createFiadoEntry(
       dueDate: parseDateOnly(data.dueDate),
       note: data.note || null,
       saleId: data.saleId || null,
+      repairOrderId: data.repairOrderId || null,
       createdById: data.createdById,
     },
   });

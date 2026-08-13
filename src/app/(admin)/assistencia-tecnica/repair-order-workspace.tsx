@@ -11,11 +11,22 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
+import { MixedPaymentPanel, type PaymentPanelSlot } from "@/components/payments/mixed-payment-panel";
 import { formatBRL } from "@/lib/format";
+import {
+  PAYMENT_SLOTS,
+  EMPTY_PAYMENT_AMOUNTS,
+  sumPaymentAmounts,
+  toPaymentEntries,
+  type PaymentAmounts,
+} from "@/lib/payment-slots";
 import { searchCustomersAction } from "../clientes/actions";
 import {
   createRepairOrderAction,
+  deliverRepairOrderAction,
   ensureRepairOrderReceiptAction,
+  grantRepairOrderCourtesyAction,
+  receiveRepairOrderPaymentAction,
   updateRepairOrderAction,
   updateRepairOrderStatusAction,
 } from "./actions";
@@ -25,6 +36,19 @@ import {
   REPAIR_ORDER_STATUS_LABELS,
   type RepairOrderStatusValue,
 } from "@/lib/validations/repair-order";
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de Débito",
+  CREDIT: "Cartão de Crédito",
+  STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
+};
+
+/** Status escolhíveis livremente no seletor — "Entregue" só acontece pelo
+ *  acerto financeiro (ver `handleDeliver`), nunca como troca de status solta. */
+const SELECTABLE_STATUSES = REPAIR_ORDER_STATUSES.filter((s) => s !== "DELIVERED");
 
 type ServiceLine = {
   key: number;
@@ -38,9 +62,24 @@ type CustomerOption = {
   name: string;
   document: string | null;
   phone: string | null;
+  creditBalance: number;
 };
 
 type HistoryEvent = { id: string; message: string; createdAt: string };
+
+export type RepairOrderFinancialsView = {
+  total: number;
+  paid: number;
+  balance: number;
+  situation: "QUITADO" | "PENDENTE" | "SEM_COBRANCA";
+  payments: {
+    id: string;
+    method: string;
+    amount: number;
+    createdAt: string;
+    createdByName: string;
+  }[];
+};
 
 export type RepairOrderDefaults = {
   customer: CustomerOption | null;
@@ -86,6 +125,9 @@ export function RepairOrderWorkspace({
   meta,
   canEditCost,
   canViewProfit,
+  financials,
+  canFiado,
+  canGrantCourtesy,
 }: {
   defaults: RepairOrderDefaults;
   meta?: RepairOrderMeta;
@@ -93,6 +135,12 @@ export function RepairOrderWorkspace({
   canEditCost: boolean;
   /** Admin: também vê o lucro (orçamento − custo) calculado. */
   canViewProfit: boolean;
+  /** `null` só na criação de uma OS nova — o financeiro só existe depois de salva. */
+  financials: RepairOrderFinancialsView | null;
+  /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
+  canFiado: boolean;
+  /** Só ADMIN — dispensar saldo pendente sem cobrança. */
+  canGrantCourtesy: boolean;
 }) {
   const router = useRouter();
   const isEditing = Boolean(meta);
@@ -129,6 +177,139 @@ export function RepairOrderWorkspace({
 
   const servicesTotal = round2(items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
   const totalWithDiscount = round2(Math.max(0, servicesTotal - discount));
+
+  // Entrada antecipada — painel só aparece quando o atendente clica em
+  // "Registrar pagamento", pra não poluir a tela em toda OS aberta.
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentAmounts, setPaymentAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
+  const [paymentFiadoDueDate, setPaymentFiadoDueDate] = useState("");
+  const [isReceivingPayment, startReceivePaymentTransition] = useTransition();
+
+  // Acerto financeiro da entrega.
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [deliveryAmounts, setDeliveryAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
+  const [deliveryFiadoDueDate, setDeliveryFiadoDueDate] = useState("");
+  const [isDelivering, startDeliverTransition] = useTransition();
+
+  // Cortesia administrativa.
+  const [showCourtesyForm, setShowCourtesyForm] = useState(false);
+  const [courtesyReason, setCourtesyReason] = useState("");
+  const [isGrantingCourtesy, startCourtesyTransition] = useTransition();
+
+  const paymentSlots: PaymentPanelSlot[] = PAYMENT_SLOTS.map((slot) => {
+    const eligible =
+      slot.key === "store_credit"
+        ? !!customer && customer.creditBalance > 0
+        : slot.key === "fiado"
+          ? canFiado && !!customer
+          : true;
+    return {
+      key: slot.key,
+      label: slot.label,
+      disabled: !eligible,
+      disabledReason:
+        slot.key === "store_credit"
+          ? "Cliente sem crédito de loja disponível"
+          : slot.key === "fiado"
+            ? "Selecione um cliente elegível para fiado"
+            : undefined,
+    };
+  });
+
+  const paymentEntered = sumPaymentAmounts(paymentAmounts);
+  const paymentHasFiado = (paymentAmounts.fiado || 0) > 0;
+  const deliveryEntered = sumPaymentAmounts(deliveryAmounts);
+  const deliveryHasFiado = (deliveryAmounts.fiado || 0) > 0;
+
+  function handleReceivePayment() {
+    if (!meta) return;
+    setError(undefined);
+    setSuccess(undefined);
+
+    if (paymentEntered <= 0) {
+      setError("Informe ao menos um pagamento.");
+      return;
+    }
+    if (paymentHasFiado && !paymentFiadoDueDate) {
+      setError("Informe a data prevista de pagamento do fiado.");
+      return;
+    }
+
+    startReceivePaymentTransition(async () => {
+      const result = await receiveRepairOrderPaymentAction(meta.id, {
+        payments: toPaymentEntries(paymentAmounts),
+        fiadoDueDate: paymentHasFiado ? paymentFiadoDueDate : undefined,
+      });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSuccess(result?.success ?? "Pagamento registrado.");
+      setShowPaymentForm(false);
+      setPaymentAmounts(EMPTY_PAYMENT_AMOUNTS);
+      setPaymentFiadoDueDate("");
+      router.refresh();
+    });
+  }
+
+  function handleDeliver() {
+    if (!meta || !financials) return;
+    setError(undefined);
+    setSuccess(undefined);
+
+    if (financials.balance > 0.005) {
+      if (Math.abs(deliveryEntered - financials.balance) > 0.005) {
+        setError(
+          `Os pagamentos informados (${formatBRL(deliveryEntered)}) precisam fechar com o saldo pendente (${formatBRL(financials.balance)}).`
+        );
+        return;
+      }
+      if (deliveryHasFiado && !deliveryFiadoDueDate) {
+        setError("Informe a data prevista de pagamento do fiado.");
+        return;
+      }
+    }
+
+    startDeliverTransition(async () => {
+      const result = await deliverRepairOrderAction(meta.id, {
+        payments: financials.balance > 0.005 ? toPaymentEntries(deliveryAmounts) : [],
+        fiadoDueDate: deliveryHasFiado ? deliveryFiadoDueDate : undefined,
+      });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSuccess(result?.success ?? "OS entregue.");
+      setShowDeliveryForm(false);
+      setDeliveryAmounts(EMPTY_PAYMENT_AMOUNTS);
+      setDeliveryFiadoDueDate("");
+      setStatus("DELIVERED");
+      router.refresh();
+    });
+  }
+
+  function handleGrantCourtesy() {
+    if (!meta) return;
+    setError(undefined);
+    setSuccess(undefined);
+
+    if (courtesyReason.trim().length < 3) {
+      setError("Descreva o motivo da cortesia.");
+      return;
+    }
+
+    startCourtesyTransition(async () => {
+      const result = await grantRepairOrderCourtesyAction(meta.id, { reason: courtesyReason.trim() });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSuccess(result?.success ?? "Cortesia concedida.");
+      setShowCourtesyForm(false);
+      setCourtesyReason("");
+      router.refresh();
+    });
+  }
 
   function searchCustomers(term: string) {
     setCustomerTerm(term);
@@ -250,17 +431,29 @@ export function RepairOrderWorkspace({
     });
   }
 
-  function handleWhatsapp() {
+  /**
+   * "Compartilhar": usa a Web Share API nativa quando o navegador suporta
+   * (abre o seletor do próprio sistema — WhatsApp, e-mail, salvar, etc.);
+   * sem suporte (a maioria dos desktops), cai pro link direto do WhatsApp
+   * como já funcionava antes — nunca deixa o botão sem fazer nada.
+   */
+  function handleShare() {
     if (!meta) return;
-    if (!customer?.phone) {
+    setError(undefined);
+
+    const hasNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+    // Sem Web Share API: precisa do telefone pro link do WhatsApp; com Web
+    // Share API o sistema decide os destinos, então o telefone não é exigido.
+    if (!hasNativeShare && !customer?.phone) {
       setError("Este cliente não tem telefone cadastrado.");
       return;
     }
-    setError(undefined);
 
     // Abre a aba já em resposta ao clique, para o navegador não bloquear o
     // popup — o link de destino só é preenchido depois que o PDF existir.
-    const receiptWindow = window.open("", "_blank");
+    // Só é usado no caminho sem Web Share API (fallback do WhatsApp).
+    const receiptWindow = hasNativeShare ? null : window.open("", "_blank");
 
     startWhatsappTransition(async () => {
       const result = await ensureRepairOrderReceiptAction(meta.id);
@@ -270,12 +463,21 @@ export function RepairOrderWorkspace({
         return;
       }
 
-      const digits = customer.phone!.replace(/\D/g, "");
       const receiptUrl = `${window.location.origin}${result.path}`;
       const osLabel = `#${String(meta.number).padStart(6, "0")}`;
       const message = `Olá! Segue o comprovante da sua Ordem de Serviço ${osLabel}: ${receiptUrl}`;
-      const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 
+      if (hasNativeShare) {
+        try {
+          await navigator.share({ title: `OS ${osLabel}`, text: message, url: receiptUrl });
+        } catch {
+          // Usuário cancelou o seletor nativo (ou o navegador recusou) — não é erro pra mostrar.
+        }
+        return;
+      }
+
+      const digits = customer!.phone!.replace(/\D/g, "");
+      const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
       if (receiptWindow) {
         receiptWindow.location.href = whatsappUrl;
       } else {
@@ -608,16 +810,25 @@ export function RepairOrderWorkspace({
                 <p className="mb-2 text-sm font-semibold text-slate-900">Situação da OS</p>
                 <Select
                   value={status}
-                  disabled={isUpdatingStatus}
+                  disabled={isUpdatingStatus || status === "DELIVERED" || status === "CANCELLED"}
                   onChange={(e) => handleStatusChange(e.target.value as RepairOrderStatusValue)}
                   className="print:hidden"
                 >
-                  {REPAIR_ORDER_STATUSES.map((value) => (
+                  {SELECTABLE_STATUSES.map((value) => (
                     <option key={value} value={value}>
                       {REPAIR_ORDER_STATUS_LABELS[value]}
                     </option>
                   ))}
+                  {/* Só aparece quando a OS já está entregue, pra continuar mostrando o valor atual no seletor — nunca selecionável de novo. */}
+                  {status === "DELIVERED" && (
+                    <option value="DELIVERED">{REPAIR_ORDER_STATUS_LABELS.DELIVERED}</option>
+                  )}
                 </Select>
+                {status !== "DELIVERED" && status !== "CANCELLED" && (
+                  <p className="mt-1 text-xs text-slate-400 print:hidden">
+                    &quot;Entregue&quot; só através do acerto financeiro, abaixo.
+                  </p>
+                )}
                 <span
                   className={clsx(
                     "mt-2 inline-block rounded px-2 py-0.5 text-xs font-medium",
@@ -651,21 +862,257 @@ export function RepairOrderWorkspace({
                 </div>
               </div>
 
+              {financials && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+                  <p className="mb-2 text-sm font-semibold text-slate-900">Financeiro da OS</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total da OS</span>
+                      <span>{formatBRL(financials.total)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Já recebido</span>
+                      <span>{formatBRL(financials.paid)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-100 pt-1 font-semibold text-slate-900">
+                      <span>Saldo a receber</span>
+                      <span className={financials.balance > 0.005 ? "text-amber-600" : "text-emerald-700"}>
+                        {formatBRL(financials.balance)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {financials.payments.length > 0 && (
+                    <div className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                      {financials.payments.map((p) => (
+                        <div key={p.id} className="flex justify-between gap-2">
+                          <span className="truncate">
+                            {p.createdAt} — {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                          </span>
+                          <span className="shrink-0 font-medium text-slate-700">{formatBRL(p.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {financials.balance > 0.005 && status !== "CANCELLED" && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      {!showPaymentForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowPaymentForm(true)}
+                          className="text-xs font-medium text-slate-700 hover:underline"
+                        >
+                          + Registrar pagamento (entrada)
+                        </button>
+                      ) : (
+                        <div>
+                          <MixedPaymentPanel
+                            slots={paymentSlots}
+                            amounts={paymentAmounts}
+                            total={financials.balance}
+                            onChangeAmount={(key, value) =>
+                              setPaymentAmounts((current) => ({ ...current, [key]: value }))
+                            }
+                          />
+                          {paymentHasFiado && (
+                            <div className="mt-2">
+                              <Label htmlFor="payment-fiado-date">Data prevista (fiado)</Label>
+                              <input
+                                id="payment-fiado-date"
+                                type="date"
+                                value={paymentFiadoDueDate}
+                                onChange={(e) => setPaymentFiadoDueDate(e.target.value)}
+                                className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
+                              />
+                            </div>
+                          )}
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              type="button"
+                              fullWidth={false}
+                              disabled={isReceivingPayment}
+                              onClick={handleReceivePayment}
+                              className="px-4 text-sm"
+                            >
+                              {isReceivingPayment ? "Registrando..." : "Confirmar pagamento"}
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowPaymentForm(false);
+                                setPaymentAmounts(EMPTY_PAYMENT_AMOUNTS);
+                              }}
+                              className="text-xs text-slate-500 hover:underline"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {financials && status !== "DELIVERED" && status !== "CANCELLED" && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+                  <p className="mb-2 text-sm font-semibold text-slate-900">Entrega</p>
+
+                  {financials.balance <= 0.005 ? (
+                    <>
+                      <p className="mb-3 text-xs text-emerald-700">
+                        OS quitada — pode entregar sem cobrar nada agora.
+                      </p>
+                      <Button
+                        type="button"
+                        fullWidth={false}
+                        disabled={isDelivering}
+                        onClick={handleDeliver}
+                        className="px-4 text-sm"
+                      >
+                        {isDelivering ? "Entregando..." : "Marcar como entregue"}
+                      </Button>
+                    </>
+                  ) : !showDeliveryForm ? (
+                    <Button
+                      type="button"
+                      fullWidth={false}
+                      onClick={() => setShowDeliveryForm(true)}
+                      className="px-4 text-sm"
+                    >
+                      Entregar — acerto financeiro
+                    </Button>
+                  ) : (
+                    <div>
+                      <p className="mb-2 text-xs text-slate-500">
+                        Saldo a receber: <strong>{formatBRL(financials.balance)}</strong>
+                      </p>
+                      <MixedPaymentPanel
+                        slots={paymentSlots}
+                        amounts={deliveryAmounts}
+                        total={financials.balance}
+                        onChangeAmount={(key, value) =>
+                          setDeliveryAmounts((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                      {deliveryHasFiado && (
+                        <div className="mt-2">
+                          <Label htmlFor="delivery-fiado-date">Data prevista (fiado)</Label>
+                          <input
+                            id="delivery-fiado-date"
+                            type="date"
+                            value={deliveryFiadoDueDate}
+                            onChange={(e) => setDeliveryFiadoDueDate(e.target.value)}
+                            className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
+                          />
+                        </div>
+                      )}
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          type="button"
+                          fullWidth={false}
+                          disabled={isDelivering}
+                          onClick={handleDeliver}
+                          className="px-4 text-sm"
+                        >
+                          {isDelivering ? "Entregando..." : "Confirmar pagamento e entregar"}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDeliveryForm(false);
+                            setDeliveryAmounts(EMPTY_PAYMENT_AMOUNTS);
+                          }}
+                          className="text-xs text-slate-500 hover:underline"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {canGrantCourtesy && financials.balance > 0.005 && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      {!showCourtesyForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowCourtesyForm(true)}
+                          className="text-xs font-medium text-amber-700 hover:underline"
+                        >
+                          Cortesia — dispensar saldo sem cobrança
+                        </button>
+                      ) : (
+                        <div>
+                          <Label htmlFor="courtesy-reason">Motivo da cortesia (obrigatório)</Label>
+                          <Textarea
+                            id="courtesy-reason"
+                            rows={2}
+                            value={courtesyReason}
+                            onChange={(e) => setCourtesyReason(e.target.value)}
+                            placeholder="Ex.: cliente fiel, defeito recorrente, cortesia comercial..."
+                          />
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              type="button"
+                              disabled={isGrantingCourtesy}
+                              onClick={handleGrantCourtesy}
+                              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                            >
+                              {isGrantingCourtesy
+                                ? "Concedendo..."
+                                : `Confirmar cortesia de ${formatBRL(financials.balance)}`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCourtesyForm(false);
+                                setCourtesyReason("");
+                              }}
+                              className="text-xs text-slate-500 hover:underline"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 print:hidden">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                <Link
+                  href={`/assistencia-tecnica/${meta.id}/cupom?tipo=entrada`}
+                  target="_blank"
+                  className="rounded-md border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Imprimir OS
-                </button>
+                  Cupom de entrada (80mm)
+                </Link>
+                {status === "DELIVERED" ? (
+                  <Link
+                    href={`/assistencia-tecnica/${meta.id}/cupom?tipo=entrega`}
+                    target="_blank"
+                    className="rounded-md border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cupom de entrega (80mm)
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Imprimir OS (A4)
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={handleWhatsapp}
+                  onClick={handleShare}
                   disabled={isSendingWhatsapp}
-                  className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                  className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 sm:col-span-2"
                 >
-                  {isSendingWhatsapp ? "Gerando comprovante..." : "Enviar por WhatsApp"}
+                  {isSendingWhatsapp ? "Gerando comprovante..." : "Compartilhar comprovante"}
                 </button>
               </div>
             </>

@@ -114,6 +114,7 @@ model Tenant {
   deliveryZones         DeliveryZone[]
   auditLogs             AuditLog[]
   repairOrders          RepairOrder[]
+  repairOrderPayments   RepairOrderPayment[]
   creditMovements       CustomerCreditMovement[]
   fiadoEntries          FiadoEntry[]
   devices               Device[]
@@ -206,6 +207,8 @@ model User {
   saleItemDefectsReported SaleItemDefect[]
   auditLogs               AuditLog[]
   repairOrdersCreated     RepairOrder[]            @relation("RepairOrderCreatedBy")
+  repairOrdersDelivered   RepairOrder[]            @relation("RepairOrderDeliveredBy")
+  repairOrderPayments     RepairOrderPayment[]
   creditMovements         CustomerCreditMovement[]
   fiadoEntriesCreated     FiadoEntry[]
   devicesRequested        Device[]                 @relation("DeviceRequestedBy")
@@ -754,7 +757,13 @@ model RepairOrder {
   discount      Decimal   @default(0) @db.Decimal(12, 2)
   internalNotes String?
   estimatedAt   DateTime?
+  /// Preenchido junto com `status = DELIVERED`, sempre pelo mesmo fluxo que
+  /// resolve o financeiro da OS (ver `deliverRepairOrder`) — nunca setado
+  /// isoladamente por uma troca de status direta.
   pickedUpAt    DateTime?
+  /// Quem processou a entrega (bateu o financeiro e confirmou a saída do
+  /// aparelho). Nulo em OS antigas, entregues antes deste campo existir.
+  deliveredById String?
 
   /// Preço de custo da peça, usado só para calcular a margem internamente.
   /// Visível/editável a qualquer momento apenas por ADMIN; MANAGER só informa
@@ -769,12 +778,15 @@ model RepairOrder {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer  Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  createdBy User               @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
-  items     RepairOrderItem[]
-  photos    RepairOrderPhoto[]
-  events    RepairOrderEvent[]
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
+  deliveredBy  User?                @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
+  items        RepairOrderItem[]
+  photos       RepairOrderPhoto[]
+  events       RepairOrderEvent[]
+  payments     RepairOrderPayment[]
+  fiadoEntries FiadoEntry[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -818,6 +830,37 @@ model RepairOrderEvent {
   @@map("repair_order_events")
 }
 
+/// Cada recebimento financeiro de uma OS é uma linha própria — igual a
+/// `Payment` para `Sale`, mas com histórico no tempo (uma OS pode ter uma
+/// entrada na abertura e o saldo só na entrega, dias depois). `amount` é
+/// sempre o que entrou de fato: pagamentos em FIADO/STORE_CREDIT também
+/// geram uma linha aqui (para o saldo da OS fechar), mas não representam
+/// dinheiro na gaveta — `getCashSummary` já sabe filtrar isso, do mesmo jeito
+/// que já faz hoje com `Payment` da venda.
+///
+/// `cashRegisterId` é o caixa que estava aberto no momento exato do
+/// recebimento — nunca o caixa atual — para o valor entrar no fechamento do
+/// dia certo, e nunca ser somado duas vezes.
+model RepairOrderPayment {
+  id             String        @id @default(cuid())
+  tenantId       String
+  repairOrderId  String
+  cashRegisterId String
+  method         PaymentMethod
+  amount         Decimal       @db.Decimal(12, 2)
+  createdById    String
+  createdAt      DateTime      @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repairOrder  RepairOrder  @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId, repairOrderId])
+  @@index([tenantId, cashRegisterId])
+  @@map("repair_order_payments")
+}
+
 // ---------------------------------------------------------------------------
 // Fase 3 — Caixa
 // ---------------------------------------------------------------------------
@@ -851,11 +894,12 @@ model CashRegister {
   expectedPixAmount    Decimal? @db.Decimal(12, 2)
   notes          String?
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  openedBy  User           @relation("CashRegisterOpenedBy", fields: [openedById], references: [id])
-  closedBy  User?          @relation("CashRegisterClosedBy", fields: [closedById], references: [id])
-  movements CashMovement[]
-  sales     Sale[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  openedBy            User                 @relation("CashRegisterOpenedBy", fields: [openedById], references: [id])
+  closedBy            User?                @relation("CashRegisterClosedBy", fields: [closedById], references: [id])
+  movements           CashMovement[]
+  sales               Sale[]
+  repairOrderPayments RepairOrderPayment[]
 
   @@index([tenantId, status])
   @@map("cash_registers")
@@ -1036,26 +1080,30 @@ enum FiadoStatus {
 /// PDV com a forma de pagamento "Fiado" (`saleId` preenchido), seja manual
 /// pela ficha do cliente (`saleId` nulo, ex.: produto entregue fora do PDV).
 model FiadoEntry {
-  id          String      @id @default(cuid())
-  tenantId    String
-  customerId  String
-  amount      Decimal     @db.Decimal(12, 2)
-  status      FiadoStatus @default(PENDING)
+  id            String      @id @default(cuid())
+  tenantId      String
+  customerId    String
+  amount        Decimal     @db.Decimal(12, 2)
+  status        FiadoStatus @default(PENDING)
   /// Data prevista de pagamento. Só relevante enquanto `status` é PENDING —
   /// depois dela, o lançamento pendente aparece como "Vencido" na UI.
-  dueDate     DateTime?
-  note        String?
+  dueDate       DateTime?
+  note          String?
   /// Preenchido só quando o lançamento nasceu de uma venda no PDV (forma de
   /// pagamento "Fiado"); nulo nos lançamentos manuais.
-  saleId      String?
-  createdById String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  saleId        String?
+  /// Preenchido quando o lançamento nasceu do acerto financeiro de uma OS
+  /// (saldo resolvido como fiado na entrega); nulo nos demais casos.
+  repairOrderId String?
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  sale      Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
-  createdBy User     @relation(fields: [createdById], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale        Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  repairOrder RepairOrder? @relation(fields: [repairOrderId], references: [id], onDelete: SetNull)
+  createdBy   User         @relation(fields: [createdById], references: [id])
 
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, status, dueDate])

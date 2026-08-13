@@ -119,6 +119,16 @@ export function canEnterRepairOrderCostOnCreate(role: UserRole) {
 }
 
 /**
+ * Dispensar o saldo pendente de uma OS sem cobrança (cortesia), na entrega.
+ * Mesmo nível de restrição de `canManageFiado`: nem Gerente decide sozinho
+ * abrir mão de um valor a receber — sempre exige justificativa (ver
+ * `grantRepairOrderCourtesy`).
+ */
+export function canGrantRepairOrderCourtesy(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Acesso restrito à tela de ajuste rápido de estoque (foto + quantidade,
  * sem preço nem qualquer outra informação do produto).
  */

@@ -131,9 +131,9 @@ export default async function CaixaPage() {
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Fechar caixa</h2>
           <CloseCashForm
             expectedInDrawer={summary.expectedInDrawer}
-            expectedDebit={summary.debitSales}
-            expectedCredit={summary.creditSales}
-            expectedPix={summary.pixSales}
+            expectedDebit={summary.totalDebit}
+            expectedCredit={summary.totalCredit}
+            expectedPix={summary.totalPix}
           />
         </div>
 

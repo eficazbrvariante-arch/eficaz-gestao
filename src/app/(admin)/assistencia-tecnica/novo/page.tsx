@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/session";
 import {
   canEnterRepairOrderCostOnCreate,
+  canGrantRepairOrderCourtesy,
+  canManageFiado,
   canManageRepairOrderCostAnytime,
   canManageRepairOrders,
 } from "@/lib/permissions";
@@ -39,6 +41,9 @@ export default async function NovaOrdemServicoPage() {
       defaults={EMPTY_DEFAULTS}
       canEditCost={canEnterRepairOrderCostOnCreate(user.role)}
       canViewProfit={canManageRepairOrderCostAnytime(user.role)}
+      financials={null}
+      canFiado={canManageFiado(user.role)}
+      canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
     />
   );
 }

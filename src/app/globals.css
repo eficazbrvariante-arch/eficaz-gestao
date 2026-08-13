@@ -58,16 +58,20 @@ body {
    cupom em relação à PÁGINA impressa, não ao container do painel que o
    envolve — assim nenhum padding do layout do admin (ex.: `<main
    class="p-6">`) consegue empurrar o cupom pra direita, hoje ou no futuro.
-   Escopado só ao #recibo via página nomeada — as demais impressões do painel
-   (ex.: ordem de serviço da assistência técnica) continuam no tamanho padrão
-   do navegador, sem serem afetadas por essa regra. */
+   Escopado ao `#recibo` (cupom de venda do PDV) e à classe reaproveitável
+   `.thermal-recibo` (comprovantes de entrada/entrega da Assistência Técnica,
+   em `/assistencia-tecnica/[id]/cupom`) — a mesma calibração de impressora
+   nos dois, sem duplicar a regra. Fora desses dois seletores, as demais
+   impressões do painel (ex.: a OS em A4, via `window.print()` na própria
+   tela) continuam no tamanho padrão do navegador. */
 @media print {
   @page thermal-80mm {
     size: 80mm auto;
     margin: 0;
   }
 
-  #recibo {
+  #recibo,
+  .thermal-recibo {
     page: thermal-80mm;
     position: fixed;
     left: 0;
@@ -86,8 +90,9 @@ body {
 
   /* Força o mesmo peso/fonte/cor em toda a árvore do recibo, sobrepondo as
      classes utilitárias (Tailwind) de cada elemento — a especificidade de
-     #recibo * (id) vence qualquer combinação de classes. */
-  #recibo * {
+     #recibo * / .thermal-recibo * vence qualquer combinação de classes. */
+  #recibo *,
+  .thermal-recibo * {
     box-sizing: border-box;
     font-family: inherit;
     font-size: inherit;
@@ -103,33 +108,41 @@ body {
      Item 22 | Qtd 4 | Unit. 10 | vão 1 | Total 11. `table-layout: fixed`
      faz as larguras abaixo valerem de verdade — sem isso, o navegador
      redimensiona as colunas pelo conteúdo e Unit./Total colam. */
-  #recibo table {
+  #recibo table,
+  .thermal-recibo table {
     width: 100%;
     table-layout: fixed;
   }
-  #recibo .col-item {
+  #recibo .col-item,
+  .thermal-recibo .col-item {
     width: 45.83%;
   }
-  #recibo .col-qty {
+  #recibo .col-qty,
+  .thermal-recibo .col-qty {
     width: 8.33%;
   }
-  #recibo .col-unit {
+  #recibo .col-unit,
+  .thermal-recibo .col-unit {
     width: 20.83%;
   }
-  #recibo .col-gap {
+  #recibo .col-gap,
+  .thermal-recibo .col-gap {
     width: 2.08%;
   }
-  #recibo .col-total {
+  #recibo .col-total,
+  .thermal-recibo .col-total {
     width: 22.92%;
   }
 
-  #recibo .receipt-total {
+  #recibo .receipt-total,
+  .thermal-recibo .receipt-total {
     font-size: 14px;
   }
 
   /* 22mm cabe folgado nos 72mm úteis e mantém o QR fácil de ler pela
      câmera do celular (abaixo disso a densidade dos módulos complica). */
-  #recibo .receipt-qr svg {
+  #recibo .receipt-qr svg,
+  .thermal-recibo .receipt-qr svg {
     width: 22mm;
     height: 22mm;
   }

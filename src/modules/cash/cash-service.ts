@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 /** Caixa aberto do tenant, se houver. Só pode existir um por vez. */
 export async function getOpenCashRegister(tenantId: string) {
   return prisma.cashRegister.findFirst({
@@ -11,14 +15,25 @@ export async function getOpenCashRegister(tenantId: string) {
 
 export type CashSummary = {
   openingAmount: number;
+  /** Vendas do PDV, por forma de pagamento. */
   cashSales: number;
   otherSales: number;
   pixSales: number;
   debitSales: number;
   creditSales: number;
+  /** Recebimentos de Assistência Técnica (entrada + saldo na entrega), por forma de pagamento. */
+  repairCashReceipts: number;
+  repairPixReceipts: number;
+  repairDebitReceipts: number;
+  repairCreditReceipts: number;
+  /** Soma de vendas + assistência técnica, por forma de pagamento — para relatórios. */
+  totalCash: number;
+  totalPix: number;
+  totalDebit: number;
+  totalCredit: number;
   supplies: number;
   withdrawals: number;
-  /** Quanto o sistema espera encontrar na gaveta (só dinheiro em espécie). */
+  /** Quanto o sistema espera encontrar na gaveta (só dinheiro em espécie: vendas + assistência técnica). */
   expectedInDrawer: number;
   salesCount: number;
 };
@@ -27,8 +42,12 @@ export type CashSummary = {
  * Consolida a movimentação de um caixa.
  *
  * O valor esperado na gaveta considera apenas dinheiro em espécie:
- * pagamentos em PIX, débito e crédito não passam pelo caixa físico.
- * Vendas canceladas são desconsideradas.
+ * pagamentos em PIX, débito e crédito não passam pelo caixa físico. Isso
+ * inclui tanto vendas do PDV quanto recebimentos de Assistência Técnica —
+ * os dois usam a mesma gaveta física. Vendas canceladas são desconsideradas
+ * (a Assistência Técnica não tem "cancelamento" de recebimento: um pagamento
+ * já registrado é definitivo, corrigir exige estorno manual, fora de escopo
+ * daqui).
  */
 export async function getCashSummary(
   tenantId: string,
@@ -38,10 +57,15 @@ export async function getCashSummary(
     where: { id: cashRegisterId, tenantId },
   });
 
-  const [payments, movements, salesCount] = await Promise.all([
+  const [payments, repairPayments, movements, salesCount] = await Promise.all([
     prisma.payment.groupBy({
       by: ["method"],
       where: { sale: { cashRegisterId, status: "COMPLETED" } },
+      _sum: { amount: true },
+    }),
+    prisma.repairOrderPayment.groupBy({
+      by: ["method"],
+      where: { cashRegisterId },
       _sum: { amount: true },
     }),
     prisma.cashMovement.groupBy({
@@ -52,17 +76,23 @@ export async function getCashSummary(
     prisma.sale.count({ where: { cashRegisterId, status: "COMPLETED" } }),
   ]);
 
-  const sumByMethod = (method: string) =>
-    Number(payments.find((p) => p.method === method)?._sum.amount ?? 0);
+  const sumByMethod = (list: typeof payments, method: string) =>
+    Number(list.find((p) => p.method === method)?._sum.amount ?? 0);
   const sumByType = (type: string) =>
     Number(movements.find((m) => m.type === type)?._sum.amount ?? 0);
 
   const openingAmount = Number(register.openingAmount);
-  const cashSales = sumByMethod("CASH");
-  const pixSales = sumByMethod("PIX");
-  const debitSales = sumByMethod("DEBIT");
-  const creditSales = sumByMethod("CREDIT");
+  const cashSales = sumByMethod(payments, "CASH");
+  const pixSales = sumByMethod(payments, "PIX");
+  const debitSales = sumByMethod(payments, "DEBIT");
+  const creditSales = sumByMethod(payments, "CREDIT");
   const otherSales = pixSales + debitSales + creditSales;
+
+  const repairCashReceipts = sumByMethod(repairPayments, "CASH");
+  const repairPixReceipts = sumByMethod(repairPayments, "PIX");
+  const repairDebitReceipts = sumByMethod(repairPayments, "DEBIT");
+  const repairCreditReceipts = sumByMethod(repairPayments, "CREDIT");
+
   const supplies = sumByType("SUPPLY");
   const withdrawals = sumByType("WITHDRAWAL");
 
@@ -73,9 +103,17 @@ export async function getCashSummary(
     pixSales,
     debitSales,
     creditSales,
+    repairCashReceipts,
+    repairPixReceipts,
+    repairDebitReceipts,
+    repairCreditReceipts,
+    totalCash: round2(cashSales + repairCashReceipts),
+    totalPix: round2(pixSales + repairPixReceipts),
+    totalDebit: round2(debitSales + repairDebitReceipts),
+    totalCredit: round2(creditSales + repairCreditReceipts),
     supplies,
     withdrawals,
-    expectedInDrawer: openingAmount + cashSales + supplies - withdrawals,
+    expectedInDrawer: round2(openingAmount + cashSales + repairCashReceipts + supplies - withdrawals),
     salesCount,
   };
 }

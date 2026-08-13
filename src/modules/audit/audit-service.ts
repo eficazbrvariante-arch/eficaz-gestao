@@ -31,7 +31,10 @@ export type AuditAction =
   | "device.reject"
   | "device.revoke"
   | "attendance.correct"
-  | "attendance.selfie_waived";
+  | "attendance.selfie_waived"
+  | "repair.payment_received"
+  | "repair.delivered"
+  | "repair.courtesy_grant";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -57,6 +60,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "device.revoke": "Dispositivo revogado",
   "attendance.correct": "Marcação de ponto corrigida",
   "attendance.selfie_waived": "Marcação de ponto registrada sem selfie",
+  "repair.payment_received": "Pagamento recebido em OS de assistência técnica",
+  "repair.delivered": "OS de assistência técnica entregue",
+  "repair.courtesy_grant": "Cortesia concedida em OS de assistência técnica",
 };
 
 export type AuditEntry = {

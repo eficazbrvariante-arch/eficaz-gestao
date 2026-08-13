@@ -2,14 +2,18 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import {
   canEnterRepairOrderCostOnCreate,
+  canGrantRepairOrderCourtesy,
+  canManageFiado,
   canManageRepairOrderCostAnytime,
   canManageRepairOrders,
 } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
+import { getRepairOrderFinancials } from "@/modules/repairs/repair-payment-service";
 import {
   RepairOrderWorkspace,
   type RepairOrderDefaults,
+  type RepairOrderFinancialsView,
   type RepairOrderMeta,
 } from "../repair-order-workspace";
 
@@ -31,7 +35,9 @@ export default async function OrdemServicoPage({
   const order = await prisma.repairOrder.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
-      customer: { select: { id: true, name: true, document: true, phone: true } },
+      customer: {
+        select: { id: true, name: true, document: true, phone: true, creditBalance: true },
+      },
       items: { select: { description: true, unitPrice: true, quantity: true } },
       photos: { select: { url: true }, orderBy: { order: "asc" } },
       events: {
@@ -41,6 +47,21 @@ export default async function OrdemServicoPage({
     },
   });
   if (!order) notFound();
+
+  const financialsRaw = await getRepairOrderFinancials(user.tenantId, id);
+  const financials: RepairOrderFinancialsView | null = financialsRaw && {
+    total: financialsRaw.total,
+    paid: financialsRaw.paid,
+    balance: financialsRaw.balance,
+    situation: financialsRaw.situation,
+    payments: financialsRaw.payments.map((p) => ({
+      id: p.id,
+      method: p.method,
+      amount: p.amount,
+      createdAt: formatDateTime(p.createdAt),
+      createdByName: p.createdByName,
+    })),
+  };
 
   // Gerente só vê/edita o custo enquanto ninguém tiver salvo um valor nesta OS
   // ainda; depois disso é só do administrador — em qualquer OS, não importa
@@ -57,6 +78,7 @@ export default async function OrdemServicoPage({
           name: order.customer.name,
           document: order.customer.document,
           phone: order.customer.phone,
+          creditBalance: Number(order.customer.creditBalance),
         }
       : null,
     brand: order.brand,
@@ -101,6 +123,9 @@ export default async function OrdemServicoPage({
       meta={meta}
       canEditCost={canEditCost}
       canViewProfit={canViewProfit}
+      financials={financials}
+      canFiado={canManageFiado(user.role)}
+      canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
     />
   );
 }
