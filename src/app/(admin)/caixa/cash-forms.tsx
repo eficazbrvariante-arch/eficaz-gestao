@@ -78,7 +78,17 @@ export function OpenCashForm() {
   );
 }
 
-export function CloseCashForm({ expectedInDrawer }: { expectedInDrawer: number }) {
+export function CloseCashForm({
+  expectedInDrawer,
+  debitSales,
+  creditSales,
+  pixSales,
+}: {
+  expectedInDrawer: number;
+  debitSales: number;
+  creditSales: number;
+  pixSales: number;
+}) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
 
@@ -115,10 +125,22 @@ export function CloseCashForm({ expectedInDrawer }: { expectedInDrawer: number }
 
       <div className="mb-4 rounded-md bg-slate-50 p-3 text-sm">
         <div className="flex justify-between text-slate-600">
-          <span>Esperado pelo sistema</span>
+          <span>Esperado pelo sistema (dinheiro)</span>
           <span>{formatBRL(expectedInDrawer)}</span>
         </div>
-        <div className="mt-1 flex justify-between font-medium">
+        <div className="mt-1 flex justify-between text-slate-600">
+          <span>Vendas no débito</span>
+          <span>{formatBRL(debitSales)}</span>
+        </div>
+        <div className="mt-1 flex justify-between text-slate-600">
+          <span>Vendas no crédito</span>
+          <span>{formatBRL(creditSales)}</span>
+        </div>
+        <div className="mt-1 flex justify-between text-slate-600">
+          <span>Vendas no Pix</span>
+          <span>{formatBRL(pixSales)}</span>
+        </div>
+        <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-medium">
           <span className="text-slate-700">Diferença</span>
           <span
             className={

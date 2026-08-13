@@ -13,6 +13,9 @@ export type CashSummary = {
   openingAmount: number;
   cashSales: number;
   otherSales: number;
+  pixSales: number;
+  debitSales: number;
+  creditSales: number;
   supplies: number;
   withdrawals: number;
   /** Quanto o sistema espera encontrar na gaveta (só dinheiro em espécie). */
@@ -56,8 +59,10 @@ export async function getCashSummary(
 
   const openingAmount = Number(register.openingAmount);
   const cashSales = sumByMethod("CASH");
-  const otherSales =
-    sumByMethod("PIX") + sumByMethod("DEBIT") + sumByMethod("CREDIT");
+  const pixSales = sumByMethod("PIX");
+  const debitSales = sumByMethod("DEBIT");
+  const creditSales = sumByMethod("CREDIT");
+  const otherSales = pixSales + debitSales + creditSales;
   const supplies = sumByType("SUPPLY");
   const withdrawals = sumByType("WITHDRAWAL");
 
@@ -65,6 +70,9 @@ export async function getCashSummary(
     openingAmount,
     cashSales,
     otherSales,
+    pixSales,
+    debitSales,
+    creditSales,
     supplies,
     withdrawals,
     expectedInDrawer: openingAmount + cashSales + supplies - withdrawals,

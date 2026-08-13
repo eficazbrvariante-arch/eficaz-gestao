@@ -75,7 +75,9 @@ export default async function CaixaPage() {
   const stats = [
     { label: "Abertura", value: formatBRL(summary.openingAmount) },
     { label: "Vendas em dinheiro", value: formatBRL(summary.cashSales) },
-    { label: "Vendas em PIX/cartão", value: formatBRL(summary.otherSales) },
+    { label: "Vendas no débito", value: formatBRL(summary.debitSales) },
+    { label: "Vendas no crédito", value: formatBRL(summary.creditSales) },
+    { label: "Vendas no Pix", value: formatBRL(summary.pixSales) },
     { label: "Esperado na gaveta", value: formatBRL(summary.expectedInDrawer) },
   ];
 
@@ -105,7 +107,7 @@ export default async function CaixaPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <div
             key={stat.label}
@@ -127,7 +129,12 @@ export default async function CaixaPage() {
 
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Fechar caixa</h2>
-          <CloseCashForm expectedInDrawer={summary.expectedInDrawer} />
+          <CloseCashForm
+            expectedInDrawer={summary.expectedInDrawer}
+            debitSales={summary.debitSales}
+            creditSales={summary.creditSales}
+            pixSales={summary.pixSales}
+          />
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
