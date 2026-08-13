@@ -170,3 +170,13 @@ export function canViewAttendancePanel(role: UserRole) {
 export function canManageFiado(role: UserRole) {
   return role === "ADMIN";
 }
+
+/**
+ * Mesclar dois cadastros de cliente duplicados (ex.: um criado no PDV e outro
+ * pelo próprio cliente no catálogo online). Reatribui vendas, pedidos, fiado,
+ * crédito de loja e login de um cadastro pro outro, e apaga o absorvido —
+ * irreversível, por isso só ADMIN.
+ */
+export function canMergeCustomers(role: UserRole) {
+  return role === "ADMIN";
+}

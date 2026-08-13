@@ -315,3 +315,108 @@ export async function grantManualStoreCredit(
 
   return { ok: true };
 }
+
+export type MergeCustomersResult =
+  | {
+      ok: true;
+      keptName: string;
+      mergedName: string;
+      creditTransferred: number;
+      loginTransferred: boolean;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Mesclagem de dois cadastros duplicados do mesmo cliente (ex.: um criado
+ * manualmente no PDV, outro pelo próprio cliente no catálogo online — não
+ * existe hoje vínculo automático entre os dois por telefone/e-mail/documento,
+ * de propósito, para não abrir brecha de account takeover num cadastro
+ * antigo; ver `registerCustomer`/`createOrder`). `keepId` é quem permanece —
+ * absorve tudo de `mergeId`, que é apagado ao final. Irreversível.
+ */
+export async function mergeCustomers(
+  tenantId: string,
+  keepId: string,
+  mergeId: string
+): Promise<MergeCustomersResult> {
+  if (keepId === mergeId) {
+    return { ok: false, error: "Selecione dois cadastros diferentes para mesclar." };
+  }
+
+  const [keep, merge] = await Promise.all([
+    prisma.customer.findFirst({ where: { id: keepId, tenantId } }),
+    prisma.customer.findFirst({ where: { id: mergeId, tenantId } }),
+  ]);
+  if (!keep || !merge) return { ok: false, error: "Cliente não encontrado." };
+
+  if (keep.username && merge.username) {
+    return {
+      ok: false,
+      error:
+        "Os dois cadastros têm login próprio na loja online — não dá pra mesclar automaticamente. Remova o login de um deles antes.",
+    };
+  }
+
+  const creditTransferred = Number(merge.creditBalance);
+  const loginTransferred = !keep.username && merge.username !== null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Avaliação do produto é única por (loja, produto, cliente) — se os
+      // dois cadastros avaliaram o mesmo produto, a do absorvido não pode
+      // ser reatribuída (violaria a constraint), então é descartada.
+      const [keepReviews, mergeReviews] = await Promise.all([
+        tx.productReview.findMany({ where: { customerId: keepId }, select: { productId: true } }),
+        tx.productReview.findMany({ where: { customerId: mergeId }, select: { id: true, productId: true } }),
+      ]);
+      const keptProductIds = new Set(keepReviews.map((r) => r.productId));
+      const conflictingReviewIds = mergeReviews
+        .filter((r) => keptProductIds.has(r.productId))
+        .map((r) => r.id);
+      if (conflictingReviewIds.length > 0) {
+        await tx.productReview.deleteMany({ where: { id: { in: conflictingReviewIds } } });
+      }
+
+      await tx.productReview.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.sale.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.order.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.fiadoEntry.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.customerCreditMovement.updateMany({
+        where: { customerId: mergeId },
+        data: { customerId: keepId },
+      });
+      await tx.repairOrder.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.whatsAppContact.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.customerSession.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+
+      const keepLastPurchase = keep.lastPurchaseAt;
+      const mergeLastPurchase = merge.lastPurchaseAt;
+      const lastPurchaseAt =
+        !keepLastPurchase || (mergeLastPurchase && mergeLastPurchase > keepLastPurchase)
+          ? mergeLastPurchase
+          : keepLastPurchase;
+
+      await tx.customer.update({
+        where: { id: keepId },
+        data: {
+          creditBalance: { increment: creditTransferred },
+          totalSpent: { increment: merge.totalSpent },
+          lastPurchaseAt,
+          ...(loginTransferred
+            ? {
+                username: merge.username,
+                passwordHash: merge.passwordHash,
+                lastLoginAt: merge.lastLoginAt,
+              }
+            : {}),
+        },
+      });
+
+      await tx.customer.delete({ where: { id: mergeId } });
+    });
+
+    return { ok: true, keptName: keep.name, mergedName: merge.name, creditTransferred, loginTransferred };
+  } catch {
+    return { ok: false, error: "Não foi possível mesclar os cadastros. Tente novamente." };
+  }
+}

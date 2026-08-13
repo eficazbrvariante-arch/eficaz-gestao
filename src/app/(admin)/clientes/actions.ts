@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageFiado } from "@/lib/permissions";
+import { canManageFiado, canMergeCustomers } from "@/lib/permissions";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
 import { passwordSchema } from "@/lib/validations/customer-auth";
 import {
@@ -17,9 +17,11 @@ import {
   adminSetCustomerPassword,
   generateRandomPassword,
   grantManualStoreCredit,
+  mergeCustomers,
 } from "@/modules/customers/customer-service";
 import { createFiadoEntry, markFiadoEntryPaid } from "@/modules/fiado/fiado-service";
 import { buildWhatsappLink } from "@/lib/whatsapp";
+import { recordAudit } from "@/modules/audit/audit-service";
 
 /** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia. */
 function parseDateOnly(value: string | undefined) {
@@ -128,6 +130,40 @@ export async function adminGenerateAndSendPasswordAction(customerId: string) {
   return { success: true as const, whatsappLink: buildWhatsappLink(waPhone, message) };
 }
 
+/** Dados do candidato a "absorvido" mostrados na confirmação da mesclagem. */
+export async function getCustomerMergeCandidateAction(id: string) {
+  const user = await requireUser();
+  if (!canMergeCustomers(user.role)) return null;
+
+  const customer = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: {
+      id: true,
+      name: true,
+      document: true,
+      phone: true,
+      creditBalance: true,
+      totalSpent: true,
+      username: true,
+      _count: { select: { sales: true, orders: true, fiadoEntries: true } },
+    },
+  });
+  if (!customer) return null;
+
+  return {
+    id: customer.id,
+    name: customer.name,
+    document: customer.document,
+    phone: customer.phone,
+    creditBalance: Number(customer.creditBalance),
+    totalSpent: Number(customer.totalSpent),
+    hasLogin: customer.username !== null,
+    salesCount: customer._count.sales,
+    ordersCount: customer._count.orders,
+    fiadoCount: customer._count.fiadoEntries,
+  };
+}
+
 /** Busca rápida usada pelo seletor de cliente no PDV. */
 export async function searchCustomersAction(query: string) {
   const user = await requireUser();
@@ -214,4 +250,34 @@ export async function grantStoreCreditAction(customerId: string, input: GrantSto
 
   revalidatePath(`/clientes/${customerId}`);
   return { success: true as const };
+}
+
+/**
+ * Mescla `mergeId` dentro de `keepId` — vendas, pedidos, fiado, crédito de
+ * loja, avaliações, contato de WhatsApp e login (quando só um dos dois tem)
+ * passam pro `keepId`; `mergeId` é apagado. Irreversível, só ADMIN.
+ */
+export async function mergeCustomersAction(keepId: string, mergeId: string) {
+  const user = await requireUser();
+  if (!canMergeCustomers(user.role)) {
+    return { error: "Seu perfil não tem permissão para mesclar cadastros de cliente." };
+  }
+
+  const result = await mergeCustomers(user.tenantId, keepId, mergeId);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "customer.merge",
+    entity: "Customer",
+    entityId: keepId,
+    description: `Mesclou o cadastro "${result.mergedName}" (${mergeId}) em "${result.keptName}" (${keepId}). Crédito transferido: R$ ${result.creditTransferred}.${result.loginTransferred ? " Login transferido." : ""}`,
+  });
+
+  revalidatePath("/clientes");
+  revalidatePath(`/clientes/${keepId}`);
+
+  return { success: true as const, keptName: result.keptName, mergedName: result.mergedName };
 }

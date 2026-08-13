@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageFiado } from "@/lib/permissions";
+import { canManageFiado, canMergeCustomers } from "@/lib/permissions";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { CustomerForm } from "../customer-form";
 import { ResetCustomerPasswordPanel } from "../reset-password-panel";
 import { FiadoPanel } from "../fiado-panel";
+import { MergeCustomerPanel } from "../merge-customer-panel";
 
 export default async function FichaClientePage({
   params,
@@ -35,6 +36,7 @@ export default async function FichaClientePage({
   if (!customer) notFound();
 
   const showFiado = canManageFiado(user.role);
+  const showMerge = canMergeCustomers(user.role);
   const fiadoEntries = showFiado ? await listFiadoEntriesByCustomer(user.tenantId, customer.id) : [];
   const fiadoRows = fiadoEntries.map((entry) => ({
     id: entry.id,
@@ -215,6 +217,17 @@ export default async function FichaClientePage({
         </p>
         <ResetCustomerPasswordPanel customerId={customer.id} hasLogin={customer.username !== null} />
       </div>
+
+      {showMerge && (
+        <div className="mb-6 max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900">Mesclar cadastro duplicado</h2>
+          <MergeCustomerPanel
+            customerId={customer.id}
+            customerName={customer.name}
+            customerHasLogin={customer.username !== null}
+          />
+        </div>
+      )}
 
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Editar dados</h2>
