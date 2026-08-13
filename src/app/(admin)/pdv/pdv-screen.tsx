@@ -80,13 +80,6 @@ export function PdvScreen({
 
   const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [cashReceived, setCashReceived] = useState<number | "">("");
-  // Campo de troco escondido por padrão: fica muito perto do valor em cartão
-  // na tela e, mais de uma vez, alguém digitou ali o valor do cartão por
-  // engano (achando que era outro campo de pagamento), gerando um troco sem
-  // sentido. Só aparece quando o operador confirma que precisa dele — e some
-  // nome de volta (limpando o valor) se for fechado, pra nunca ficar um
-  // número perdido de uma venda anterior calculando troco errado na próxima.
-  const [showChangeCalc, setShowChangeCalc] = useState(false);
   const [fiadoDueDate, setFiadoDueDate] = useState("");
 
   // Vendedor da venda: nunca inferido de quem operou o caixa — é sempre
@@ -425,7 +418,6 @@ export function PdvScreen({
         setCustomerResults([]);
         setAmounts(EMPTY_PAYMENT_AMOUNTS);
         setCashReceived("");
-        setShowChangeCalc(false);
         setFiadoDueDate("");
         setSellerId(null);
         setSellerName(null);
@@ -897,56 +889,33 @@ export function PdvScreen({
 
             {cashPortion > 0 && (
               <div className="mb-3 rounded-md bg-slate-50 p-3">
-                {!showChangeCalc ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowChangeCalc(true)}
-                    className="text-xs font-medium text-slate-700 hover:underline"
-                  >
-                    Cliente vai pagar com nota maior? Calcular troco
-                  </button>
-                ) : (
-                  <>
-                    <div className="mb-1 flex items-center justify-between">
-                      <Label htmlFor="cash-received" className="mb-0">
-                        Nota que o cliente entregou (R$)
-                      </Label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowChangeCalc(false);
-                          setCashReceived("");
-                        }}
-                        className="text-xs text-slate-400 hover:text-slate-600 hover:underline"
-                      >
-                        Fechar
-                      </button>
-                    </div>
-                    <p className="mb-1 text-xs text-slate-500">
-                      Parte em dinheiro desta venda: {formatBRL(cashPortion)}. Só preencha aqui se
-                      o cliente entregou uma nota maior que isso.
-                    </p>
-                    <input
-                      id="cash-received"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      disabled={!sellerId}
-                      value={cashReceived}
-                      onChange={(e) =>
-                        setCashReceived(e.target.value === "" ? "" : Number(e.target.value))
-                      }
-                      placeholder={String(cashPortion.toFixed(2))}
-                      className="mb-2 h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50"
-                    />
-                    <div className="flex justify-between text-base font-bold">
-                      <span className="text-black">Troco</span>
-                      <span className={change < 0 ? "text-red-600" : "text-emerald-700"}>
-                        {formatBRL(Math.max(0, change))}
-                      </span>
-                    </div>
-                  </>
-                )}
+                <Label htmlFor="cash-received" className="mb-1">
+                  Calcular troco
+                </Label>
+                <div className="relative mb-2">
+                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-slate-500">
+                    R$
+                  </span>
+                  <input
+                    id="cash-received"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    disabled={!sellerId}
+                    value={cashReceived}
+                    onChange={(e) =>
+                      setCashReceived(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    placeholder={String(cashPortion.toFixed(2))}
+                    className="money-input h-9 w-full rounded border border-slate-300 py-1 pl-8 pr-2 text-right text-sm disabled:bg-slate-50"
+                  />
+                </div>
+                <div className="flex justify-between text-base font-bold">
+                  <span className="text-black">Troco</span>
+                  <span className={change < 0 ? "text-red-600" : "text-emerald-700"}>
+                    {formatBRL(Math.max(0, change))}
+                  </span>
+                </div>
               </div>
             )}
 

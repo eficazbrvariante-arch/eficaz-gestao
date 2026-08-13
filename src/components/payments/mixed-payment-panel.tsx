@@ -78,15 +78,20 @@ export function MixedPaymentPanel({
                 <span className="min-w-0 flex-1 truncate text-base font-bold text-black">
                   {slot.label}
                 </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  disabled={disabled}
-                  value={amounts[slot.key] || ""}
-                  onChange={(e) => onChangeAmount(slot.key, Math.max(0, Number(e.target.value) || 0))}
-                  className="h-10 w-28 rounded border border-slate-300 px-2 text-right text-base font-bold text-black disabled:bg-slate-100"
-                />
+                <div className="relative w-32 shrink-0">
+                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-slate-500">
+                    R$
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    disabled={disabled}
+                    value={amounts[slot.key] || ""}
+                    onChange={(e) => onChangeAmount(slot.key, Math.max(0, Number(e.target.value) || 0))}
+                    className="money-input h-10 w-full rounded border border-slate-300 py-1 pl-8 pr-2 text-right text-base font-bold text-black disabled:bg-slate-100"
+                  />
+                </div>
                 <button
                   type="button"
                   disabled={disabled}

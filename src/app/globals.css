@@ -44,6 +44,19 @@ body {
   height: 96px;
 }
 
+/* Campos de valor em R$ (formas de pagamento, troco): sem as setinhas
+   nativas de incrementar/decrementar — não ajudam em valor monetário
+   (sobem centavo a centavo) e sobram no lugar onde cabe melhor o
+   prefixo "R$" do campo. */
+.money-input::-webkit-outer-spin-button,
+.money-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.money-input {
+  -moz-appearance: textfield;
+}
+
 /* Comprovante de venda na impressora térmica (Epson TM-T20X-II, bobina 80mm,
    área imprimível real 72mm ≈ 576 dots a 203dpi — o padrão ESC/POS de
    impressoras de cupom 80mm). A página impressa é declarada com a largura
