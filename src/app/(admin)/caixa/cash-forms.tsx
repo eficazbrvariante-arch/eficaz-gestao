@@ -78,16 +78,51 @@ export function OpenCashForm() {
   );
 }
 
+function DifferenceLine({
+  difference,
+  positiveLabel,
+  negativeLabel,
+}: {
+  difference: number;
+  positiveLabel: string;
+  negativeLabel: string;
+}) {
+  return (
+    <>
+      <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-medium">
+        <span className="text-slate-700">Diferença</span>
+        <span
+          className={
+            Math.abs(difference) < 0.005
+              ? "text-slate-900"
+              : difference > 0
+                ? "text-emerald-700"
+                : "text-red-600"
+          }
+        >
+          {difference > 0 ? "+" : ""}
+          {formatBRL(difference)}
+        </span>
+      </div>
+      {Math.abs(difference) >= 0.005 && (
+        <p className="mt-2 text-xs text-slate-500">
+          {difference > 0 ? positiveLabel : negativeLabel}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function CloseCashForm({
   expectedInDrawer,
-  debitSales,
-  creditSales,
-  pixSales,
+  expectedDebit,
+  expectedCredit,
+  expectedPix,
 }: {
   expectedInDrawer: number;
-  debitSales: number;
-  creditSales: number;
-  pixSales: number;
+  expectedDebit: number;
+  expectedCredit: number;
+  expectedPix: number;
 }) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
@@ -99,11 +134,18 @@ export function CloseCashForm({
     formState: { errors },
   } = useForm<CloseCashFormValues, unknown, CloseCashInput>({
     resolver: zodResolver(closeCashSchema),
-    defaultValues: { countedAmount: expectedInDrawer },
+    defaultValues: {
+      countedAmount: expectedInDrawer,
+      countedDebitAmount: expectedDebit,
+      countedCreditAmount: expectedCredit,
+      countedPixAmount: expectedPix,
+    },
   });
 
-  const counted = Number(watch("countedAmount") ?? 0);
-  const difference = counted - expectedInDrawer;
+  const cashDifference = Number(watch("countedAmount") ?? 0) - expectedInDrawer;
+  const debitDifference = Number(watch("countedDebitAmount") ?? 0) - expectedDebit;
+  const creditDifference = Number(watch("countedCreditAmount") ?? 0) - expectedCredit;
+  const pixDifference = Number(watch("countedPixAmount") ?? 0) - expectedPix;
 
   const onSubmit = (data: CloseCashInput) => {
     setFeedback(undefined);
@@ -118,50 +160,81 @@ export function CloseCashForm({
       <FormBanner message={feedback?.message} variant={feedback?.type} />
 
       <div className="mb-4">
-        <Label htmlFor="countedAmount">Valor contado na gaveta (R$)</Label>
+        <Label htmlFor="countedAmount">Dinheiro contado na gaveta (R$)</Label>
         <Input id="countedAmount" type="number" step="0.01" {...register("countedAmount")} />
         <FieldError message={errors.countedAmount?.message} />
       </div>
-
       <div className="mb-4 rounded-md bg-slate-50 p-3 text-sm">
         <div className="flex justify-between text-slate-600">
           <span>Esperado pelo sistema (dinheiro)</span>
           <span>{formatBRL(expectedInDrawer)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-slate-600">
-          <span>Vendas no débito</span>
-          <span>{formatBRL(debitSales)}</span>
+        <DifferenceLine
+          difference={cashDifference}
+          positiveLabel="Há mais dinheiro na gaveta do que o esperado (sobra)."
+          negativeLabel="Falta dinheiro na gaveta em relação ao esperado."
+        />
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="countedDebitAmount">Débito conferido (R$)</Label>
+        <Input
+          id="countedDebitAmount"
+          type="number"
+          step="0.01"
+          {...register("countedDebitAmount")}
+        />
+        <FieldError message={errors.countedDebitAmount?.message} />
+      </div>
+      <div className="mb-4 rounded-md bg-slate-50 p-3 text-sm">
+        <div className="flex justify-between text-slate-600">
+          <span>Esperado pelo sistema (débito)</span>
+          <span>{formatBRL(expectedDebit)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-slate-600">
-          <span>Vendas no crédito</span>
-          <span>{formatBRL(creditSales)}</span>
+        <DifferenceLine
+          difference={debitDifference}
+          positiveLabel="Há mais no débito do que o esperado."
+          negativeLabel="Falta valor no débito em relação ao esperado."
+        />
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="countedCreditAmount">Crédito conferido (R$)</Label>
+        <Input
+          id="countedCreditAmount"
+          type="number"
+          step="0.01"
+          {...register("countedCreditAmount")}
+        />
+        <FieldError message={errors.countedCreditAmount?.message} />
+      </div>
+      <div className="mb-4 rounded-md bg-slate-50 p-3 text-sm">
+        <div className="flex justify-between text-slate-600">
+          <span>Esperado pelo sistema (crédito)</span>
+          <span>{formatBRL(expectedCredit)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-slate-600">
-          <span>Vendas no Pix</span>
-          <span>{formatBRL(pixSales)}</span>
+        <DifferenceLine
+          difference={creditDifference}
+          positiveLabel="Há mais no crédito do que o esperado."
+          negativeLabel="Falta valor no crédito em relação ao esperado."
+        />
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="countedPixAmount">Pix conferido (R$)</Label>
+        <Input id="countedPixAmount" type="number" step="0.01" {...register("countedPixAmount")} />
+        <FieldError message={errors.countedPixAmount?.message} />
+      </div>
+      <div className="mb-4 rounded-md bg-slate-50 p-3 text-sm">
+        <div className="flex justify-between text-slate-600">
+          <span>Esperado pelo sistema (Pix)</span>
+          <span>{formatBRL(expectedPix)}</span>
         </div>
-        <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-medium">
-          <span className="text-slate-700">Diferença</span>
-          <span
-            className={
-              Math.abs(difference) < 0.005
-                ? "text-slate-900"
-                : difference > 0
-                  ? "text-emerald-700"
-                  : "text-red-600"
-            }
-          >
-            {difference > 0 ? "+" : ""}
-            {formatBRL(difference)}
-          </span>
-        </div>
-        {Math.abs(difference) >= 0.005 && (
-          <p className="mt-2 text-xs text-slate-500">
-            {difference > 0
-              ? "Há mais dinheiro na gaveta do que o esperado (sobra)."
-              : "Falta dinheiro na gaveta em relação ao esperado."}
-          </p>
-        )}
+        <DifferenceLine
+          difference={pixDifference}
+          positiveLabel="Há mais no Pix do que o esperado."
+          negativeLabel="Falta valor no Pix em relação ao esperado."
+        />
       </div>
 
       <div className="mb-6">

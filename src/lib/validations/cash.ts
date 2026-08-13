@@ -11,6 +11,9 @@ export type OpenCashFormValues = z.input<typeof openCashSchema>;
 
 export const closeCashSchema = z.object({
   countedAmount: money,
+  countedDebitAmount: money,
+  countedCreditAmount: money,
+  countedPixAmount: money,
   notes: z.string().trim().optional().or(z.literal("")),
 });
 export type CloseCashInput = z.infer<typeof closeCashSchema>;

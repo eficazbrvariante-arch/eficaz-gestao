@@ -81,6 +81,15 @@ export default async function CaixaPage() {
     { label: "Esperado na gaveta", value: formatBRL(summary.expectedInDrawer) },
   ];
 
+  const productsReceived =
+    summary.cashSales + summary.pixSales + summary.debitSales + summary.creditSales;
+  const repairReceived =
+    summary.repairCashReceipts +
+    summary.repairPixReceipts +
+    summary.repairDebitReceipts +
+    summary.repairCreditReceipts;
+  const totalReceived = productsReceived + repairReceived;
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -119,6 +128,32 @@ export default async function CaixaPage() {
         ))}
       </div>
 
+      {repairReceived > 0 && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="mb-3 text-sm font-semibold text-slate-900">Origem do faturamento</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 text-sm">
+            <div className="flex justify-between sm:block">
+              <span className="text-slate-500">Vendas de produtos</span>
+              <span className="font-medium text-slate-900 sm:mt-1 sm:block">
+                {formatBRL(productsReceived)}
+              </span>
+            </div>
+            <div className="flex justify-between sm:block">
+              <span className="text-slate-500">Assistência técnica</span>
+              <span className="font-medium text-slate-900 sm:mt-1 sm:block">
+                {formatBRL(repairReceived)}
+              </span>
+            </div>
+            <div className="flex justify-between border-t border-slate-100 pt-2 sm:border-0 sm:pt-0 sm:block">
+              <span className="text-slate-500">Total recebido</span>
+              <span className="font-semibold text-slate-900 sm:mt-1 sm:block">
+                {formatBRL(totalReceived)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {canMoveCash(user.role) && (
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -131,9 +166,9 @@ export default async function CaixaPage() {
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Fechar caixa</h2>
           <CloseCashForm
             expectedInDrawer={summary.expectedInDrawer}
-            debitSales={summary.debitSales}
-            creditSales={summary.creditSales}
-            pixSales={summary.pixSales}
+            expectedDebit={summary.totalDebit}
+            expectedCredit={summary.totalCredit}
+            expectedPix={summary.totalPix}
           />
         </div>
 

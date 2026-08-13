@@ -110,9 +110,14 @@ export async function importProductsFromCsv(
 
     try {
       const internalCode = data.internalCode;
+      // Sem código interno na linha, cai para o código de barras: sem isso,
+      // reimportar o mesmo CSV (ex.: arquivo corrigido reenviado) cria um
+      // produto novo a cada vez em vez de atualizar o existente.
       const existing = internalCode
         ? await prisma.product.findFirst({ where: { tenantId, internalCode } })
-        : null;
+        : data.barcode
+          ? await prisma.product.findFirst({ where: { tenantId, barcode: data.barcode } })
+          : null;
 
       if (existing) {
         await prisma.product.update({ where: { id: existing.id }, data });

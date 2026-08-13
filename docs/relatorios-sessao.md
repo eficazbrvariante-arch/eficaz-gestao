@@ -1,5 +1,71 @@
 # Relatórios de sessão
 
+## 2026-08-13 — Bug de produtos duplicados na importação + conferência por forma de pagamento no fechamento de caixa
+
+**Pedido 1:** usuário viu 4 produtos "Máquina de barbear" duplicados no
+filtro "Sem estoque" da loja em produção (1754 produtos). Investigação:
+`importProductsFromCsv` (`src/modules/products/import-service.ts`) só
+verificava produto já existente pelo `codigo_interno` da linha do CSV;
+quando essa coluna vinha vazia, a busca nunca encontrava nada e cada
+reimportação do CSV criava um produto novo em vez de atualizar o
+existente. Confirmado por consulta ao banco `dev-local` que há vários
+produtos legítimos (acessórios genéricos) dividindo o mesmo código de
+barras de fábrica — todos com `codigo_interno` preenchido — então usar
+`barcode` como fallback só quando `codigo_interno` estiver vazio não
+quebra esses casos.
+
+**O que mudou:**
+- `src/modules/products/import-service.ts`: fallback para buscar produto
+  existente por `barcode` quando a linha não tem `codigo_interno`.
+
+**Os 4 registros duplicados em produção não existem no `dev-local`**
+(criados depois do último snapshot da branch de dev) — não acessei
+produção. Orientei o usuário a excluir manualmente pelo painel de
+Produtos (o botão "Excluir" já bloqueia sozinho se o produto tiver venda
+no histórico).
+
+**Pedido 2:** no fechamento de caixa (`/caixa`), só o campo de dinheiro
+era conferível — débito, crédito e Pix apareciam só como texto de
+referência (e esse texto já estava com bug: somava só vendas do PDV,
+esquecendo recebimentos da Assistência Técnica no mesmo caixa). Pedido:
+inputs editáveis pré-preenchidos com o valor esperado para as 4 formas
+(dinheiro, débito, crédito, Pix — fiado e crédito de loja ficaram de fora
+por não serem valor físico/imediato), com diferença calculada por forma,
+igual já acontecia só para dinheiro. Confirmado com o usuário: o
+fechamento continua escopado ao caixa aberto da loja inteira (não existe
+"caixa por vendedor" no sistema — só um caixa aberto por vez).
+
+**O que mudou:**
+- `prisma/schema.prisma` (`CashRegister`): 6 campos novos —
+  `countedDebitAmount`/`expectedDebitAmount`,
+  `countedCreditAmount`/`expectedCreditAmount`,
+  `countedPixAmount`/`expectedPixAmount` — migration
+  `20260813184449_add_cash_register_payment_breakdown` (aplicada no
+  `dev-local`).
+- `src/lib/validations/cash.ts`: `closeCashSchema` ganha os 3 campos de
+  conferência.
+- `src/app/(admin)/caixa/cash-forms.tsx`: `CloseCashForm` ganha input +
+  linha de diferença para débito/crédito/Pix (mesmo padrão do dinheiro).
+- `src/app/(admin)/caixa/page.tsx`: passa `totalDebit/totalCredit/totalPix`
+  (soma PDV + Assistência Técnica) pro formulário, corrigindo o valor de
+  referência que já estava errado.
+- `src/app/(admin)/caixa/actions.ts`: `closeCashRegisterAction` grava os
+  6 campos novos ao fechar o caixa.
+
+**Não mexi** no histórico de caixas (`/caixa/historico`) — continua
+mostrando só o resumo em dinheiro; dá pra estender depois se quiser ver
+a diferença por forma ali também.
+
+**Testado:** `lint`, `typecheck` e `build:app` (build sem migrate deploy)
+limpos, sem warnings novos. **Não testei visualmente no navegador** — o
+login do ambiente de teste exige senha, e não digito senhas em nenhum
+campo por política, mesmo em ambiente local. Servidor de dev deixado
+rodando (`npm run dev`) para o usuário conferir a tela `/caixa` na prática.
+
+**Nada commitado nem enviado a produção** — migration só aplicada no
+`dev-local`; vai para produção no próximo deploy normal
+(`npm run build`, que roda `prisma migrate deploy`).
+
 ## 2026-08-12 — PDV volta sozinho pra nova venda ao finalizar
 
 **Pedido do usuário:** ao finalizar uma venda no PDV, o sistema navegava para

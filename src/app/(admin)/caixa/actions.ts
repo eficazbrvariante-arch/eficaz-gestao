@@ -67,6 +67,12 @@ export async function closeCashRegisterAction(input: CloseCashInput) {
       closedAt: new Date(),
       countedAmount: parsed.data.countedAmount,
       expectedAmount: summary.expectedInDrawer,
+      countedDebitAmount: parsed.data.countedDebitAmount,
+      expectedDebitAmount: summary.totalDebit,
+      countedCreditAmount: parsed.data.countedCreditAmount,
+      expectedCreditAmount: summary.totalCredit,
+      countedPixAmount: parsed.data.countedPixAmount,
+      expectedPixAmount: summary.totalPix,
       notes: parsed.data.notes || register.notes,
     },
   });

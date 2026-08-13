@@ -840,6 +840,15 @@ model CashRegister {
   countedAmount  Decimal?           @db.Decimal(12, 2)
   /// Valor que o sistema esperava (abertura + vendas em dinheiro + suprimentos - sangrias).
   expectedAmount Decimal?           @db.Decimal(12, 2)
+  /// Valor conferido pelo vendedor no fechamento para cada forma de pagamento
+  /// que não passa pela gaveta física (débito, crédito, Pix) — e o que o
+  /// sistema esperava para cada uma, para calcular a diferença por forma.
+  countedDebitAmount   Decimal? @db.Decimal(12, 2)
+  expectedDebitAmount  Decimal? @db.Decimal(12, 2)
+  countedCreditAmount  Decimal? @db.Decimal(12, 2)
+  expectedCreditAmount Decimal? @db.Decimal(12, 2)
+  countedPixAmount     Decimal? @db.Decimal(12, 2)
+  expectedPixAmount    Decimal? @db.Decimal(12, 2)
   notes          String?
 
   tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
