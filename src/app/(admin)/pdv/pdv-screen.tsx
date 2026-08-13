@@ -9,9 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormBanner } from "@/components/ui/form-banner";
+import { MixedPaymentPanel, type PaymentPanelSlot } from "@/components/payments/mixed-payment-panel";
+import {
+  PAYMENT_SLOTS,
+  EMPTY_PAYMENT_AMOUNTS,
+  type PaymentSlotKey,
+  type PaymentAmounts,
+} from "@/lib/payment-slots";
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
+import { getSellerDiscountRule, isCapinhaCategory } from "@/lib/seller-discount-rules";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -24,49 +32,9 @@ type CartLine = {
   stockQty: number;
   /** Desconto (R$) concedido só neste item — não existe mais desconto na nota inteira. */
   discount: number;
+  /** Nome da categoria — usado só pra detectar capinha no carrinho (ver `seller-discount-rules.ts`). */
+  categoryName: string | null;
 };
-
-type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
-type PaymentSlotKey =
-  | "cash"
-  | "credit"
-  | "debit"
-  | "pix_key"
-  | "pix_machine"
-  | "mercado_pago"
-  | "store_credit"
-  | "fiado";
-type PaymentAmounts = Record<PaymentSlotKey, number>;
-
-const EMPTY_PAYMENTS: PaymentAmounts = {
-  cash: 0,
-  credit: 0,
-  debit: 0,
-  pix_key: 0,
-  pix_machine: 0,
-  mercado_pago: 0,
-  store_credit: 0,
-  fiado: 0,
-};
-
-/**
- * Todos os métodos ficam visíveis ao mesmo tempo, cada um com seu próprio
- * campo de valor — sem clicar em nada pra "selecionar" um método antes de
- * poder digitar (pedido explícito do usuário, pra reduzir atrito na hora de
- * dividir uma venda em várias formas). Chave PIX / Pix Maquininha / Mercado
- * Pago são só rótulos: todos gravam `method: "PIX"` (mesmo método já
- * existente, sem migração de banco).
- */
-const PAYMENT_SLOTS: { key: PaymentSlotKey; label: string; method: PaymentMethod }[] = [
-  { key: "cash", label: "Dinheiro", method: "CASH" },
-  { key: "credit", label: "Cartão de Crédito", method: "CREDIT" },
-  { key: "debit", label: "Cartão de Débito", method: "DEBIT" },
-  { key: "pix_key", label: "Chave PIX", method: "PIX" },
-  { key: "pix_machine", label: "Pix Maquininha", method: "PIX" },
-  { key: "mercado_pago", label: "Mercado Pago", method: "PIX" },
-  { key: "store_credit", label: "Crédito de loja", method: "STORE_CREDIT" },
-  { key: "fiado", label: "Fiado", method: "FIADO" },
-];
 
 type CustomerOption = {
   id: string;
@@ -102,13 +70,15 @@ export function PdvScreen({
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [error, setError] = useState<string>();
+  const [discountNotice, setDiscountNotice] = useState<string>();
   const [isPending, startTransition] = useTransition();
+  const hadCapinhaRef = useRef(false);
 
   const [customerTerm, setCustomerTerm] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
 
-  const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENTS);
+  const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [cashReceived, setCashReceived] = useState<number | "">("");
   const [fiadoDueDate, setFiadoDueDate] = useState("");
 
@@ -175,6 +145,45 @@ export function PdvScreen({
   const discount = round2(cart.reduce((sum, line) => sum + (line.discount || 0), 0));
   const total = round2(Math.max(0, subtotal - discount));
 
+  // Desconto de segurança do Vendedor nas películas 3D (ver
+  // `seller-discount-rules.ts`): só liberado com uma capinha no carrinho.
+  // Gerente/Admin (canDiscount) não passam por essa trava — eles já têm
+  // desconto livre em qualquer item.
+  const hasCapinhaInCart = cart.some((line) => isCapinhaCategory(line.categoryName));
+
+  function maxLineDiscount(line: CartLine) {
+    const grossTotal = round2(line.unitPrice * line.quantity);
+    if (canDiscount) return grossTotal;
+    const rule = getSellerDiscountRule(line.name, line.unitPrice);
+    if (!rule || !hasCapinhaInCart) return 0;
+    return Math.min(grossTotal, round2(rule.maxDiscountPerUnit * line.quantity));
+  }
+
+  // Se a capinha sair do carrinho, o desconto de película que o Vendedor deu
+  // some junto — não dá pra deixar um desconto "pendurado" sem a condição
+  // que o liberou — e os totais recalculam sozinhos porque `discount`/`total`
+  // já derivam do carrinho.
+  useEffect(() => {
+    const hadCapinha = hadCapinhaRef.current;
+    hadCapinhaRef.current = hasCapinhaInCart;
+    if (canDiscount || !hadCapinha || hasCapinhaInCart) return;
+
+    setCart((current) => {
+      let changed = false;
+      const next = current.map((line) => {
+        if (line.discount > 0 && getSellerDiscountRule(line.name, line.unitPrice)) {
+          changed = true;
+          return { ...line, discount: 0 };
+        }
+        return line;
+      });
+      return changed ? next : current;
+    });
+    setDiscountNotice(
+      "A capinha foi removida do carrinho — o desconto da(s) película(s) foi cancelado e os valores foram recalculados."
+    );
+  }, [hasCapinhaInCart, canDiscount]);
+
   const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
   const remaining = round2(total - paid);
   const cashPortion = round2(amounts.cash || 0);
@@ -182,6 +191,26 @@ export function PdvScreen({
   const fiadoPortion = round2(amounts.fiado || 0);
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
+
+  const paymentPanelSlots: PaymentPanelSlot[] = PAYMENT_SLOTS.map((slot) => {
+    const eligible =
+      slot.key === "store_credit"
+        ? !!customer && customer.creditBalance > 0
+        : slot.key === "fiado"
+          ? canFiado && !!customer
+          : true;
+    return {
+      key: slot.key,
+      label: slot.label,
+      disabled: !eligible,
+      disabledReason:
+        slot.key === "store_credit"
+          ? "Cliente sem crédito de loja disponível"
+          : slot.key === "fiado"
+            ? "Selecione um cliente elegível para fiado"
+            : undefined,
+    };
+  });
 
   function addToCart(product: PdvProduct, variantId: string | null) {
     const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
@@ -208,6 +237,7 @@ export function PdvScreen({
           quantity: 1,
           stockQty: availableStock,
           discount: 0,
+          categoryName: product.categoryName,
         },
       ];
     });
@@ -244,14 +274,10 @@ export function PdvScreen({
       current.map((line) => {
         if (line.key !== key) return line;
         const newQuantity = Math.max(1, quantity);
-        // O desconto nunca pode passar do valor bruto da linha — se a
-        // quantidade cair, ele é reajustado pra baixo junto.
-        const maxDiscount = round2(line.unitPrice * newQuantity);
-        return {
-          ...line,
-          quantity: newQuantity,
-          discount: Math.min(line.discount, maxDiscount),
-        };
+        // O desconto nunca pode passar do teto da linha — se a quantidade
+        // cair, ele é reajustado pra baixo junto.
+        const updated = { ...line, quantity: newQuantity };
+        return { ...updated, discount: Math.min(line.discount, maxLineDiscount(updated)) };
       })
     );
   }
@@ -260,8 +286,7 @@ export function PdvScreen({
     setCart((current) =>
       current.map((line) => {
         if (line.key !== key) return line;
-        const maxDiscount = round2(line.unitPrice * line.quantity);
-        return { ...line, discount: Math.min(Math.max(0, discount), maxDiscount) };
+        return { ...line, discount: Math.min(Math.max(0, discount), maxLineDiscount(line)) };
       })
     );
   }
@@ -391,7 +416,7 @@ export function PdvScreen({
         setCustomer(null);
         setCustomerTerm("");
         setCustomerResults([]);
-        setAmounts(EMPTY_PAYMENTS);
+        setAmounts(EMPTY_PAYMENT_AMOUNTS);
         setCashReceived("");
         setFiadoDueDate("");
         setSellerId(null);
@@ -436,6 +461,20 @@ export function PdvScreen({
           tabIndex={-1}
           style={{ position: "fixed", top: 0, left: "-10000px", width: "380px", height: "600px", border: "none" }}
         />
+      )}
+
+      {discountNotice && (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          <span>{discountNotice}</span>
+          <button
+            type="button"
+            onClick={() => setDiscountNotice(undefined)}
+            className="text-amber-700 hover:text-amber-900"
+            aria-label="Fechar aviso"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -568,7 +607,7 @@ export function PdvScreen({
                   <tr className="text-left text-xs text-slate-400">
                     <th className="px-4 py-2 font-medium">Produto</th>
                     <th className="px-2 py-2 font-medium">Qtd</th>
-                    {canDiscount && <th className="px-2 py-2 font-medium text-right">Desconto</th>}
+                    <th className="px-2 py-2 font-medium text-right">Desconto</th>
                     <th className="px-4 py-2 font-medium text-right">Total</th>
                     <th className="px-4 py-2"></th>
                   </tr>
@@ -608,33 +647,50 @@ export function PdvScreen({
                         </button>
                       </div>
                     </td>
-                    {canDiscount && (
-                      <td className="px-2 py-3">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          max={round2(line.unitPrice * line.quantity)}
-                          disabled={paid > 0}
-                          title={
-                            paid > 0
-                              ? "Zere as formas de pagamento para alterar o desconto"
-                              : "Desconto neste item (R$)"
-                          }
-                          placeholder="Desconto"
-                          value={line.discount || ""}
-                          onChange={(e) =>
-                            changeDiscount(line.key, Math.max(0, Number(e.target.value) || 0))
-                          }
-                          className="h-7 w-20 rounded border border-slate-300 px-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
-                        />
-                      </td>
-                    )}
-                    <td className="px-4 py-3 text-right font-medium text-slate-900">
+                    <td className="px-2 py-3">
+                      {(() => {
+                        const cap = maxLineDiscount(line);
+                        const sellerRule = !canDiscount && getSellerDiscountRule(line.name, line.unitPrice);
+                        if (!canDiscount && !sellerRule) {
+                          return <span className="text-xs text-slate-300">—</span>;
+                        }
+                        const blockedBySellerRule = !canDiscount && cap === 0;
+                        return (
+                          <div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              max={cap}
+                              disabled={paid > 0 || blockedBySellerRule}
+                              title={
+                                blockedBySellerRule
+                                  ? "Adicione uma capinha ao carrinho para liberar este desconto"
+                                  : paid > 0
+                                    ? "Zere as formas de pagamento para alterar o desconto"
+                                    : `Desconto máximo neste item: ${formatBRL(cap)}`
+                              }
+                              placeholder="Desconto"
+                              value={line.discount || ""}
+                              onChange={(e) =>
+                                changeDiscount(line.key, Math.max(0, Number(e.target.value) || 0))
+                              }
+                              className="h-7 w-20 rounded border border-slate-300 px-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                            />
+                            {blockedBySellerRule && (
+                              <p className="mt-0.5 text-[10px] leading-tight text-amber-600">
+                                precisa de capinha no carrinho
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-right text-base font-bold text-black">
                       {formatBRL(round2(line.unitPrice * line.quantity - line.discount))}
                       {line.discount > 0 && (
-                        <p className="text-xs font-normal text-slate-400">
-                          -{formatBRL(line.discount)} desc.
+                        <p className="text-xs font-normal text-slate-500">
+                          Desconto aplicado nesta linha: -{formatBRL(line.discount)}
                         </p>
                       )}
                     </td>
@@ -665,13 +721,17 @@ export function PdvScreen({
       {/* Coluna direita: cliente, totais e pagamento */}
       <div className="lg:col-span-2">
         <div className="space-y-4">
+          {/* Ordem fixa da lateral: Cliente → Vendedor → Total → Forma de
+              pagamento → Finalizar. */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <Label htmlFor="pdv-customer">Cliente (opcional)</Label>
+            <Label htmlFor="pdv-customer" className="text-sm font-bold text-black">
+              Cliente (opcional)
+            </Label>
             {customer ? (
               <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">{customer.name}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-base font-bold text-black">{customer.name}</p>
+                  <p className="text-xs text-slate-500">
                     {customer.document ?? customer.phone ?? "sem documento"}
                   </p>
                   {customer.creditBalance > 0 && (
@@ -749,101 +809,66 @@ export function PdvScreen({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 space-y-1 text-sm">
-              <div className="flex justify-between text-slate-600">
+            <Label className="mb-1 text-sm font-bold text-black">Vendedor</Label>
+            {sellerName ? (
+              <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                <span className="text-base font-bold text-black">{sellerName}</span>
+                <button
+                  type="button"
+                  onClick={() => setSellerModalOpen(true)}
+                  className="text-xs font-medium text-slate-700 hover:underline"
+                >
+                  Trocar
+                </button>
+              </div>
+            ) : (
+              <Button type="button" variant="secondary" onClick={() => setSellerModalOpen(true)}>
+                Selecionar vendedor
+              </Button>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="space-y-1.5 text-base">
+              <div className="flex justify-between font-medium text-slate-700">
                 <span>Subtotal</span>
-                <span>{formatBRL(subtotal)}</span>
+                <span className="font-bold text-black">{formatBRL(subtotal)}</span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between text-slate-600">
+                <div className="flex justify-between font-medium text-slate-700">
                   <span>Desconto (nos itens)</span>
-                  <span>-{formatBRL(discount)}</span>
+                  <span className="font-bold text-black">-{formatBRL(discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-semibold text-slate-900">
+              <div className="flex justify-between border-t border-slate-200 pt-2 text-xl font-bold text-black">
                 <span>Total</span>
                 <span>{formatBRL(total)}</span>
               </div>
             </div>
+          </div>
 
-            <div className="mb-3">
-              <Label className="mb-1">Vendedor</Label>
-              {sellerName ? (
-                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                  <span className="text-sm font-medium text-slate-900">{sellerName}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSellerModalOpen(true)}
-                    className="text-xs font-medium text-slate-700 hover:underline"
-                  >
-                    Trocar
-                  </button>
-                </div>
-              ) : (
-                <Button type="button" variant="secondary" onClick={() => setSellerModalOpen(true)}>
-                  Selecionar vendedor
-                </Button>
-              )}
-            </div>
-
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             {/* A seleção do vendedor acontece antes da forma de pagamento: sem
-                vendedor escolhido, os campos abaixo ficam desabilitados. */}
-            <div className="mb-3 space-y-2">
-              <Label className="mb-0">Formas de pagamento</Label>
+                vendedor escolhido, o painel abaixo fica desabilitado. */}
+            <div className="mb-3">
+              <MixedPaymentPanel
+                slots={paymentPanelSlots}
+                amounts={amounts}
+                total={total}
+                disabled={!sellerId}
+                onChangeAmount={(key, value) => {
+                  const slotKey = key as PaymentSlotKey;
+                  if (slotKey === "cash") {
+                    setCashAmount(value);
+                  } else {
+                    setPaymentAmount(slotKey, value);
+                  }
+                }}
+              />
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {PAYMENT_SLOTS.map((slot) => {
-                  const eligible =
-                    slot.key === "store_credit"
-                      ? !!customer && customer.creditBalance > 0
-                      : slot.key === "fiado"
-                        ? canFiado && !!customer
-                        : true;
-                  const disabled = !sellerId || !eligible;
-                  return (
-                    <div key={slot.key}>
-                      <label
-                        htmlFor={`payment-${slot.key}`}
-                        className="mb-1 block text-xs text-slate-600"
-                      >
-                        {slot.label}
-                      </label>
-                      <input
-                        id={`payment-${slot.key}`}
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        disabled={disabled}
-                        title={
-                          !sellerId
-                            ? "Selecione um vendedor"
-                            : !eligible
-                              ? slot.key === "store_credit"
-                                ? "Cliente sem crédito de loja disponível"
-                                : "Selecione um cliente elegível para fiado"
-                              : undefined
-                        }
-                        value={amounts[slot.key] || ""}
-                        onChange={(e) => {
-                          const value = Math.max(0, Number(e.target.value) || 0);
-                          if (slot.key === "cash") {
-                            setCashAmount(value);
-                          } else {
-                            setPaymentAmount(slot.key, value);
-                          }
-                        }}
-                        className="h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50 disabled:text-slate-400"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {sellerId && Math.abs(remaining) > 0.005 && (
-                <p className={remaining > 0 ? "text-xs text-amber-600" : "text-xs text-red-600"}>
-                  {remaining > 0
-                    ? `Falta distribuir ${formatBRL(remaining)}`
-                    : `Excede o total em ${formatBRL(Math.abs(remaining))}`}
+              {sellerId && remaining < -0.005 && (
+                <p className="mt-2 text-xs text-red-600">
+                  Excede o total em {formatBRL(Math.abs(remaining))}
                 </p>
               )}
             </div>
@@ -878,8 +903,8 @@ export function PdvScreen({
                   placeholder={String(cashPortion.toFixed(2))}
                   className="mb-2 h-9 w-full rounded border border-slate-300 px-2 text-right text-sm disabled:bg-slate-50"
                 />
-                <div className="flex justify-between text-sm font-medium">
-                  <span className="text-slate-700">Troco</span>
+                <div className="flex justify-between text-base font-bold">
+                  <span className="text-black">Troco</span>
                   <span className={change < 0 ? "text-red-600" : "text-emerald-700"}>
                     {formatBRL(Math.max(0, change))}
                   </span>

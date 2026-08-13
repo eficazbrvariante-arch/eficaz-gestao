@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateSaleInput } from "@/lib/validations/sale";
 import { createFiadoEntry } from "@/modules/fiado/fiado-service";
+import { getSellerDiscountRule, isCapinhaCategory } from "@/lib/seller-discount-rules";
+import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
 const CENT = 0.005;
@@ -45,9 +47,16 @@ export async function createSale(
 
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, tenantId: ctx.tenantId },
-    include: { variants: true },
+    include: { variants: true, category: { select: { name: true } } },
   });
   const productMap = new Map(products.map((p) => [p.id, p]));
+
+  // Desconto restrito do Vendedor (película 3D) só é liberado com uma
+  // capinha em algum item da venda — checagem em cima dos produtos da
+  // venda inteira, não só do item que está recebendo o desconto.
+  const hasCapinhaInSale = input.items.some((item) =>
+    isCapinhaCategory(productMap.get(item.productId)?.category?.name)
+  );
 
   // Consolida quantidades por produto (o mesmo item pode vir repetido).
   const quantityByProduct = new Map<string, number>();
@@ -95,7 +104,26 @@ export async function createSale(
 
     const itemDiscount = round2(item.discount ?? 0);
     if (itemDiscount > 0 && !ctx.allowDiscount) {
-      return { ok: false, error: "Seu perfil não tem permissão para conceder descontos." };
+      // Vendedor não tem desconto livre, mas pode aplicar o desconto de
+      // segurança nas películas 3D — só com uma capinha na venda e até o
+      // teto da regra (ver `seller-discount-rules.ts`).
+      const rule = getSellerDiscountRule(product.name, unitPrice);
+      if (!rule) {
+        return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
+      }
+      if (!hasCapinhaInSale) {
+        return {
+          ok: false,
+          error: `O desconto em "${product.name}" só é permitido com uma capinha no carrinho.`,
+        };
+      }
+      const maxLineDiscount = round2(rule.maxDiscountPerUnit * item.quantity);
+      if (itemDiscount > maxLineDiscount + CENT) {
+        return {
+          ok: false,
+          error: `O desconto máximo em "${product.name}" é ${formatBRL(maxLineDiscount)}.`,
+        };
+      }
     }
     if (itemDiscount > grossTotal + CENT) {
       return {

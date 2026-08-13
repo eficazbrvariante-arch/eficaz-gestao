@@ -1,5 +1,67 @@
 # Relatórios de sessão
 
+## 2026-08-13 — Reforma do PDV: layout, tipografia, desconto por linha e regra de segurança para películas
+
+**Pedido do usuário:** 5 mudanças no PDV. (1) Painel de formas de pagamento
+virar lista vertical com itens grandes. (2) Lateral reordenada: Cliente →
+Vendedor → Total → Forma de pagamento → Finalizar. (3) Tipografia em preto
+e negrito, fontes maiores para valores/títulos. (4) Desconto por linha
+aplicado uma vez sobre o total da linha (nunca multiplicado pela
+quantidade), com a observação "desconto aplicado nesta linha". (5) Regra
+de segurança: Vendedor pode dar desconto sozinho (sem Gerente) só em
+"Película 3D" (R$30 → desconto máx. R$20, mínimo R$10) e "Película 3D
+Privativa" (R$40 → desconto máx. 50%/R$20, mínimo R$20) — e só quando há
+uma capinha no carrinho; removendo a capinha, o desconto some sozinho.
+Gerente/Admin continuam sem essa trava (confirmado com o usuário).
+
+**Investigação prévia:** o desconto por item (commit `da18ad9`, da sessão
+anterior) já é um valor fixo em R$ aplicado uma vez sobre o total da linha
+— não havia bug de multiplicação por quantidade, só faltava o texto de
+observação pedido. Nenhum produto do catálogo se chama literalmente
+"Película 3D (Vidro)"/"Privativa (Vidro)" — confirmei no banco (`dev-local`)
+que a família real é "Película 3D - marca - modelo" (196 produtos a
+R$30, mais 1 kit fora do padrão a R$40) e "Película 3D PRIV - marca -
+modelo" (52 produtos, todos a R$40) — os preços batem exatamente com o
+que o usuário descreveu, então identifico por nome + preço exato (isso já
+exclui kits/modelos premium automaticamente). Capinha = categoria "Capas"
+(350 produtos, nome exato confirmado no banco).
+
+**O que mudou:**
+- `src/lib/seller-discount-rules.ts` (novo): `getSellerDiscountRule` (nome
+  + preço → teto de desconto) e `isCapinhaCategory`, compartilhado entre
+  cliente e servidor.
+- `src/modules/sales/sale-service.ts`: valida a regra do Vendedor
+  server-side (produto elegível, capinha na venda, teto por quantidade) —
+  Gerente/Admin (`ctx.allowDiscount`) seguem sem restrição, como já era.
+- `src/app/(admin)/pdv/actions.ts`: `PdvProduct` ganha `categoryName`
+  (necessário pra detectar capinha no carrinho).
+- `src/app/(admin)/pdv/pdv-screen.tsx`: `CartLine` ganha `categoryName`;
+  nova função `maxLineDiscount` centraliza o teto (ilimitado pro
+  Gerente/Admin, regra da película + capinha pro Vendedor); `useEffect`
+  zera o desconto e mostra aviso quando a capinha sai do carrinho; lateral
+  reordenada em 4 cards (Cliente, Vendedor, Total, Pagamento); tipografia
+  em preto/negrito nos valores e títulos; texto "Desconto aplicado nesta
+  linha" no lugar de "desc.". Este arquivo já trazia, não commitada, a
+  integração de pagamento misto (`MixedPaymentPanel`/`payment-slots.ts`)
+  de um trabalho anterior — a reforma de hoje se apoiou nela e reorganizou
+  o mesmo trecho, então o commit carrega as duas coisas juntas (não deu
+  pra separar por hunk sem risco de quebrar o arquivo).
+- `src/components/payments/mixed-payment-panel.tsx`: formas de pagamento
+  viram lista vertical de botões grandes (era um `flex-wrap` de botões
+  pequenos); "Pago"/"Restante" maiores e em negrito. Esse componente
+  (novo, ainda não commitado antes de hoje) é compartilhado com o acerto
+  financeiro da Assistência Técnica — o visual novo vale lá também.
+
+**Sem mudança de schema.**
+
+**Testado:** `lint`, `typecheck`, `test` (82 passando) e `build:app`
+limpos, sem warnings novos — `/pdv` compilou certo no build de produção.
+**Não testei visualmente no navegador** — mesmo motivo da mudança
+anterior (não digito senha em campo de login, nem em ambiente local).
+Servidor de dev (`npm run dev`) segue rodando pra o usuário conferir.
+
+**Nada commitado nem enviado a produção.**
+
 ## 2026-08-13 — Bug de produtos duplicados na importação + conferência por forma de pagamento no fechamento de caixa
 
 **Pedido 1:** usuário viu 4 produtos "Máquina de barbear" duplicados no

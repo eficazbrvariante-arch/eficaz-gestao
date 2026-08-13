@@ -17,6 +17,8 @@ export type PdvProduct = {
   price: number;
   stockQty: number;
   imageUrl: string | null;
+  /** Nome da categoria — usado só pra detectar capinha no carrinho (ver `seller-discount-rules.ts`). */
+  categoryName: string | null;
   variants: { id: string; name: string; priceAdjustment: number; stockQty: number }[];
 };
 
@@ -42,6 +44,7 @@ export async function searchProductsAction(
     promoPrice: true,
     stockQty: true,
     images: { select: { url: true }, orderBy: { order: "asc" as const }, take: 1 },
+    category: { select: { name: true } },
     variants: {
       select: { id: true, name: true, priceAdjustment: true, stockQty: true },
     },
@@ -56,6 +59,7 @@ export async function searchProductsAction(
     promoPrice: unknown;
     stockQty: number;
     images: { url: string }[];
+    category: { name: string } | null;
     variants: { id: string; name: string; priceAdjustment: unknown; stockQty: number }[];
   }): PdvProduct => ({
     id: p.id,
@@ -65,6 +69,7 @@ export async function searchProductsAction(
     price: Number(p.promoPrice ?? p.salePrice),
     stockQty: p.stockQty,
     imageUrl: p.images[0]?.url ?? null,
+    categoryName: p.category?.name ?? null,
     variants: p.variants.map((v) => ({
       id: v.id,
       name: v.name,
