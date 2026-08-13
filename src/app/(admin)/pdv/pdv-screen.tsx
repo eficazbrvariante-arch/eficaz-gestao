@@ -600,34 +600,46 @@ export function PdvScreen({
           <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
             Carrinho ({cart.length} {cart.length === 1 ? "item" : "itens"})
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              {cart.length > 0 && (
-                <thead>
-                  <tr className="text-left text-xs text-slate-400">
-                    <th className="px-4 py-2 font-medium">Produto</th>
-                    <th className="px-2 py-2 font-medium">Qtd</th>
-                    <th className="px-2 py-2 font-medium text-right">Desconto</th>
-                    <th className="px-4 py-2 font-medium text-right">Total</th>
-                    <th className="px-4 py-2"></th>
-                  </tr>
-                </thead>
-              )}
-              <tbody>
-                {cart.map((line) => (
-                  <tr key={line.key} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{line.name}</p>
-                      <p className="text-xs text-slate-400">
-                        {formatBRL(line.unitPrice)} · estoque {line.stockQty}
-                      </p>
-                    </td>
-                    <td className="px-2 py-3">
+          {cart.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-slate-400">
+              Nenhum item no carrinho. Busque um produto acima para começar.
+            </p>
+          ) : (
+            // Cada item é um bloco empilhado, não uma linha de tabela — numa
+            // tela mais estreita ou com nome de produto grande, uma tabela de
+            // 5 colunas passava da largura disponível e o botão Remover
+            // (última coluna) ficava fora da área visível, só alcançável
+            // rolando pro lado. Em blocos não existe rolagem horizontal
+            // possível: o conteúdo sempre quebra linha, e Remover fica fixo
+            // no canto do item, sempre visível.
+            <div className="divide-y divide-slate-100">
+              {cart.map((line) => (
+                <div key={line.key} className="relative p-4">
+                  <button
+                    type="button"
+                    onClick={() => removeLine(line.key)}
+                    aria-label={`Remover ${line.name}`}
+                    title="Remover"
+                    className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    ×
+                  </button>
+
+                  <p className="max-w-[calc(100%-2.5rem)] text-base font-bold text-black">
+                    {line.name}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {formatBRL(line.unitPrice)} · estoque {line.stockQty}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-slate-500">Quantidade</p>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => changeQuantity(line.key, line.quantity - 1)}
-                          className="h-7 w-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="h-8 w-8 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
                         >
                           −
                         </button>
@@ -636,27 +648,30 @@ export function PdvScreen({
                           min={1}
                           value={line.quantity}
                           onChange={(e) => changeQuantity(line.key, Number(e.target.value))}
-                          className="h-7 w-14 rounded border border-slate-300 px-1 text-center"
+                          className="money-input h-8 w-14 rounded border border-slate-300 px-1 text-center"
                         />
                         <button
                           type="button"
                           onClick={() => changeQuantity(line.key, line.quantity + 1)}
-                          className="h-7 w-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="h-8 w-8 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
                         >
                           +
                         </button>
                       </div>
-                    </td>
-                    <td className="px-2 py-3">
-                      {(() => {
-                        const cap = maxLineDiscount(line);
-                        const sellerRule = !canDiscount && getSellerDiscountRule(line.name, line.unitPrice);
-                        if (!canDiscount && !sellerRule) {
-                          return <span className="text-xs text-slate-300">—</span>;
-                        }
-                        const blockedBySellerRule = !canDiscount && cap === 0;
-                        return (
-                          <div>
+                    </div>
+
+                    {(() => {
+                      const cap = maxLineDiscount(line);
+                      const sellerRule = !canDiscount && getSellerDiscountRule(line.name, line.unitPrice);
+                      if (!canDiscount && !sellerRule) return null;
+                      const blockedBySellerRule = !canDiscount && cap === 0;
+                      return (
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>
+                          <div className="relative w-24">
+                            <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-slate-500">
+                              R$
+                            </span>
                             <input
                               type="number"
                               step="0.01"
@@ -670,51 +685,39 @@ export function PdvScreen({
                                     ? "Zere as formas de pagamento para alterar o desconto"
                                     : `Desconto máximo neste item: ${formatBRL(cap)}`
                               }
-                              placeholder="Desconto"
+                              placeholder="0,00"
                               value={line.discount || ""}
                               onChange={(e) =>
                                 changeDiscount(line.key, Math.max(0, Number(e.target.value) || 0))
                               }
-                              className="h-7 w-20 rounded border border-slate-300 px-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                              className="money-input h-8 w-full rounded border border-slate-300 py-1 pl-7 pr-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
                             />
-                            {blockedBySellerRule && (
-                              <p className="mt-0.5 text-[10px] leading-tight text-amber-600">
-                                precisa de capinha no carrinho
-                              </p>
-                            )}
                           </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-base font-bold text-black">
-                      {formatBRL(round2(line.unitPrice * line.quantity - line.discount))}
+                          {blockedBySellerRule && (
+                            <p className="mt-0.5 max-w-[6rem] text-[10px] leading-tight text-amber-600">
+                              precisa de capinha no carrinho
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="text-right">
+                      <p className="mb-1 text-xs font-medium text-slate-500">Total</p>
+                      <p className="text-lg font-bold text-black">
+                        {formatBRL(round2(line.unitPrice * line.quantity - line.discount))}
+                      </p>
                       {line.discount > 0 && (
                         <p className="text-xs font-normal text-slate-500">
                           Desconto aplicado nesta linha: -{formatBRL(line.discount)}
                         </p>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removeLine(line.key)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Remover
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {cart.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-10 text-center text-slate-400">
-                      Nenhum item no carrinho. Busque um produto acima para começar.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
