@@ -117,6 +117,7 @@ model Tenant {
   repairOrderPayments   RepairOrderPayment[]
   creditMovements       CustomerCreditMovement[]
   fiadoEntries          FiadoEntry[]
+  employeeLedgerEntries EmployeeLedgerEntry[]
   devices               Device[]
   visitorSessions       VisitorSession[]
   analyticsEvents       AnalyticsEvent[]
@@ -196,24 +197,26 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  stockMovements          StockMovement[]
-  cashMovements           CashMovement[]
-  registersOpened         CashRegister[]           @relation("CashRegisterOpenedBy")
-  registersClosed         CashRegister[]           @relation("CashRegisterClosedBy")
-  salesMade               Sale[]                   @relation("SaleSeller")
-  salesCancelled          Sale[]                   @relation("SaleCancelledBy")
-  salesAssisted           Sale[]                   @relation("SaleAssistantSeller")
-  saleItemDefectsReported SaleItemDefect[]
-  auditLogs               AuditLog[]
-  repairOrdersCreated     RepairOrder[]            @relation("RepairOrderCreatedBy")
-  repairOrdersSold        RepairOrder[]            @relation("RepairOrderSeller")
-  repairOrdersDelivered   RepairOrder[]            @relation("RepairOrderDeliveredBy")
-  repairOrderPayments     RepairOrderPayment[]
-  creditMovements         CustomerCreditMovement[]
-  fiadoEntriesCreated     FiadoEntry[]
-  devicesRequested        Device[]                 @relation("DeviceRequestedBy")
-  devicesStatusChanged    Device[]                 @relation("DeviceStatusChangedBy")
+  tenant                       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockMovements               StockMovement[]
+  cashMovements                CashMovement[]
+  registersOpened              CashRegister[]           @relation("CashRegisterOpenedBy")
+  registersClosed              CashRegister[]           @relation("CashRegisterClosedBy")
+  salesMade                    Sale[]                   @relation("SaleSeller")
+  salesCancelled               Sale[]                   @relation("SaleCancelledBy")
+  salesAssisted                Sale[]                   @relation("SaleAssistantSeller")
+  saleItemDefectsReported      SaleItemDefect[]
+  auditLogs                    AuditLog[]
+  repairOrdersCreated          RepairOrder[]            @relation("RepairOrderCreatedBy")
+  repairOrdersSold             RepairOrder[]            @relation("RepairOrderSeller")
+  repairOrdersDelivered        RepairOrder[]            @relation("RepairOrderDeliveredBy")
+  repairOrderPayments          RepairOrderPayment[]
+  creditMovements              CustomerCreditMovement[]
+  fiadoEntriesCreated          FiadoEntry[]
+  employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
+  employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
+  devicesRequested             Device[]                 @relation("DeviceRequestedBy")
+  devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -879,28 +882,28 @@ enum CashRegisterStatus {
 }
 
 model CashRegister {
-  id             String             @id @default(cuid())
-  tenantId       String
-  status         CashRegisterStatus @default(OPEN)
-  openedById     String
-  openedAt       DateTime           @default(now())
-  openingAmount  Decimal            @db.Decimal(12, 2)
-  closedById     String?
-  closedAt       DateTime?
+  id                   String             @id @default(cuid())
+  tenantId             String
+  status               CashRegisterStatus @default(OPEN)
+  openedById           String
+  openedAt             DateTime           @default(now())
+  openingAmount        Decimal            @db.Decimal(12, 2)
+  closedById           String?
+  closedAt             DateTime?
   /// Valor efetivamente contado na gaveta no fechamento.
-  countedAmount  Decimal?           @db.Decimal(12, 2)
+  countedAmount        Decimal?           @db.Decimal(12, 2)
   /// Valor que o sistema esperava (abertura + vendas em dinheiro + suprimentos - sangrias).
-  expectedAmount Decimal?           @db.Decimal(12, 2)
+  expectedAmount       Decimal?           @db.Decimal(12, 2)
   /// Valor conferido pelo vendedor no fechamento para cada forma de pagamento
   /// que não passa pela gaveta física (débito, crédito, Pix) — e o que o
   /// sistema esperava para cada uma, para calcular a diferença por forma.
-  countedDebitAmount   Decimal? @db.Decimal(12, 2)
-  expectedDebitAmount  Decimal? @db.Decimal(12, 2)
-  countedCreditAmount  Decimal? @db.Decimal(12, 2)
-  expectedCreditAmount Decimal? @db.Decimal(12, 2)
-  countedPixAmount     Decimal? @db.Decimal(12, 2)
-  expectedPixAmount    Decimal? @db.Decimal(12, 2)
-  notes          String?
+  countedDebitAmount   Decimal?           @db.Decimal(12, 2)
+  expectedDebitAmount  Decimal?           @db.Decimal(12, 2)
+  countedCreditAmount  Decimal?           @db.Decimal(12, 2)
+  expectedCreditAmount Decimal?           @db.Decimal(12, 2)
+  countedPixAmount     Decimal?           @db.Decimal(12, 2)
+  expectedPixAmount    Decimal?           @db.Decimal(12, 2)
+  notes                String?
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   openedBy            User                 @relation("CashRegisterOpenedBy", fields: [openedById], references: [id])
@@ -1116,6 +1119,44 @@ model FiadoEntry {
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, status, dueDate])
   @@map("fiado_entries")
+}
+
+enum EmployeeLedgerType {
+  /// Adiantamento de salário — dinheiro entregue ao colaborador.
+  ADVANCE
+  /// Mercadoria da loja levada pelo colaborador, a descontar depois.
+  PURCHASE
+}
+
+/// PAID é estado final, igual `FiadoStatus` — nunca some da lista, só muda o status.
+enum EmployeeLedgerStatus {
+  PENDING
+  PAID
+}
+
+/// Conta corrente do colaborador: adiantamento de salário e compra de
+/// mercadoria a descontar em folha. Painel próprio (`canManageEmployeeLedger`,
+/// Admin e Gerente) — separado do Fiado de propósito, que é sobre crédito a
+/// cliente externo, não controle interno da equipe.
+model EmployeeLedgerEntry {
+  id          String               @id @default(cuid())
+  tenantId    String
+  userId      String
+  type        EmployeeLedgerType
+  amount      Decimal              @db.Decimal(12, 2)
+  description String?
+  status      EmployeeLedgerStatus @default(PENDING)
+  settledAt   DateTime?
+  createdById String
+  createdAt   DateTime             @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User   @relation("EmployeeLedgerUser", fields: [userId], references: [id])
+  createdBy User   @relation("EmployeeLedgerCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, status, createdAt])
+  @@map("employee_ledger_entries")
 }
 
 model Payment {

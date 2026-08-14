@@ -1,5 +1,68 @@
 # Relatórios de sessão
 
+## 2026-08-13/14 — Ajustes de UX no PDV, botões da OS, vendedor obrigatório na OS e painel de Colaboradores
+
+Sequência de pedidos do lojista testando ao vivo na loja, depois do deploy da reforma do PDV.
+
+**1. Troco confuso no PDV** — duas vezes seguidas alguém digitou o valor do
+cartão no campo "Valor recebido em dinheiro" por engano (campos vizinhos
+na tela), gerando troco sem sentido (ex.: R$15 de troco numa venda que
+devia fechar exata). Resolvido em 2 rounds, direto com o lojista testando:
+primeiro escondi o campo atrás de um link ("Calcular troco"); ele preferiu
+o campo sempre visível, então voltei atrás e, em vez disso, dei prefixo
+"R$" dentro do campo e tirei as setinhas nativas de incrementar/decrementar
+(também aplicado aos campos de valor do painel de pagamento misto) —
+`src/app/(admin)/pdv/pdv-screen.tsx`, `mixed-payment-panel.tsx`,
+`globals.css` (classe `.money-input`).
+
+**2. Carrinho do PDV com rolagem horizontal escondendo "Remover"** — a
+tabela de 5 colunas passava da largura disponível com nome de produto
+grande, e o botão Remover (última coluna) ficava fora da área visível.
+Reportado com vídeo (HEVC, Chrome não decodifica — segui pela descrição).
+Corrigido virando cada item do carrinho num bloco que empilha/quebra
+linha livremente, com Remover fixo num "×" no canto — sem tabela, não tem
+rolagem horizontal possível — `pdv-screen.tsx`.
+
+**3. Botões de impressão da OS confusos** — "Imprimir OS (A4)" continua
+imprimindo a folha inteira sem formatação (não mudei o comportamento, só
+adicionei os cupons 80mm do lado); a pedido do lojista, renomeei pra
+deixar explícito: "Imprimir A4" e "Imprimir Cupom (entrada/entrega)" —
+`repair-order-workspace.tsx`.
+
+**4. Vendedor obrigatório no cadastro de OS** — diferente do PDV (que já
+exige escolher o vendedor, sem assumir quem está logado), a OS só gravava
+`createdById` de quem estava logado, sem opção de indicar outro
+responsável. Adicionado `RepairOrder.sellerId` (obrigatório, migration
+com backfill: OS existentes recebem quem registrou originalmente) e um
+seletor obrigatório "Vendedor" no formulário, revalidado no servidor
+(`isSellerAssignable`, reaproveitado do módulo de vendas).
+
+**5. Painel de Colaboradores (novo)** — pedido do lojista: controlar
+adiantamento de salário e compra de mercadoria de colaboradores, a
+descontar depois. Investigação prévia: nada disso existia (`User` não tem
+nenhum campo financeiro; o mais parecido era `FiadoEntry`, mas exclusivo
+de cliente). Decisão com o lojista: lançamento manual (não integrado ao
+PDV — mais simples, menos risco) e visível pra Admin + Gerente (diferente
+do Fiado, que é só ADMIN).
+- `prisma/schema.prisma`: model `EmployeeLedgerEntry` novo (tipo
+  Adiantamento/Compra, valor, descrição, status Pendente/Pago, quem
+  registrou) — mesmo padrão simples do `FiadoStatus`.
+- `src/lib/permissions.ts`: `canManageEmployeeLedger` (Admin + Gerente).
+- `src/modules/employees/employee-ledger-service.ts` (novo): criar
+  lançamento, quitar, resumo de saldo pendente por colaborador.
+- `src/app/(admin)/colaboradores/` (novo): painel com cards de saldo
+  pendente por colaborador, formulário de novo lançamento, tabela de
+  lançamentos com "Marcar como pago".
+- `src/components/admin/nav-items.ts`: item novo "Colaboradores" no menu.
+
+**Testado**: `lint`, `typecheck`, `test` (82 passando) e `build:app`
+limpos em cada mudança, sem warnings novos. Prévias visuais estáticas (com
+dados de exemplo, mesmo CSS/estrutura real) geradas e enviadas pro lojista
+antes de cada deploy grande (cupom, carrinho, colaboradores), já que não
+digito senha em login nenhum e o servidor de dev local não é alcançável
+da loja. Todos os deploys confirmados no ar via `npm run check:deploy`,
+sem erro nos logs.
+
 ## 2026-08-13 — Reforma do PDV: layout, tipografia, desconto por linha e regra de segurança para películas
 
 **Pedido do usuário:** 5 mudanças no PDV. (1) Painel de formas de pagamento

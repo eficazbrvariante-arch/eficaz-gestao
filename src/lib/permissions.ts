@@ -182,6 +182,16 @@ export function canManageFiado(role: UserRole) {
 }
 
 /**
+ * Painel de Colaboradores — lançar e quitar adiantamento de salário e
+ * compra de mercadoria descontada em folha. Admin e Gerente, diferente do
+ * Fiado (só ADMIN): aqui é controle interno da equipe, não crédito
+ * concedido a cliente externo.
+ */
+export function canManageEmployeeLedger(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
  * Mesclar dois cadastros de cliente duplicados (ex.: um criado no PDV e outro
  * pelo próprio cliente no catálogo online). Reatribui vendas, pedidos, fiado,
  * crédito de loja e login de um cadastro pro outro, e apaga o absorvido —
