@@ -27,12 +27,15 @@ export function ProductForm({
   categories,
   brands,
   suppliers,
+  canManageCommission,
 }: {
   productId?: string;
   defaultValues?: Partial<ProductFormValues>;
   categories: Option[];
   brands: Option[];
   suppliers: Option[];
+  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê/edita. */
+  canManageCommission: boolean;
 }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
@@ -158,6 +161,20 @@ export function ProductForm({
           <Input id="promoPrice" type="number" step="0.01" {...register("promoPrice")} />
           <FieldError message={errors.promoPrice?.message} />
         </div>
+        {canManageCommission && (
+          <div>
+            <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
+            <Input
+              id="commissionPercent"
+              type="number"
+              step="0.01"
+              placeholder="Usa a comissão geral"
+              {...register("commissionPercent")}
+            />
+            <p className="mt-1 text-xs text-slate-500">Vazio = usa a comissão geral da empresa.</p>
+            <FieldError message={errors.commissionPercent?.message} />
+          </div>
+        )}
       </div>
 
       {Boolean(watch("promoPrice")) && (

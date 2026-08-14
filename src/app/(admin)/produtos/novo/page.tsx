@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { canManageEmployeeLedger } from "@/lib/permissions";
 import { ProductForm } from "../product-form";
 
 export default async function NovoProdutoPage() {
@@ -14,7 +15,12 @@ export default async function NovoProdutoPage() {
     <div>
       <h1 className="mb-6 text-xl font-semibold text-slate-900">Novo produto</h1>
       <div className="max-w-3xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <ProductForm categories={categories} brands={brands} suppliers={suppliers} />
+        <ProductForm
+          categories={categories}
+          brands={brands}
+          suppliers={suppliers}
+          canManageCommission={canManageEmployeeLedger(user.role)}
+        />
       </div>
     </div>
   );

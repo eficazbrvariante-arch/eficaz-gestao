@@ -12,92 +12,98 @@ datasource db {
 }
 
 model Tenant {
-  id                     String               @id @default(cuid())
-  name                   String
-  tradeName              String?
-  document               String?
-  logoUrl                String?
-  primaryColor           String?
-  secondaryColor         String?
-  phone                  String?
-  whatsapp               String?
-  addressStreet          String?
-  addressNumber          String?
-  addressCity            String?
-  addressState           String?
-  addressZip             String?
-  subdomain              String               @unique
+  id                       String               @id @default(cuid())
+  name                     String
+  tradeName                String?
+  document                 String?
+  logoUrl                  String?
+  primaryColor             String?
+  secondaryColor           String?
+  phone                    String?
+  whatsapp                 String?
+  addressStreet            String?
+  addressNumber            String?
+  addressCity              String?
+  addressState             String?
+  addressZip               String?
+  subdomain                String               @unique
   /// E-mail de acesso da empresa — identifica o tenant no primeiro login de
   /// cada dispositivo (ver `resolveTenantLoginAction`); depois disso, a
   /// aprovação do dispositivo (`Device`) já resolve o tenant sozinha, sem
   /// precisar digitar de novo. Distinto do e-mail pessoal de cada `User`
   /// (opcional, ver `User.email`) — pode ser trocado livremente sem afetar
   /// a conta de ninguém.
-  email                  String               @unique
+  email                    String               @unique
   // Domínio próprio (Fase 7)
-  customDomain           String?              @unique
-  domainStatus           DomainStatus         @default(NONE)
+  customDomain             String?              @unique
+  domainStatus             DomainStatus         @default(NONE)
   /// Valor que a empresa publica num registro TXT para provar que é dona do domínio.
-  domainToken            String?
+  domainToken              String?
   /// Quando a posse do domínio foi confirmada.
-  domainVerifiedAt       DateTime?
+  domainVerifiedAt         DateTime?
   /// Última tentativa de verificação, para mostrar "verificado há X".
-  domainCheckedAt        DateTime?
-  timezone               String               @default("America/Sao_Paulo")
-  currency               String               @default("BRL")
+  domainCheckedAt          DateTime?
+  timezone                 String               @default("America/Sao_Paulo")
+  currency                 String               @default("BRL")
   // Catálogo online (Fase 4)
-  catalogEnabled         Boolean              @default(true)
-  bannerUrl              String?
-  bannerTitle            String?
-  bannerSubtitle         String?
+  catalogEnabled           Boolean              @default(true)
+  bannerUrl                String?
+  bannerTitle              String?
+  bannerSubtitle           String?
   // Pedidos online (Fase 5)
-  deliveryEnabled        Boolean              @default(true)
-  pickupEnabled          Boolean              @default(true)
+  deliveryEnabled          Boolean              @default(true)
+  pickupEnabled            Boolean              @default(true)
   /// Como o estoque reage a um pedido online (ver enum StockPolicy).
-  stockPolicy            StockPolicy          @default(RESERVE)
+  stockPolicy              StockPolicy          @default(RESERVE)
   /// Instruções mostradas ao cliente na retirada (endereço, horário...).
-  pickupNotes            String?
+  pickupNotes              String?
   // Vitrine institucional do catálogo (reformulação "premium")
-  instagramUrl           String?
+  instagramUrl             String?
   /// Texto livre "quem somos", exibido numa página institucional própria.
-  aboutText              String?
+  aboutText                String?
   /// Política de troca — some do rodapé/badges quando não preenchida.
-  exchangePolicy         String?
+  exchangePolicy           String?
   /// Política de garantia — some do rodapé/badges quando não preenchida.
-  warrantyPolicy         String?
-  privacyPolicy          String?
+  warrantyPolicy           String?
+  privacyPolicy            String?
   /// Horário de atendimento por dia da semana: array de 7 entradas
   /// `{ day: 0-6, opensAt: "09:00", closesAt: "18:00", closed: boolean }`.
-  businessHours          Json?
+  businessHours            Json?
   /// Oferta Relâmpago por dia da semana: array de 7 entradas
   /// `{ day: 0-6, active, productId, promoPrice, orderLimit, badgeText, icon,
   ///   bgColor, accentColor, soundEnabled }`. Mesma convenção de dia de
   /// `businessHours` (0 = domingo, Date#getDay()).
-  flashDealSchedule      Json?
+  flashDealSchedule        Json?
   /// Formas de pagamento que a loja aceita de fato — controla o que aparece
   /// no rodapé/barra de confiança (nunca uma lista fixa no código).
-  acceptedPaymentMethods OrderPaymentMethod[]
+  acceptedPaymentMethods   OrderPaymentMethod[]
   /// Parcelamento informativo (sem gateway de cartão integrado). Nulo/0 = desligado.
-  maxInstallments        Int?
-  minInstallmentValue    Decimal?             @db.Decimal(10, 2)
+  maxInstallments          Int?
+  minInstallmentValue      Decimal?             @db.Decimal(10, 2)
   // Plano contratado (Fase 8). Os limites vêm de PLAN_LIMITS, no código —
   // assim ajustar um plano não exige migração nem atualizar cada empresa.
-  plan                   Plan                 @default(FREE)
+  plan                     Plan                 @default(FREE)
   /// Liga a impressão automática do comprovante (window.print()) assim que a
   /// venda é finalizada, na tela do comprovante. O botão manual "Imprimir"
   /// funciona sempre, independente deste campo.
-  autoPrintReceipt       Boolean              @default(false)
+  autoPrintReceipt         Boolean              @default(false)
+  /// Comissão (%) padrão sobre o valor líquido de cada item vendido (já com
+  /// desconto do item descontado) — vale pra qualquer produto sem comissão
+  /// individual própria (ver `Product.commissionPercent`). Só Vendedor e
+  /// Gerente acumulam comissão, mesmo que outro papel apareça como
+  /// `Sale.sellerId`.
+  defaultCommissionPercent Decimal              @default(0) @db.Decimal(5, 2)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
-  saleSequence           Int                  @default(0)
-  orderSequence          Int                  @default(0)
-  repairOrderSequence    Int                  @default(0)
+  saleSequence             Int                  @default(0)
+  orderSequence            Int                  @default(0)
+  repairOrderSequence      Int                  @default(0)
   /// Reservado para jornada/escala/tolerância de atraso/banco de horas
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
-  attendanceSettings     Json?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
+  attendanceSettings       Json?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
 
   users                 User[]
   categories            Category[]
@@ -426,55 +432,58 @@ model Supplier {
 }
 
 model Product {
-  id               String    @id @default(cuid())
-  tenantId         String
-  name             String
-  internalCode     String?
-  barcode          String?
-  categoryId       String?
-  brandId          String?
-  supplierId       String?
-  description      String?
-  costPrice        Decimal   @default(0) @db.Decimal(10, 2)
-  salePrice        Decimal   @default(0) @db.Decimal(10, 2)
-  promoPrice       Decimal?  @db.Decimal(10, 2)
+  id                String    @id @default(cuid())
+  tenantId          String
+  name              String
+  internalCode      String?
+  barcode           String?
+  categoryId        String?
+  brandId           String?
+  supplierId        String?
+  description       String?
+  costPrice         Decimal   @default(0) @db.Decimal(10, 2)
+  salePrice         Decimal   @default(0) @db.Decimal(10, 2)
+  promoPrice        Decimal?  @db.Decimal(10, 2)
   /// Preço que o cliente efetivamente paga (promocional quando existe, senão o de venda).
   /// Derivado de salePrice/promoPrice e mantido por `computeCatalogPrice` em toda escrita —
   /// existe para o catálogo poder ordenar e filtrar por preço real no banco.
-  catalogPrice     Decimal   @default(0) @db.Decimal(10, 2)
+  catalogPrice      Decimal   @default(0) @db.Decimal(10, 2)
   /// Início agendado da oferta relâmpago (opcional). Nulo = já vale a partir
   /// de quando `promoPrice` foi definido.
-  promoStartedAt   DateTime?
+  promoStartedAt    DateTime?
   /// Fim da oferta relâmpago. Só faz sentido junto de `promoPrice`; nulo = promoção comum.
-  promoEndsAt      DateTime?
+  promoEndsAt       DateTime?
   /// Quantidade disponível só nesta promoção (opcional). O valor exibido ao
   /// cliente é sempre `min(promoStockLimit, stockQty)` — nunca inventa número
   /// além do estoque real, só limita a promoção a um teto menor se o lojista quiser.
-  promoStockLimit  Int?
-  stockQty         Int       @default(0)
-  minStock         Int       @default(0)
-  active           Boolean   @default(true)
-  showInCatalog    Boolean   @default(true)
+  promoStockLimit   Int?
+  stockQty          Int       @default(0)
+  minStock          Int       @default(0)
+  active            Boolean   @default(true)
+  showInCatalog     Boolean   @default(true)
   /// Destaque manual — fura a fila na listagem geral do catálogo e entra
   /// primeiro no carrossel "Destaques" da home, sem misturar com o ranking
   /// real de vendas (ver `listBestSellers`, que continua 100% orgânico).
-  isFeatured       Boolean   @default(false)
+  isFeatured        Boolean   @default(false)
   /// Posição manual entre os destaques (menor aparece primeiro). Nulo = sem
   /// ordem definida, entra depois dos ordenados, por `updatedAt`.
-  featuredOrder    Int?
+  featuredOrder     Int?
   /// Fim opcional do período de destaque — depois disso o produto sai
   /// sozinho do carrossel "Destaques" mesmo com `isFeatured` ainda marcado.
-  featuredUntil    DateTime?
+  featuredUntil     DateTime?
   /// Média das avaliações lançadas (desnormalizada, ver `ProductReview`) —
   /// evita agregação por produto em toda renderização de card.
-  avgRating        Decimal?  @db.Decimal(2, 1)
-  reviewCount      Int       @default(0)
+  avgRating         Decimal?  @db.Decimal(2, 1)
+  reviewCount       Int       @default(0)
+  /// Comissão individual (%) — sobrescreve `Tenant.defaultCommissionPercent`
+  /// quando definida. Nulo = usa a comissão geral da empresa.
+  commissionPercent Decimal?  @db.Decimal(5, 2)
   /// Quando o Colaborador de Estoque confirmou esse produto no ciclo de
   /// contagem atual. Nulo = ainda pendente (aparece na fila dele). Zerado
   /// em massa quando um novo ciclo de contagem é iniciado.
-  lastStockCheckAt DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  lastStockCheckAt  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category       Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)

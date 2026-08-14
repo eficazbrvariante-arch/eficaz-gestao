@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { toDateTimeLocalValue } from "@/lib/format";
+import { canManageEmployeeLedger } from "@/lib/permissions";
 import { ProductForm } from "../product-form";
 
 export default async function EditarProdutoPage({
@@ -42,6 +43,7 @@ export default async function EditarProdutoPage({
           categories={categories}
           brands={brands}
           suppliers={suppliers}
+          canManageCommission={canManageEmployeeLedger(user.role)}
           defaultValues={{
             name: product.name,
             internalCode: product.internalCode ?? "",
@@ -53,6 +55,8 @@ export default async function EditarProdutoPage({
             costPrice: Number(product.costPrice),
             salePrice: Number(product.salePrice),
             promoPrice: product.promoPrice ? Number(product.promoPrice) : undefined,
+            commissionPercent:
+              product.commissionPercent !== null ? Number(product.commissionPercent) : undefined,
             promoStartedAt: product.promoStartedAt
               ? toDateTimeLocalValue(product.promoStartedAt)
               : "",

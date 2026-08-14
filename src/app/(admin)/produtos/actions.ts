@@ -20,7 +20,7 @@ import {
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
 import { recordPriceSnapshotIfChanged } from "@/modules/products/price-history";
 import { checkLimit } from "@/lib/plans";
-import { canManageProducts } from "@/lib/permissions";
+import { canManageEmployeeLedger, canManageProducts } from "@/lib/permissions";
 
 /**
  * `requireUser()` só confirma autenticação. As ações abaixo (produtos,
@@ -160,7 +160,7 @@ export async function deleteBrandAction(id: string) {
 
 // --- Produtos ---
 
-function normalizeProductData(data: ProductInput) {
+function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
   const promoPrice = data.promoPrice ?? null;
   return {
     name: data.name,
@@ -178,6 +178,10 @@ function normalizeProductData(data: ProductInput) {
     promoEndsAt: promoPrice !== null ? (data.promoEndsAt ?? null) : null,
     promoStockLimit: promoPrice !== null ? (data.promoStockLimit ?? null) : null,
     catalogPrice: computeCatalogPrice(data.salePrice, promoPrice),
+    // Comissão é configuração sensível (quem ganha o quê) — só quem gerencia
+    // o painel de Colaboradores pode mexer, mesmo que o resto do formulário
+    // esteja liberado pra Estoquista também (ver `canManageProducts`).
+    commissionPercent: canSetCommission ? (data.commissionPercent ?? null) : undefined,
     stockQty: data.stockQty,
     minStock: data.minStock,
     active: data.active,
@@ -216,7 +220,7 @@ export async function createProductAction(input: ProductInput) {
   const product = await prisma.product.create({
     data: {
       tenantId: user.tenantId,
-      ...normalizeProductData(parsed.data),
+      ...normalizeProductData(parsed.data, canManageEmployeeLedger(user.role)),
     },
   });
 
@@ -287,7 +291,7 @@ export async function updateProductAction(id: string, input: ProductInput) {
 
   await prisma.product.update({
     where: { id },
-    data: normalizeProductData(parsed.data),
+    data: normalizeProductData(parsed.data, canManageEmployeeLedger(user.role)),
   });
 
   await recordPriceSnapshotIfChanged(

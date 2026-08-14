@@ -8,6 +8,7 @@ import {
   createEmployeeLedgerEntry,
   settleEmployeeLedgerEntry,
 } from "@/modules/employees/employee-ledger-service";
+import { setDefaultCommissionPercent } from "@/modules/employees/commission-service";
 import {
   createEmployeeLedgerEntrySchema,
   type CreateEmployeeLedgerEntryInput,
@@ -57,4 +58,18 @@ export async function settleEmployeeLedgerEntryAction(id: string) {
 
   revalidatePath("/colaboradores");
   return { success: "Lançamento quitado." };
+}
+
+export async function setDefaultCommissionPercentAction(percent: number) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar a comissão." };
+  }
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    return { error: "Informe um percentual entre 0 e 100." };
+  }
+
+  await setDefaultCommissionPercent(user.tenantId, percent);
+  revalidatePath("/colaboradores");
+  return { success: "Comissão geral atualizada." };
 }

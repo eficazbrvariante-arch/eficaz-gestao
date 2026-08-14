@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +16,20 @@ import {
 import {
   createEmployeeLedgerEntryAction,
   listEmployeesAction,
+  setDefaultCommissionPercentAction,
   settleEmployeeLedgerEntryAction,
   type EmployeeOption,
 } from "./actions";
-import type { EmployeeLedgerSummaryRow } from "@/modules/employees/employee-ledger-service";
+
+export type EmployeeCardRow = {
+  userId: string;
+  userName: string;
+  advancePending: number;
+  purchasePending: number;
+  totalPending: number;
+  /** Acumulado de todas as vendas concluídas — não é "pendente", é o total já ganho. */
+  commissionTotal: number;
+};
 
 export type EmployeeLedgerEntryRow = {
   id: string;
@@ -37,11 +48,13 @@ const STATUS_BADGE: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = { PENDING: "Pendente", PAID: "Pago" };
 
 export function EmployeeLedgerPanel({
-  summary,
+  cardRows,
   entries,
+  defaultCommissionPercent,
 }: {
-  summary: EmployeeLedgerSummaryRow[];
+  cardRows: EmployeeCardRow[];
   entries: EmployeeLedgerEntryRow[];
+  defaultCommissionPercent: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
@@ -55,6 +68,8 @@ export function EmployeeLedgerPanel({
   const [type, setType] = useState<EmployeeLedgerTypeValue>("ADVANCE");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+
+  const [commissionPercent, setCommissionPercent] = useState(String(defaultCommissionPercent));
 
   function handleCreate() {
     setFeedback(undefined);
@@ -85,9 +100,54 @@ export function EmployeeLedgerPanel({
     });
   }
 
+  function handleSaveCommission() {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await setDefaultCommissionPercentAction(Number(commissionPercent));
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setFeedback({ type: "success", message: "Comissão geral atualizada." });
+    });
+  }
+
   return (
     <div className="space-y-6">
       <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="mb-1 text-sm font-semibold text-slate-900">Comissão geral de venda</p>
+        <p className="mb-3 text-xs text-slate-500">
+          Percentual sobre o valor líquido vendido (já com desconto do item descontado), pra
+          qualquer produto sem comissão individual própria. Comissão por produto específico é
+          definida na tela de edição do produto.
+        </p>
+        <div className="flex items-end gap-3">
+          <div className="w-32">
+            <Label htmlFor="commission-percent">Comissão (%)</Label>
+            <Input
+              id="commission-percent"
+              type="number"
+              step="0.01"
+              min={0}
+              max={100}
+              value={commissionPercent}
+              onChange={(e) => setCommissionPercent(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isPending}
+            onClick={handleSaveCommission}
+            fullWidth={false}
+            className="px-4"
+          >
+            Salvar
+          </Button>
+        </div>
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-3 text-sm font-semibold text-slate-900">Registrar lançamento</p>
@@ -150,12 +210,12 @@ export function EmployeeLedgerPanel({
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-semibold text-slate-900">Saldo pendente por colaborador</p>
-        {summary.length === 0 ? (
-          <EmptyState message="Ninguém com pendência no momento." />
+        <p className="mb-3 text-sm font-semibold text-slate-900">Colaboradores</p>
+        {cardRows.length === 0 ? (
+          <EmptyState message="Nenhum Vendedor ou Gerente ativo cadastrado." />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {summary.map((row) => (
+            {cardRows.map((row) => (
               <div key={row.userId} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-bold text-black">{row.userName}</p>
                 <div className="mt-2 space-y-1 text-xs text-slate-500">
@@ -169,9 +229,17 @@ export function EmployeeLedgerPanel({
                   </div>
                 </div>
                 <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold text-black">
-                  <span>Total</span>
+                  <span>Total pendente</span>
                   <span>{formatBRL(row.totalPending)}</span>
                 </div>
+                <Link
+                  href={`/colaboradores/${row.userId}/comissao`}
+                  target="_blank"
+                  className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-emerald-700 hover:underline"
+                >
+                  <span>Comissão de venda</span>
+                  <span>{formatBRL(row.commissionTotal)}</span>
+                </Link>
               </div>
             ))}
           </div>

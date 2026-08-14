@@ -4,7 +4,12 @@ import { canManageEmployeeLedger } from "@/lib/permissions";
 import { formatBRL } from "@/lib/format";
 import { StatCard } from "@/components/admin/stat-card";
 import { getEmployeeLedgerSummary } from "@/modules/employees/employee-ledger-service";
-import { EmployeeLedgerPanel, type EmployeeLedgerEntryRow } from "./employee-ledger-panel";
+import { getCommissionTotalsByUsers } from "@/modules/employees/commission-service";
+import {
+  EmployeeLedgerPanel,
+  type EmployeeCardRow,
+  type EmployeeLedgerEntryRow,
+} from "./employee-ledger-panel";
 
 export default async function ColaboradoresPage() {
   const user = await requireUser();
@@ -16,7 +21,16 @@ export default async function ColaboradoresPage() {
     );
   }
 
-  const [summary, entries] = await Promise.all([
+  const [sellers, tenant, debtSummary, entries] = await Promise.all([
+    prisma.user.findMany({
+      where: { tenantId: user.tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.tenant.findUniqueOrThrow({
+      where: { id: user.tenantId },
+      select: { defaultCommissionPercent: true },
+    }),
     getEmployeeLedgerSummary(user.tenantId),
     prisma.employeeLedgerEntry.findMany({
       where: { tenantId: user.tenantId },
@@ -25,6 +39,24 @@ export default async function ColaboradoresPage() {
       take: 100,
     }),
   ]);
+
+  const commissionTotals = await getCommissionTotalsByUsers(
+    user.tenantId,
+    sellers.map((s) => s.id)
+  );
+  const debtByUser = new Map(debtSummary.map((row) => [row.userId, row]));
+
+  const cardRows: EmployeeCardRow[] = sellers.map((seller) => {
+    const debt = debtByUser.get(seller.id);
+    return {
+      userId: seller.id,
+      userName: seller.name,
+      advancePending: debt?.advancePending ?? 0,
+      purchasePending: debt?.purchasePending ?? 0,
+      totalPending: debt?.totalPending ?? 0,
+      commissionTotal: commissionTotals.get(seller.id) ?? 0,
+    };
+  });
 
   const entryRows: EmployeeLedgerEntryRow[] = entries.map((entry) => ({
     id: entry.id,
@@ -36,24 +68,28 @@ export default async function ColaboradoresPage() {
     createdAt: entry.createdAt,
   }));
 
-  const totalPending = summary.reduce((sum, row) => sum + row.totalPending, 0);
+  const totalPending = debtSummary.reduce((sum, row) => sum + row.totalPending, 0);
 
   return (
     <div>
       <h1 className="mb-1 text-xl font-semibold text-slate-900">Colaboradores</h1>
       <p className="mb-6 text-sm text-slate-500">
-        Adiantamento de salário e compra de mercadoria a descontar em folha.
+        Adiantamento de salário, compra de mercadoria e comissão de venda.
       </p>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard label="Total pendente" value={formatBRL(totalPending)} tone="negative" />
         <StatCard
           label="Colaboradores com pendência"
-          value={String(summary.length)}
+          value={String(debtSummary.length)}
         />
       </div>
 
-      <EmployeeLedgerPanel summary={summary} entries={entryRows} />
+      <EmployeeLedgerPanel
+        cardRows={cardRows}
+        entries={entryRows}
+        defaultCommissionPercent={Number(tenant.defaultCommissionPercent)}
+      />
     </div>
   );
 }

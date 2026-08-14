@@ -52,6 +52,11 @@ export const productSchema = z.object({
   description: z.string().trim().optional().or(z.literal("")),
   costPrice: z.coerce.number().min(0, "O custo não pode ser negativo"),
   salePrice: z.coerce.number().min(0, "O preço de venda não pode ser negativo"),
+  /// Comissão individual (%) — em branco usa a comissão geral da empresa (ver `Tenant.defaultCommissionPercent`).
+  commissionPercent: z
+    .union([z.literal(""), z.coerce.number().min(0).max(100)])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
   promoPrice: z
     .union([z.literal(""), z.coerce.number().min(0)])
     .optional()

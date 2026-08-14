@@ -1,5 +1,42 @@
 # Relatórios de sessão
 
+## 2026-08-14 — Comissão de venda no painel de Colaboradores
+
+Continuação do pedido de Colaboradores: plano de comissão pra Vendedor e
+Gerente. Ideia inicial era um painel "Comissões" separado; o lojista
+preferiu integrar no painel de Colaboradores já existente, como uma
+terceira informação no card de cada um (junto com Adiantamento e
+Mercadoria), com link pro histórico completo de vendas em nova aba.
+Decisões confirmadas: comissão sobre o valor líquido (já com desconto do
+item descontado, não o valor cheio); só vendas do PDV por agora (não
+Assistência Técnica); é só relatório/consulta, sem controle de
+pago/pendente (diferente do adiantamento e da compra).
+
+**O que mudou:**
+- `prisma/schema.prisma`: `Tenant.defaultCommissionPercent` (comissão
+  geral, % sobre o líquido) e `Product.commissionPercent` (individual,
+  opcional — sobrescreve a geral quando definida).
+- `src/modules/employees/commission-service.ts` (novo): soma a comissão
+  de todas as vendas concluídas de um vendedor (`Sale.sellerId`, já
+  existente), usando a comissão do produto quando definida, senão a
+  geral do tenant. Cálculo sempre ao vivo (não fica gravado por venda) —
+  se o lojista mudar a % depois, o total recalcula sozinho.
+- `src/app/(admin)/colaboradores/`: card de cada colaborador (agora
+  todo Vendedor/Gerente ativo aparece, não só quem tem pendência) ganha
+  a linha "Comissão de venda", que abre `/colaboradores/[userId]/comissao`
+  (nova aba) com a lista de vendas e a comissão calculada em cada uma.
+  Página também ganha uma caixa de configuração da comissão geral (%) no
+  topo.
+- `src/app/(admin)/produtos/product-form.tsx`: campo "Comissão
+  individual (%)" na edição do produto — visível/editável só pra
+  Admin/Gerente (`canManageEmployeeLedger`), mesmo que Estoquista edite
+  o resto do produto; vazio = usa a comissão geral.
+
+**Testado:** `lint`, `typecheck`, `test` (82 passando) e `build:app`
+limpos, sem warnings novos. Prévia visual estática enviada pro lojista
+(config geral + card + histórico) antes do deploy, mesmo motivo de
+sempre (sem acesso a login nem ao servidor de dev da loja).
+
 ## 2026-08-13/14 — Ajustes de UX no PDV, botões da OS, vendedor obrigatório na OS e painel de Colaboradores
 
 Sequência de pedidos do lojista testando ao vivo na loja, depois do deploy da reforma do PDV.
