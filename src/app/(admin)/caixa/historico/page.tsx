@@ -14,14 +14,16 @@ export default async function HistoricoCaixaPage() {
     );
   }
 
-  // Vendedor só vê o próprio caixa, e só enquanto ele estiver aberto — some
-  // da lista assim que fecha, mesmo tendo sido ele quem abriu. Admin/Gerente
-  // (canViewAllSales) continuam vendo o histórico completo, de todo mundo.
+  // Vendedor só vê o caixa que estiver aberto agora — não necessariamente o
+  // que ele mesmo abriu (o caixa é um só, físico, pode passar de vendedor
+  // pra vendedor no mesmo turno sem fechar) — e só enquanto durar aberto:
+  // some da lista assim que fecha. Admin/Gerente (canViewAllSales)
+  // continuam vendo o histórico completo, de todo mundo.
   const seeAll = canViewAllSales(user.role);
   const registers = await prisma.cashRegister.findMany({
     where: seeAll
       ? { tenantId: user.tenantId }
-      : { tenantId: user.tenantId, openedById: user.id, status: "OPEN" },
+      : { tenantId: user.tenantId, status: "OPEN" },
     include: {
       openedBy: { select: { name: true } },
       closedBy: { select: { name: true } },
@@ -128,7 +130,7 @@ export default async function HistoricoCaixaPage() {
             {registers.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
-                  {seeAll ? "Nenhum caixa registrado ainda." : "Você não tem nenhum caixa aberto no momento."}
+                  {seeAll ? "Nenhum caixa registrado ainda." : "Nenhum caixa aberto no momento."}
                 </td>
               </tr>
             )}

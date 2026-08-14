@@ -22,16 +22,18 @@ export default async function VendasPage({
   const seeAll = canViewAllSales(user.role);
   if (!seeAll && !canSell(user.role)) redirect("/vendas/buscar");
 
-  // Vendedor só vê as vendas do próprio caixa, e só enquanto ele estiver
-  // aberto — mesma regra do histórico de caixa (ver `/caixa/historico`):
-  // some da lista assim que ele fecha, mesmo tendo sido ele quem abriu.
-  // Admin/Gerente (seeAll) podem entrar num caixa específico a partir do
-  // Histórico de caixas — `cashRegisterId` na URL, nunca escolhido por
-  // Vendedor (que não tem esse link disponível).
+  // Vendedor só vê as vendas do caixa que estiver aberto agora — não
+  // necessariamente o que ele mesmo abriu (o caixa é um só, físico, e pode
+  // passar de um vendedor pro outro no mesmo turno sem fechar) — e só
+  // enquanto durar aberto: some da lista assim que fecha. Admin/Gerente
+  // (seeAll) podem entrar num caixa específico, aberto ou já fechado, a
+  // partir do Histórico de caixas — `cashRegisterId` na URL, nunca
+  // escolhido por Vendedor (que não tem esse link disponível).
   let filterCashRegisterId: string | null = null;
   if (!seeAll) {
     const register = await prisma.cashRegister.findFirst({
-      where: { tenantId: user.tenantId, openedById: user.id, status: "OPEN" },
+      where: { tenantId: user.tenantId, status: "OPEN" },
+      orderBy: { openedAt: "desc" },
       select: { id: true },
     });
     if (!register) {
@@ -39,8 +41,8 @@ export default async function VendasPage({
         <div>
           <h1 className="mb-1 text-xl font-semibold text-slate-900">Vendas</h1>
           <p className="mb-6 text-sm text-slate-500">
-            Você não tem nenhum caixa aberto — as vendas aparecem aqui a partir do momento em que
-            você abre o caixa, e somem quando você fecha.
+            Nenhum caixa aberto no momento — as vendas aparecem aqui a partir da abertura do
+            caixa, e somem quando ele for fechado.
           </p>
           <Link
             href="/caixa"
@@ -87,7 +89,7 @@ export default async function VendasPage({
           <h1 className="text-xl font-semibold text-slate-900">Vendas</h1>
           <p className="text-sm text-slate-500">
             {!seeAll
-              ? "Vendas do seu caixa aberto — some daqui quando você fechar o caixa."
+              ? "Vendas do caixa aberto — somem daqui quando ele for fechado."
               : viewedRegister
                 ? "Vendas deste caixa."
                 : "Histórico de vendas realizadas no PDV."}
