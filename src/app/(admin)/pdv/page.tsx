@@ -73,6 +73,12 @@ export default async function PdvPage() {
             </p>
           </div>
           <Link
+            href="/vendas"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Vendas
+          </Link>
+          <Link
             href="/caixa"
             className="rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
           >

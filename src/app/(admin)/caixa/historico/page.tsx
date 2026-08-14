@@ -51,6 +51,7 @@ export default async function HistoricoCaixaPage() {
               <th className="px-4 py-3 font-medium">Contado</th>
               <th className="px-4 py-3 font-medium">Diferença</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
@@ -113,12 +114,20 @@ export default async function HistoricoCaixaPage() {
                       {r.status === "OPEN" ? "Aberto" : "Fechado"}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/vendas?cashRegisterId=${r.id}`}
+                      className="text-sm text-slate-600 hover:underline"
+                    >
+                      Ver vendas
+                    </Link>
+                  </td>
                 </tr>
               );
             })}
             {registers.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                   {seeAll ? "Nenhum caixa registrado ainda." : "Você não tem nenhum caixa aberto no momento."}
                 </td>
               </tr>

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canCancelSale, canViewAllSales } from "@/lib/permissions";
+import { canCancelSale, canSell, canViewAllSales } from "@/lib/permissions";
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "" },
@@ -14,34 +14,84 @@ const STATUS_FILTERS = [
 export default async function VendasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; cashRegisterId?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, cashRegisterId } = await searchParams;
   const user = await requireUser();
 
-  if (!canViewAllSales(user.role)) redirect("/vendas/buscar");
+  const seeAll = canViewAllSales(user.role);
+  if (!seeAll && !canSell(user.role)) redirect("/vendas/buscar");
 
-  const sales = await prisma.sale.findMany({
-    where: {
-      tenantId: user.tenantId,
-      ...(status === "COMPLETED" || status === "CANCELLED" ? { status } : {}),
-    },
-    include: {
-      customer: { select: { name: true } },
-      seller: { select: { name: true } },
-      payments: true,
-      _count: { select: { items: true } },
-    },
-    orderBy: { number: "desc" },
-    take: 100,
-  });
+  // Vendedor só vê as vendas do próprio caixa, e só enquanto ele estiver
+  // aberto — mesma regra do histórico de caixa (ver `/caixa/historico`):
+  // some da lista assim que ele fecha, mesmo tendo sido ele quem abriu.
+  // Admin/Gerente (seeAll) podem entrar num caixa específico a partir do
+  // Histórico de caixas — `cashRegisterId` na URL, nunca escolhido por
+  // Vendedor (que não tem esse link disponível).
+  let filterCashRegisterId: string | null = null;
+  if (!seeAll) {
+    const register = await prisma.cashRegister.findFirst({
+      where: { tenantId: user.tenantId, openedById: user.id, status: "OPEN" },
+      select: { id: true },
+    });
+    if (!register) {
+      return (
+        <div>
+          <h1 className="mb-1 text-xl font-semibold text-slate-900">Vendas</h1>
+          <p className="mb-6 text-sm text-slate-500">
+            Você não tem nenhum caixa aberto — as vendas aparecem aqui a partir do momento em que
+            você abre o caixa, e somem quando você fecha.
+          </p>
+          <Link
+            href="/caixa"
+            className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Ir para o Caixa
+          </Link>
+        </div>
+      );
+    }
+    filterCashRegisterId = register.id;
+  } else if (cashRegisterId) {
+    filterCashRegisterId = cashRegisterId;
+  }
+
+  const [sales, viewedRegister] = await Promise.all([
+    prisma.sale.findMany({
+      where: {
+        tenantId: user.tenantId,
+        ...(filterCashRegisterId ? { cashRegisterId: filterCashRegisterId } : {}),
+        ...(status === "COMPLETED" || status === "CANCELLED" ? { status } : {}),
+      },
+      include: {
+        customer: { select: { name: true } },
+        seller: { select: { name: true } },
+        payments: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { number: "desc" },
+      take: 100,
+    }),
+    seeAll && cashRegisterId
+      ? prisma.cashRegister.findFirst({
+          where: { id: cashRegisterId, tenantId: user.tenantId },
+          include: { openedBy: { select: { name: true } }, closedBy: { select: { name: true } } },
+        })
+      : null,
+  ]);
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Vendas</h1>
-          <p className="text-sm text-slate-500">Histórico de vendas realizadas no PDV.</p>
+          <p className="text-sm text-slate-500">
+            {!seeAll
+              ? "Vendas do seu caixa aberto — some daqui quando você fechar o caixa."
+              : viewedRegister
+                ? "Vendas deste caixa."
+                : "Histórico de vendas realizadas no PDV."}
+          </p>
         </div>
         <Link
           href="/pdv"
@@ -51,13 +101,36 @@ export default async function VendasPage({
         </Link>
       </div>
 
+      {viewedRegister && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+          <span className="text-slate-600">
+            Caixa aberto por <strong>{viewedRegister.openedBy.name}</strong> em{" "}
+            {formatDateTime(viewedRegister.openedAt)}
+            {viewedRegister.closedAt && (
+              <>
+                {" "}
+                · fechado por <strong>{viewedRegister.closedBy?.name ?? "-"}</strong> em{" "}
+                {formatDateTime(viewedRegister.closedAt)}
+              </>
+            )}
+          </span>
+          <Link href="/vendas" className="font-medium text-slate-700 hover:underline">
+            ← Ver todas as vendas
+          </Link>
+        </div>
+      )}
+
       <div className="mb-4 flex gap-2">
         {STATUS_FILTERS.map((filter) => {
           const isActive = (status ?? "") === filter.value;
+          const query = new URLSearchParams();
+          if (filter.value) query.set("status", filter.value);
+          if (viewedRegister) query.set("cashRegisterId", viewedRegister.id);
+          const queryString = query.toString();
           return (
             <Link
               key={filter.value}
-              href={filter.value ? `/vendas?status=${filter.value}` : "/vendas"}
+              href={queryString ? `/vendas?${queryString}` : "/vendas"}
               className={
                 isActive
                   ? "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
