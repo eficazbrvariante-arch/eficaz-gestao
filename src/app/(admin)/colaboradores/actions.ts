@@ -107,35 +107,6 @@ export type CommissionProductOption = {
   commissionEnabled: boolean;
 };
 
-/** Teto de itens carregados na lista de comissionados — controle visual, não paginação completa. */
-const COMMISSIONED_LIST_LIMIT = 300;
-
-/**
- * Todos os produtos ativos já marcados pra comissão — lista de controle
- * visual em Colaboradores, pra não depender só do contador "X de Y" nem de
- * buscar um por um pra saber quem já está marcado.
- */
-export async function listCommissionedProductsAction(): Promise<CommissionProductOption[]> {
-  const user = await requireUser();
-  // Visualização, não edição — Gerente também vê a lista, só não mexe nela
-  // (checkbox fica desabilitado no cliente pra quem não tem `canEditCommission`).
-  if (!canManageEmployeeLedger(user.role)) return [];
-
-  const products = await prisma.product.findMany({
-    where: { tenantId: user.tenantId, active: true, commissionEnabled: true },
-    select: { id: true, name: true, salePrice: true, commissionEnabled: true },
-    orderBy: { name: "asc" },
-    take: COMMISSIONED_LIST_LIMIT,
-  });
-
-  return products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    salePrice: Number(p.salePrice),
-    commissionEnabled: p.commissionEnabled,
-  }));
-}
-
 /**
  * Busca produto ativo pelo nome, pra marcar/desmarcar comissão individual
  * sem sair de Colaboradores — ver `ProdutosComissionadosBusca`.
@@ -179,4 +150,26 @@ export async function setProductCommissionEnabledAction(productId: string, enabl
   revalidatePath("/colaboradores");
   revalidatePath("/produtos");
   return { success: enabled ? "Produto comissionado." : "Comissão removida do produto." };
+}
+
+/**
+ * Desliga a comissão de vários produtos de uma vez — usado na página
+ * "Produtos comissionados" (revisão em lote: desmarca vários, clica Salvar).
+ */
+export async function bulkRemoveProductCommissionAction(productIds: string[]) {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar comissão." };
+  }
+  if (productIds.length === 0) return { success: "Nenhuma alteração." };
+
+  const result = await prisma.product.updateMany({
+    where: { id: { in: productIds }, tenantId: user.tenantId },
+    data: { commissionEnabled: false },
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/produtos-comissionados");
+  revalidatePath("/produtos");
+  return { success: `Comissão removida de ${result.count} produto(s).` };
 }
