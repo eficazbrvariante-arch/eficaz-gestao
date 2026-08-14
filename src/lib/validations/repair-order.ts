@@ -48,6 +48,7 @@ export type RepairOrderItemInput = z.infer<typeof repairOrderItemSchema>;
 
 export const repairOrderSchema = z.object({
   customerId: z.string().trim().min(1, "Selecione ou cadastre um cliente"),
+  sellerId: z.string().trim().min(1, "Selecione o vendedor responsável"),
   brand: z.string().trim().min(1, "Informe a marca"),
   model: z.string().trim().min(1, "Informe o modelo"),
   color: z.string().trim().optional().or(z.literal("")),

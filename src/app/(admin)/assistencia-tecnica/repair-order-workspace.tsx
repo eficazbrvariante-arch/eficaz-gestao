@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clsx } from "@/lib/clsx";
@@ -21,6 +21,7 @@ import {
   type PaymentAmounts,
 } from "@/lib/payment-slots";
 import { searchCustomersAction } from "../clientes/actions";
+import { listActiveSellersAction, type PdvSellerOption } from "../pdv/actions";
 import {
   createRepairOrderAction,
   deliverRepairOrderAction,
@@ -83,6 +84,7 @@ export type RepairOrderFinancialsView = {
 
 export type RepairOrderDefaults = {
   customer: CustomerOption | null;
+  seller: { id: string; name: string } | null;
   brand: string;
   model: string;
   color: string;
@@ -149,6 +151,16 @@ export function RepairOrderWorkspace({
   const [customerTerm, setCustomerTerm] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [searchingCustomer, setSearchingCustomer] = useState(false);
+
+  // Vendedor responsável pela OS: nunca inferido de quem está logado — mesma
+  // regra do PDV (o atendente que digita os dados não é necessariamente quem
+  // deve receber o crédito pela OS). Revalidado no servidor em
+  // `createRepairOrderAction`/`updateRepairOrderAction`.
+  const [sellerId, setSellerId] = useState(defaults.seller?.id ?? "");
+  const [sellers, setSellers] = useState<PdvSellerOption[]>([]);
+  useEffect(() => {
+    listActiveSellersAction().then(setSellers);
+  }, []);
 
   const [brand, setBrand] = useState(defaults.brand);
   const [model, setModel] = useState(defaults.model);
@@ -343,6 +355,7 @@ export function RepairOrderWorkspace({
   function buildInput() {
     return {
       customerId: customer?.id ?? "",
+      sellerId,
       brand,
       model,
       color,
@@ -370,6 +383,10 @@ export function RepairOrderWorkspace({
 
     if (!customer) {
       setError("Selecione ou cadastre um cliente antes de salvar.");
+      return;
+    }
+    if (!sellerId) {
+      setError("Selecione o vendedor responsável antes de salvar.");
       return;
     }
     if (!brand.trim() || !model.trim()) {
@@ -579,6 +596,31 @@ export function RepairOrderWorkspace({
             )}
           </div>
         )}
+      </div>
+
+      {/* Vendedor */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+        <Label htmlFor="seller" className="mb-1 text-sm font-semibold text-slate-900">
+          Vendedor *
+        </Label>
+        <Select
+          id="seller"
+          value={sellerId}
+          onChange={(e) => setSellerId(e.target.value)}
+        >
+          <option value="">Selecione quem está atendendo</option>
+          {/* Se o vendedor já salvo nesta OS foi desativado depois, ele não
+              vem em `sellers` (só ativos) — mostra ele mesmo assim, senão o
+              campo pareceria vazio numa OS que já tem vendedor definido. */}
+          {defaults.seller && !sellers.some((s) => s.id === defaults.seller!.id) && (
+            <option value={defaults.seller.id}>{defaults.seller.name} (inativo)</option>
+          )}
+          {sellers.map((seller) => (
+            <option key={seller.id} value={seller.id}>
+              {seller.name}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

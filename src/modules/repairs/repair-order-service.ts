@@ -60,6 +60,7 @@ export async function createRepairOrder(
           tenantId: ctx.tenantId,
           number: tenant.repairOrderSequence,
           customerId: input.customerId,
+          sellerId: input.sellerId,
           brand: input.brand,
           model: input.model,
           color: input.color || null,
@@ -135,6 +136,7 @@ export async function updateRepairOrder(
         where: { id },
         data: {
           customerId: input.customerId,
+          sellerId: input.sellerId,
           brand: input.brand,
           model: input.model,
           color: input.color || null,

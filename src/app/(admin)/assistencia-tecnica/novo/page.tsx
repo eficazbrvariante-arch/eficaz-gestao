@@ -10,6 +10,7 @@ import { RepairOrderWorkspace, type RepairOrderDefaults } from "../repair-order-
 
 const EMPTY_DEFAULTS: RepairOrderDefaults = {
   customer: null,
+  seller: null,
   brand: "",
   model: "",
   color: "",

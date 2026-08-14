@@ -207,6 +207,7 @@ model User {
   saleItemDefectsReported SaleItemDefect[]
   auditLogs               AuditLog[]
   repairOrdersCreated     RepairOrder[]            @relation("RepairOrderCreatedBy")
+  repairOrdersSold        RepairOrder[]            @relation("RepairOrderSeller")
   repairOrdersDelivered   RepairOrder[]            @relation("RepairOrderDeliveredBy")
   repairOrderPayments     RepairOrderPayment[]
   creditMovements         CustomerCreditMovement[]
@@ -743,6 +744,12 @@ model RepairOrder {
 
   customerId String?
 
+  /// Vendedor responsável pela OS — escolhido explicitamente no cadastro
+  /// (nunca inferido de quem está logado, igual já funciona no PDV com
+  /// `Sale.sellerId`): quem abre o caixa/atende o cliente não é
+  /// necessariamente quem deve receber a comissão/crédito pela OS.
+  sellerId String
+
   // Aparelho
   brand           String
   model           String
@@ -781,6 +788,7 @@ model RepairOrder {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   createdBy    User                 @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
+  seller       User                 @relation("RepairOrderSeller", fields: [sellerId], references: [id])
   deliveredBy  User?                @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
   items        RepairOrderItem[]
   photos       RepairOrderPhoto[]

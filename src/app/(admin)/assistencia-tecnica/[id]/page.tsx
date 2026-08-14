@@ -38,6 +38,7 @@ export default async function OrdemServicoPage({
       customer: {
         select: { id: true, name: true, document: true, phone: true, creditBalance: true },
       },
+      seller: { select: { id: true, name: true } },
       items: { select: { description: true, unitPrice: true, quantity: true } },
       photos: { select: { url: true }, orderBy: { order: "asc" } },
       events: {
@@ -81,6 +82,7 @@ export default async function OrdemServicoPage({
           creditBalance: Number(order.customer.creditBalance),
         }
       : null,
+    seller: order.seller,
     brand: order.brand,
     model: order.model,
     color: order.color ?? "",

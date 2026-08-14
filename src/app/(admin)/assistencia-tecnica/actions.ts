@@ -22,6 +22,7 @@ import {
   receiveRepairOrderPayment,
 } from "@/modules/repairs/repair-payment-service";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
+import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
 import { ensureRepairOrderReceiptUrl } from "@/modules/repairs/receipt-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
@@ -53,6 +54,17 @@ export async function createRepairOrderAction(input: RepairOrderInput) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
+  // O vendedor nunca é assumido como o usuário logado — mesma regra do PDV
+  // (ver `createSaleAction`): é relido do banco e revalidado aqui, fechando
+  // o caminho de burlar a seleção chamando esta Server Action direto.
+  const seller = await prisma.user.findFirst({
+    where: { id: parsed.data.sellerId },
+    select: { tenantId: true, active: true, role: true },
+  });
+  if (!isSellerAssignable(seller, user.tenantId)) {
+    return { error: "Selecione um vendedor válido para a OS." };
+  }
+
   const result = await createRepairOrder(
     { tenantId: user.tenantId, userId: user.id },
     parsed.data,
@@ -73,6 +85,14 @@ export async function updateRepairOrderAction(id: string, input: RepairOrderInpu
   const parsed = repairOrderSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const seller = await prisma.user.findFirst({
+    where: { id: parsed.data.sellerId },
+    select: { tenantId: true, active: true, role: true },
+  });
+  if (!isSellerAssignable(seller, user.tenantId)) {
+    return { error: "Selecione um vendedor válido para a OS." };
   }
 
   const result = await updateRepairOrder(user.tenantId, id, parsed.data, {
