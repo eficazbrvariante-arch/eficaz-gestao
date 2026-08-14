@@ -124,6 +124,8 @@ model Tenant {
   creditMovements       CustomerCreditMovement[]
   fiadoEntries          FiadoEntry[]
   employeeLedgerEntries EmployeeLedgerEntry[]
+  convenios             Convenio[]
+  convenioMembers       ConvenioMember[]
   devices               Device[]
   visitorSessions       VisitorSession[]
   analyticsEvents       AnalyticsEvent[]
@@ -221,6 +223,7 @@ model User {
   fiadoEntriesCreated          FiadoEntry[]
   employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
   employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
+  convenioMembersStatusChanged ConvenioMember[]         @relation("ConvenioMemberStatusChangedBy")
   devicesRequested             Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
 
@@ -1182,6 +1185,84 @@ model Payment {
   sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 10 — Convênios Corporativos
+// ---------------------------------------------------------------------------
+
+/// PENDING: aguardando aprovação. ACTIVE: benefício liberado. SUSPENDED:
+/// pausado temporariamente (reversível). BLOCKED: bloqueado por suspeita de
+/// fraude ou uso indevido. CANCELLED: não pertence mais à empresa parceira.
+/// Nenhum desses três últimos volta a ACTIVE sozinho — sempre exige uma nova
+/// ação registrada (ver `statusReason`/`statusChangedById`).
+enum ConvenioMemberStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+  CANCELLED
+}
+
+/// Empresa parceira de um convênio corporativo (ex.: Havan) — nunca um tenant
+/// novo: é uma parceria do tenant atual, pensada desde o início pra caber
+/// qualquer empresa parceira, não só a Havan. Colaboradores dela recebem o
+/// benefício configurado aqui ao comprar na loja (ver `ConvenioMember`).
+model Convenio {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  /// Usado na URL do link de cadastro (`/convenio/[slug]/...`, a partir da Fase 2).
+  slug             String
+  logoUrl          String?
+  responsibleName  String?
+  responsiblePhone String?
+  active           Boolean  @default(true)
+  /// Regras do benefício — mesma convenção de `Tenant.flashDealSchedule`
+  /// (JSON livre, não interpretado fora do módulo de Convênios):
+  /// `{ benefitAmount: number, requireProof: boolean, usesPerPeriod: number, periodDays: number }`.
+  rules            Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members ConvenioMember[]
+
+  @@unique([tenantId, slug])
+  @@map("convenios")
+}
+
+/// Colaborador vinculado a um convênio. Nunca é um `User` (não trabalha na
+/// loja) nem um `Customer` (identidade própria ligada à empresa parceira, não
+/// ao histórico de compras). Cadastro manual nesta fase — ver
+/// `createConvenioMemberAction`; a partir da Fase 2 o próprio colaborador se
+/// cadastra por um link, sem mudar este modelo.
+model ConvenioMember {
+  id                String               @id @default(cuid())
+  tenantId          String
+  convenioId        String
+  name              String
+  /// CPF, só dígitos — normalizado antes de salvar (ver `normalizeDocument`).
+  document          String
+  phone             String?
+  email             String?
+  selfieUrl         String
+  proofUrl          String
+  status            ConvenioMemberStatus @default(PENDING)
+  statusReason      String?
+  statusChangedById String?
+  statusChangedAt   DateTime?
+  validUntil        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio        Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  statusChangedBy User?    @relation("ConvenioMemberStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+
+  @@unique([convenioId, document])
+  @@index([tenantId, convenioId, status])
+  @@map("convenio_members")
 }
 
 // ---------------------------------------------------------------------------

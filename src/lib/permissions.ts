@@ -221,3 +221,13 @@ export function canEditCommission(role: UserRole) {
 export function canMergeCustomers(role: UserRole) {
   return role === "ADMIN";
 }
+
+/**
+ * Cadastrar convênios corporativos (empresa parceira), gerar/gerenciar o
+ * link de convite, e aprovar, suspender, bloquear ou cancelar colaboradores
+ * vinculados. Admin e Gerente — nenhum acesso separado pra empresa parceira
+ * nesta fase (ver decisão registrada no plano do módulo).
+ */
+export function canManageConvenios(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
