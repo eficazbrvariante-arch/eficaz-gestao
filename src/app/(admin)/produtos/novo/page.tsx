@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { ProductForm } from "../product-form";
 
 export default async function NovoProdutoPage() {
@@ -20,6 +20,7 @@ export default async function NovoProdutoPage() {
           brands={brands}
           suppliers={suppliers}
           canManageCommission={canManageEmployeeLedger(user.role)}
+          canEditCommission={canEditCommission(user.role)}
         />
       </div>
     </div>

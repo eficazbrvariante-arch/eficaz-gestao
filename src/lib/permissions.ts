@@ -192,6 +192,17 @@ export function canManageEmployeeLedger(role: UserRole) {
 }
 
 /**
+ * Editar a porcentagem de comissão de venda — a geral (painel de
+ * Colaboradores) e a individual por produto. Diferente do resto de
+ * `canManageEmployeeLedger`: Gerente continua lançando/quitando adiantamento
+ * e compra normalmente, mas só visualiza a comissão, sem poder alterá-la —
+ * só ADMIN decide quanto cada um ganha.
+ */
+export function canEditCommission(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Mesclar dois cadastros de cliente duplicados (ex.: um criado no PDV e outro
  * pelo próprio cliente no catálogo online). Reatribui vendas, pedidos, fiado,
  * crédito de loja e login de um cadastro pro outro, e apaga o absorvido —

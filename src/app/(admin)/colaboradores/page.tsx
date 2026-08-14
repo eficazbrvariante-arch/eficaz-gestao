@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { formatBRL } from "@/lib/format";
 import { StatCard } from "@/components/admin/stat-card";
 import { getEmployeeLedgerSummary } from "@/modules/employees/employee-ledger-service";
@@ -89,6 +89,7 @@ export default async function ColaboradoresPage() {
         cardRows={cardRows}
         entries={entryRows}
         defaultCommissionPercent={Number(tenant.defaultCommissionPercent)}
+        canEditCommission={canEditCommission(user.role)}
       />
     </div>
   );

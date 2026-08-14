@@ -106,6 +106,7 @@ export function ProdutosTabela({
   categories,
   brands,
   canManageCommission,
+  canEditCommission,
 }: {
   items: ProductListItem[];
   sort: ProductSort;
@@ -113,8 +114,10 @@ export function ProdutosTabela({
   storeSubdomain: string | null;
   categories: { id: string; name: string }[];
   brands: { id: string; name: string }[];
-  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê o botão em massa. */
+  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê o badge/produto comissionado. */
   canManageCommission: boolean;
+  /** Só ADMIN vê os botões de ligar/desligar comissão em massa — Gerente só visualiza. */
+  canEditCommission: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -472,7 +475,7 @@ export function ProdutosTabela({
             <Button variant="secondary" fullWidth={false} disabled={isPending} onClick={() => setBulkField("brand")}>
               Alterar marca
             </Button>
-            {canManageCommission && (
+            {canEditCommission && (
               <>
                 <Button
                   variant="secondary"

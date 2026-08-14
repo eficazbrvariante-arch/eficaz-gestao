@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { toDateTimeLocalValue } from "@/lib/format";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { ProductForm } from "../product-form";
 
 export default async function EditarProdutoPage({
@@ -44,6 +44,7 @@ export default async function EditarProdutoPage({
           brands={brands}
           suppliers={suppliers}
           canManageCommission={canManageEmployeeLedger(user.role)}
+          canEditCommission={canEditCommission(user.role)}
           defaultValues={{
             name: product.name,
             internalCode: product.internalCode ?? "",

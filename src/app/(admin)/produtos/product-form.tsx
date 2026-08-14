@@ -28,14 +28,17 @@ export function ProductForm({
   brands,
   suppliers,
   canManageCommission,
+  canEditCommission,
 }: {
   productId?: string;
   defaultValues?: Partial<ProductFormValues>;
   categories: Option[];
   brands: Option[];
   suppliers: Option[];
-  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê/edita. */
+  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê. */
   canManageCommission: boolean;
+  /** Só ADMIN edita — Gerente vê a seção, mas os campos ficam desabilitados. */
+  canEditCommission: boolean;
 }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
@@ -167,9 +170,12 @@ export function ProductForm({
       {canManageCommission && (
         <div className="mb-4 rounded-md border border-slate-200 p-3">
           <label className="flex items-center gap-2 text-sm text-slate-700">
-            <Checkbox {...register("commissionEnabled")} />
+            <Checkbox {...register("commissionEnabled")} disabled={!canEditCommission} />
             Este produto entra na comissão de venda
           </label>
+          {!canEditCommission && (
+            <p className="mt-1 text-xs text-slate-400">Somente o Administrador pode alterar.</p>
+          )}
           {watch("commissionEnabled") && (
             <div className="mt-3 max-w-xs">
               <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
@@ -178,6 +184,7 @@ export function ProductForm({
                 type="number"
                 step="0.01"
                 placeholder="Usa a comissão geral"
+                disabled={!canEditCommission}
                 {...register("commissionPercent")}
               />
               <p className="mt-1 text-xs text-slate-500">

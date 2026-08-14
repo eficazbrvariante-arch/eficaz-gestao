@@ -51,10 +51,13 @@ export function EmployeeLedgerPanel({
   cardRows,
   entries,
   defaultCommissionPercent,
+  canEditCommission,
 }: {
   cardRows: EmployeeCardRow[];
   entries: EmployeeLedgerEntryRow[];
   defaultCommissionPercent: number;
+  /** Gerente só visualiza a comissão (geral e por produto) — só ADMIN altera. */
+  canEditCommission: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
@@ -122,6 +125,7 @@ export function EmployeeLedgerPanel({
           Percentual sobre o valor líquido vendido (já com desconto do item descontado), pra
           qualquer produto sem comissão individual própria. Comissão por produto específico é
           definida na tela de edição do produto.
+          {!canEditCommission && " Somente o Administrador pode alterar."}
         </p>
         <div className="flex items-end gap-3">
           <div className="w-32">
@@ -134,18 +138,21 @@ export function EmployeeLedgerPanel({
               max={100}
               value={commissionPercent}
               onChange={(e) => setCommissionPercent(e.target.value)}
+              disabled={!canEditCommission}
             />
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isPending}
-            onClick={handleSaveCommission}
-            fullWidth={false}
-            className="px-4"
-          >
-            Salvar
-          </Button>
+          {canEditCommission && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending}
+              onClick={handleSaveCommission}
+              fullWidth={false}
+              className="px-4"
+            >
+              Salvar
+            </Button>
+          )}
         </div>
       </div>
 

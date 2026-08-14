@@ -20,7 +20,7 @@ import {
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
 import { recordPriceSnapshotIfChanged } from "@/modules/products/price-history";
 import { checkLimit } from "@/lib/plans";
-import { canManageEmployeeLedger, canManageProducts } from "@/lib/permissions";
+import { canEditCommission, canManageProducts } from "@/lib/permissions";
 
 /**
  * `requireUser()` só confirma autenticação. As ações abaixo (produtos,
@@ -178,9 +178,9 @@ function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
     promoEndsAt: promoPrice !== null ? (data.promoEndsAt ?? null) : null,
     promoStockLimit: promoPrice !== null ? (data.promoStockLimit ?? null) : null,
     catalogPrice: computeCatalogPrice(data.salePrice, promoPrice),
-    // Comissão é configuração sensível (quem ganha o quê) — só quem gerencia
-    // o painel de Colaboradores pode mexer, mesmo que o resto do formulário
-    // esteja liberado pra Estoquista também (ver `canManageProducts`).
+    // Comissão é configuração sensível (quem ganha o quê) — só ADMIN pode
+    // mexer (ver `canEditCommission`), mesmo que o resto do formulário esteja
+    // liberado pra Gerente e Estoquista também (ver `canManageProducts`).
     commissionEnabled: canSetCommission ? data.commissionEnabled : undefined,
     commissionPercent: canSetCommission ? (data.commissionPercent ?? null) : undefined,
     stockQty: data.stockQty,
@@ -221,7 +221,7 @@ export async function createProductAction(input: ProductInput) {
   const product = await prisma.product.create({
     data: {
       tenantId: user.tenantId,
-      ...normalizeProductData(parsed.data, canManageEmployeeLedger(user.role)),
+      ...normalizeProductData(parsed.data, canEditCommission(user.role)),
     },
   });
 
@@ -292,7 +292,7 @@ export async function updateProductAction(id: string, input: ProductInput) {
 
   await prisma.product.update({
     where: { id },
-    data: normalizeProductData(parsed.data, canManageEmployeeLedger(user.role)),
+    data: normalizeProductData(parsed.data, canEditCommission(user.role)),
   });
 
   await recordPriceSnapshotIfChanged(
@@ -467,12 +467,12 @@ export async function bulkUpdateProductsAction(
 
 /**
  * Liga/desliga a comissão de venda em massa — separado de `bulkUpdateProductsAction`
- * porque é uma permissão mais restrita (quem gerencia o painel de Colaboradores,
- * não qualquer um que edita produto — ver `canManageEmployeeLedger`).
+ * porque é uma permissão mais restrita (só ADMIN decide quem ganha comissão,
+ * não qualquer um que edita produto — ver `canEditCommission`).
  */
 export async function bulkSetCommissionEnabledAction(ids: string[], enabled: boolean) {
   const user = await requireUser();
-  if (!canManageEmployeeLedger(user.role)) {
+  if (!canEditCommission(user.role)) {
     return { error: "Seu perfil não tem permissão para configurar comissão." };
   }
   if (ids.length === 0) return { error: "Nenhum produto selecionado." };

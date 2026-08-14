@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import {
   createEmployeeLedgerEntry,
   settleEmployeeLedgerEntry,
@@ -62,7 +62,7 @@ export async function settleEmployeeLedgerEntryAction(id: string) {
 
 export async function setDefaultCommissionPercentAction(percent: number) {
   const user = await requireUser();
-  if (!canManageEmployeeLedger(user.role)) {
+  if (!canEditCommission(user.role)) {
     return { error: "Seu perfil não tem permissão para configurar a comissão." };
   }
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {

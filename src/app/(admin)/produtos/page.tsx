@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { ProdutosTabs } from "./produtos-tabs";
 import { ProdutosHeader } from "./produtos-header";
 import { ProdutosResumoCards } from "./produtos-resumo-cards";
@@ -96,6 +96,7 @@ export default async function ProdutosPage({
         categories={categories}
         brands={brands}
         canManageCommission={canManageEmployeeLedger(user.role)}
+        canEditCommission={canEditCommission(user.role)}
       />
       {total > 0 && (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm">
