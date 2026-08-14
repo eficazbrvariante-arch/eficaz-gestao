@@ -99,3 +99,55 @@ export async function setAllProductsCommissionEnabledAction(enabled: boolean) {
       : `Comissão removida de ${result.count} produto(s).`,
   };
 }
+
+export type CommissionProductOption = {
+  id: string;
+  name: string;
+  salePrice: number;
+  commissionEnabled: boolean;
+};
+
+/**
+ * Busca produto ativo pelo nome, pra marcar/desmarcar comissão individual
+ * sem sair de Colaboradores — ver `ProdutosComissionadosBusca`.
+ */
+export async function searchCommissionProductsAction(
+  query: string
+): Promise<CommissionProductOption[]> {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) return [];
+  const term = query.trim();
+  if (term.length < 2) return [];
+
+  const products = await prisma.product.findMany({
+    where: { tenantId: user.tenantId, active: true, name: { contains: term, mode: "insensitive" } },
+    select: { id: true, name: true, salePrice: true, commissionEnabled: true },
+    orderBy: { name: "asc" },
+    take: 20,
+  });
+
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    salePrice: Number(p.salePrice),
+    commissionEnabled: p.commissionEnabled,
+  }));
+}
+
+/** Liga/desliga a comissão de um único produto — usado pela busca acima. */
+export async function setProductCommissionEnabledAction(productId: string, enabled: boolean) {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar comissão." };
+  }
+
+  const result = await prisma.product.updateMany({
+    where: { id: productId, tenantId: user.tenantId },
+    data: { commissionEnabled: enabled },
+  });
+  if (result.count === 0) return { error: "Produto não encontrado." };
+
+  revalidatePath("/colaboradores");
+  revalidatePath("/produtos");
+  return { success: enabled ? "Produto comissionado." : "Comissão removida do produto." };
+}
