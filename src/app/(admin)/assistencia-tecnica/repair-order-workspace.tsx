@@ -1087,7 +1087,7 @@ export function RepairOrderWorkspace({
                   target="_blank"
                   className="rounded-md border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Cupom de entrada (80mm)
+                  Imprimir Cupom (entrada)
                 </Link>
                 {status === "DELIVERED" ? (
                   <Link
@@ -1095,7 +1095,7 @@ export function RepairOrderWorkspace({
                     target="_blank"
                     className="rounded-md border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    Cupom de entrega (80mm)
+                    Imprimir Cupom (entrega)
                   </Link>
                 ) : (
                   <button
@@ -1103,7 +1103,7 @@ export function RepairOrderWorkspace({
                     onClick={() => window.print()}
                     className="rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    Imprimir OS (A4)
+                    Imprimir A4
                   </button>
                 )}
                 <button
