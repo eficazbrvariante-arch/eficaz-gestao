@@ -475,8 +475,13 @@ model Product {
   /// evita agregação por produto em toda renderização de card.
   avgRating         Decimal?  @db.Decimal(2, 1)
   reviewCount       Int       @default(0)
-  /// Comissão individual (%) — sobrescreve `Tenant.defaultCommissionPercent`
-  /// quando definida. Nulo = usa a comissão geral da empresa.
+  /// Se este produto entra no cálculo de comissão — comissão não é padrão
+  /// pra todo o catálogo, só pros produtos marcados explicitamente aqui
+  /// (seleção em massa disponível na listagem de Produtos).
+  commissionEnabled Boolean   @default(false)
+  /// Comissão individual (%), só relevante quando `commissionEnabled` —
+  /// sobrescreve `Tenant.defaultCommissionPercent` quando definida. Nulo =
+  /// usa a comissão geral da empresa.
   commissionPercent Decimal?  @db.Decimal(5, 2)
   /// Quando o Colaborador de Estoque confirmou esse produto no ciclo de
   /// contagem atual. Nulo = ainda pendente (aparece na fila dele). Zerado

@@ -181,6 +181,7 @@ function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
     // Comissão é configuração sensível (quem ganha o quê) — só quem gerencia
     // o painel de Colaboradores pode mexer, mesmo que o resto do formulário
     // esteja liberado pra Estoquista também (ver `canManageProducts`).
+    commissionEnabled: canSetCommission ? data.commissionEnabled : undefined,
     commissionPercent: canSetCommission ? (data.commissionPercent ?? null) : undefined,
     stockQty: data.stockQty,
     minStock: data.minStock,
@@ -462,6 +463,29 @@ export async function bulkUpdateProductsAction(
 
   revalidatePath("/produtos");
   return { success: `${result.count} produto(s) atualizado(s).` };
+}
+
+/**
+ * Liga/desliga a comissão de venda em massa — separado de `bulkUpdateProductsAction`
+ * porque é uma permissão mais restrita (quem gerencia o painel de Colaboradores,
+ * não qualquer um que edita produto — ver `canManageEmployeeLedger`).
+ */
+export async function bulkSetCommissionEnabledAction(ids: string[], enabled: boolean) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar comissão." };
+  }
+  if (ids.length === 0) return { error: "Nenhum produto selecionado." };
+
+  const result = await prisma.product.updateMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    data: { commissionEnabled: enabled },
+  });
+
+  revalidatePath("/produtos");
+  return {
+    success: `${result.count} produto(s) ${enabled ? "marcado(s) como comissionado(s)" : "sem comissão"}.`,
+  };
 }
 
 /**

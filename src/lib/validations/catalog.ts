@@ -52,7 +52,11 @@ export const productSchema = z.object({
   description: z.string().trim().optional().or(z.literal("")),
   costPrice: z.coerce.number().min(0, "O custo não pode ser negativo"),
   salePrice: z.coerce.number().min(0, "O preço de venda não pode ser negativo"),
-  /// Comissão individual (%) — em branco usa a comissão geral da empresa (ver `Tenant.defaultCommissionPercent`).
+  /// Se este produto entra no cálculo de comissão — não é padrão pra todo o
+  /// catálogo, só quem for marcado (ver `Product.commissionEnabled`).
+  commissionEnabled: z.boolean().default(false),
+  /// Comissão individual (%), só relevante com `commissionEnabled` — em
+  /// branco usa a comissão geral da empresa (`Tenant.defaultCommissionPercent`).
   commissionPercent: z
     .union([z.literal(""), z.coerce.number().min(0).max(100)])
     .optional()

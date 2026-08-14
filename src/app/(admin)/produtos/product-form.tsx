@@ -53,6 +53,7 @@ export function ProductForm({
       active: true,
       showInCatalog: true,
       isFeatured: false,
+      commissionEnabled: false,
       stockQty: 0,
       minStock: 0,
       costPrice: 0,
@@ -161,21 +162,32 @@ export function ProductForm({
           <Input id="promoPrice" type="number" step="0.01" {...register("promoPrice")} />
           <FieldError message={errors.promoPrice?.message} />
         </div>
-        {canManageCommission && (
-          <div>
-            <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
-            <Input
-              id="commissionPercent"
-              type="number"
-              step="0.01"
-              placeholder="Usa a comissão geral"
-              {...register("commissionPercent")}
-            />
-            <p className="mt-1 text-xs text-slate-500">Vazio = usa a comissão geral da empresa.</p>
-            <FieldError message={errors.commissionPercent?.message} />
-          </div>
-        )}
       </div>
+
+      {canManageCommission && (
+        <div className="mb-4 rounded-md border border-slate-200 p-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <Checkbox {...register("commissionEnabled")} />
+            Este produto entra na comissão de venda
+          </label>
+          {watch("commissionEnabled") && (
+            <div className="mt-3 max-w-xs">
+              <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
+              <Input
+                id="commissionPercent"
+                type="number"
+                step="0.01"
+                placeholder="Usa a comissão geral"
+                {...register("commissionPercent")}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Vazio = usa a comissão geral configurada em Colaboradores.
+              </p>
+              <FieldError message={errors.commissionPercent?.message} />
+            </div>
+          )}
+        </div>
+      )}
 
       {Boolean(watch("promoPrice")) && (
         <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">

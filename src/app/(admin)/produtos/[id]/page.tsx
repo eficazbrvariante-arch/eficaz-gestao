@@ -55,6 +55,7 @@ export default async function EditarProdutoPage({
             costPrice: Number(product.costPrice),
             salePrice: Number(product.salePrice),
             promoPrice: product.promoPrice ? Number(product.promoPrice) : undefined,
+            commissionEnabled: product.commissionEnabled,
             commissionPercent:
               product.commissionPercent !== null ? Number(product.commissionPercent) : undefined,
             promoStartedAt: product.promoStartedAt

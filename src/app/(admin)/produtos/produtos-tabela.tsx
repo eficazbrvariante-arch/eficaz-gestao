@@ -30,6 +30,7 @@ import { isLowStock, isOutOfStock } from "@/modules/products/stock-status";
 import type { ProductListItem, ProductSort, SortDir } from "@/modules/products/product-list-query";
 import {
   bulkDeleteProductsAction,
+  bulkSetCommissionEnabledAction,
   bulkUpdateProductsAction,
   deleteProductAction,
   duplicateProductAction,
@@ -104,6 +105,7 @@ export function ProdutosTabela({
   storeSubdomain,
   categories,
   brands,
+  canManageCommission,
 }: {
   items: ProductListItem[];
   sort: ProductSort;
@@ -111,6 +113,8 @@ export function ProdutosTabela({
   storeSubdomain: string | null;
   categories: { id: string; name: string }[];
   brands: { id: string; name: string }[];
+  /** Comissão é configuração sensível — só quem gerencia Colaboradores vê o botão em massa. */
+  canManageCommission: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -303,9 +307,14 @@ export function ProdutosTabela({
                     <StockBadge product={product} />
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={product.active ? "success" : "neutral"}>
-                      {product.active ? "Ativo" : "Inativo"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={product.active ? "success" : "neutral"}>
+                        {product.active ? "Ativo" : "Inativo"}
+                      </Badge>
+                      {canManageCommission && product.commissionEnabled && (
+                        <Badge variant="success">Comissionado</Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu trigger={<MoreHorizontal className="h-4 w-4" />}>
@@ -386,6 +395,9 @@ export function ProdutosTabela({
                     <Badge variant={product.active ? "success" : "neutral"}>
                       {product.active ? "Ativo" : "Inativo"}
                     </Badge>
+                    {canManageCommission && product.commissionEnabled && (
+                      <Badge variant="success">Comissionado</Badge>
+                    )}
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                     <span>Estoque: {product.stockQty}</span>
@@ -460,6 +472,36 @@ export function ProdutosTabela({
             <Button variant="secondary" fullWidth={false} disabled={isPending} onClick={() => setBulkField("brand")}>
               Alterar marca
             </Button>
+            {canManageCommission && (
+              <>
+                <Button
+                  variant="secondary"
+                  fullWidth={false}
+                  disabled={isPending}
+                  onClick={() =>
+                    runAction(
+                      () => bulkSetCommissionEnabledAction([...selected], true),
+                      "Produtos marcados como comissionados."
+                    )
+                  }
+                >
+                  Comissionar
+                </Button>
+                <Button
+                  variant="secondary"
+                  fullWidth={false}
+                  disabled={isPending}
+                  onClick={() =>
+                    runAction(
+                      () => bulkSetCommissionEnabledAction([...selected], false),
+                      "Comissão removida dos produtos selecionados."
+                    )
+                  }
+                >
+                  Remover comissão
+                </Button>
+              </>
+            )}
             <Button variant="danger" fullWidth={false} disabled={isPending} onClick={() => setConfirmBulkDelete(true)}>
               Excluir
             </Button>

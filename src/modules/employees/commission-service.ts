@@ -4,14 +4,16 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+/** Comissão não é padrão pra todo o catálogo — só entra no cálculo quem tem `commissionEnabled`. */
 function itemCommission(
   itemTotal: number,
-  productCommissionPercent: unknown,
+  product: { commissionEnabled: boolean; commissionPercent: unknown },
   defaultCommissionPercent: number
 ) {
+  if (!product.commissionEnabled) return 0;
   const percent =
-    productCommissionPercent !== null && productCommissionPercent !== undefined
-      ? Number(productCommissionPercent)
+    product.commissionPercent !== null && product.commissionPercent !== undefined
+      ? Number(product.commissionPercent)
       : defaultCommissionPercent;
   return (itemTotal * percent) / 100;
 }
@@ -34,13 +36,13 @@ export async function getCommissionTotalsByUsers(
     where: { sale: { tenantId, sellerId: { in: userIds }, status: "COMPLETED" } },
     select: {
       total: true,
-      product: { select: { commissionPercent: true } },
+      product: { select: { commissionEnabled: true, commissionPercent: true } },
       sale: { select: { sellerId: true } },
     },
   });
 
   for (const item of items) {
-    const commission = itemCommission(Number(item.total), item.product.commissionPercent, defaultPercent);
+    const commission = itemCommission(Number(item.total), item.product, defaultPercent);
     const sellerId = item.sale.sellerId;
     totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + commission));
   }
@@ -71,7 +73,9 @@ export async function getSellerCommissionHistory(
         number: true,
         createdAt: true,
         total: true,
-        items: { select: { total: true, product: { select: { commissionPercent: true } } } },
+        items: {
+          select: { total: true, product: { select: { commissionEnabled: true, commissionPercent: true } } },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -85,7 +89,7 @@ export async function getSellerCommissionHistory(
     total: Number(sale.total),
     commission: round2(
       sale.items.reduce(
-        (sum, item) => sum + itemCommission(Number(item.total), item.product.commissionPercent, defaultPercent),
+        (sum, item) => sum + itemCommission(Number(item.total), item.product, defaultPercent),
         0
       )
     ),
