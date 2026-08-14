@@ -61,13 +61,20 @@ export type SellerCommissionSaleRow = {
 /** Histórico de vendas de um vendedor, com a comissão calculada em cada uma. */
 export async function getSellerCommissionHistory(
   tenantId: string,
-  userId: string
+  userId: string,
+  /** Período opcional (inclusivo) pra filtrar as vendas consideradas — ver `periodRange`. */
+  range?: { start: Date; end: Date }
 ): Promise<{ sellerName: string; sales: SellerCommissionSaleRow[]; totalCommission: number }> {
   const [seller, tenant, sales] = await Promise.all([
     prisma.user.findFirstOrThrow({ where: { id: userId, tenantId }, select: { name: true } }),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { defaultCommissionPercent: true } }),
     prisma.sale.findMany({
-      where: { tenantId, sellerId: userId, status: "COMPLETED" },
+      where: {
+        tenantId,
+        sellerId: userId,
+        status: "COMPLETED",
+        ...(range ? { createdAt: { gte: range.start, lt: range.end } } : {}),
+      },
       select: {
         id: true,
         number: true,
