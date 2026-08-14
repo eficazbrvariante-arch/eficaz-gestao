@@ -126,8 +126,8 @@ export default async function ComprovantePage({
         )}
 
         <div className="mb-4 space-y-0.5 text-xs text-slate-600">
-          <div className="flex justify-between">
-            <span>Venda</span>
+          <div>
+            <span>Venda </span>
             <span className="font-medium text-slate-900">#{sale.number}</span>
           </div>
           <div className="flex justify-between">
