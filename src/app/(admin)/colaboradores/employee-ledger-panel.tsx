@@ -18,6 +18,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   createEmployeeLedgerEntryAction,
+  listCommissionedProductsAction,
   listEmployeesAction,
   searchCommissionProductsAction,
   setAllProductsCommissionEnabledAction,
@@ -94,6 +95,33 @@ export function EmployeeLedgerPanel({
     listEmployeesAction().then(setEmployees);
   }, []);
 
+  // Lista de controle visual — todo produto já marcado pra comissão, sempre
+  // visível (não depende de busca). Carrega uma vez e depois só se ajusta de
+  // forma otimista a cada marcar/desmarcar, pra não recarregar do zero a
+  // toda ação.
+  const [commissionedList, setCommissionedList] = useState<CommissionProductOption[]>([]);
+  const [commissionedListLoaded, setCommissionedListLoaded] = useState(false);
+  const [commissionedListFilter, setCommissionedListFilter] = useState("");
+  useEffect(() => {
+    listCommissionedProductsAction().then((list) => {
+      setCommissionedList(list);
+      setCommissionedListLoaded(true);
+    });
+  }, []);
+
+  function addToCommissionedList(product: CommissionProductOption) {
+    setCommissionedList((current) =>
+      current.some((p) => p.id === product.id)
+        ? current
+        : [...current, { ...product, commissionEnabled: true }].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+    );
+  }
+  function removeFromCommissionedList(productId: string) {
+    setCommissionedList((current) => current.filter((p) => p.id !== productId));
+  }
+
   // Busca de produto por nome pra marcar/desmarcar comissão sem sair de
   // Colaboradores (ver `searchCommissionProductsAction`) — mesmo debounce de
   // 250ms usado na busca do PDV.
@@ -127,6 +155,8 @@ export function EmployeeLedgerPanel({
         current.map((p) => (p.id === product.id ? { ...p, commissionEnabled: enabled } : p))
       );
       setCommissionedCount((current) => current + (enabled ? 1 : -1));
+      if (enabled) addToCommissionedList(product);
+      else removeFromCommissionedList(product.id);
     });
   }
 
@@ -191,9 +221,16 @@ export function EmployeeLedgerPanel({
       }
       setFeedback({ type: "success", message: result?.success ?? "Produtos atualizados." });
       setCommissionedCount(enabled ? totalActiveProducts : 0);
-      // A lista de resultados da busca pode estar mostrando o estado antigo
-      // de comissão — reflete o que acabou de mudar em massa.
+      // A lista de resultados da busca e a lista de controle podem estar
+      // mostrando o estado antigo de comissão — reflete o que acabou de
+      // mudar em massa (na lista de controle, recarrega do servidor pra
+      // trazer os produtos que entraram, já que não estão em memória).
       setProductResults((current) => current.map((p) => ({ ...p, commissionEnabled: enabled })));
+      if (enabled) {
+        listCommissionedProductsAction().then(setCommissionedList);
+      } else {
+        setCommissionedList([]);
+      }
       router.refresh();
     });
   }
@@ -241,6 +278,55 @@ export function EmployeeLedgerPanel({
             </Button>
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="mb-1 text-sm font-semibold text-slate-900">Lista de produtos comissionados</p>
+        <p className="mb-3 text-xs text-slate-500">
+          Controle visual de tudo que já está marcado — desmarque aqui pra tirar um produto da
+          comissão.
+        </p>
+        {commissionedList.length > 3 && (
+          <Input
+            value={commissionedListFilter}
+            onChange={(e) => setCommissionedListFilter(e.target.value)}
+            placeholder="Filtrar por nome..."
+            className="mb-3 max-w-sm"
+          />
+        )}
+        <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+          {!commissionedListLoaded && (
+            <p className="px-3 py-3 text-sm text-slate-400">Carregando...</p>
+          )}
+          {commissionedListLoaded && commissionedList.length === 0 && (
+            <p className="px-3 py-3 text-sm text-slate-400">Nenhum produto comissionado ainda.</p>
+          )}
+          {commissionedListLoaded && commissionedCount > commissionedList.length && (
+            <p className="px-3 py-2 text-xs text-amber-600">
+              Mostrando os primeiros {commissionedList.length} de {commissionedCount}.
+            </p>
+          )}
+          {commissionedList
+            .filter((product) =>
+              product.name.toLowerCase().includes(commissionedListFilter.trim().toLowerCase())
+            )
+            .map((product) => (
+              <label
+                key={product.id}
+                className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-50"
+              >
+                <span className="flex items-center gap-2">
+                  <Checkbox
+                    checked
+                    disabled={!canEditCommission || productTogglingId === product.id}
+                    onChange={() => toggleProductCommission(product)}
+                  />
+                  <span className="text-slate-800">{product.name}</span>
+                </span>
+                <span className="text-slate-500">{formatBRL(product.salePrice)}</span>
+              </label>
+            ))}
+        </div>
       </div>
 
       {canEditCommission && (
