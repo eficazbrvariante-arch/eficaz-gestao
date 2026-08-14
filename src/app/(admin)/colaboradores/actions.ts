@@ -73,3 +73,29 @@ export async function setDefaultCommissionPercentAction(percent: number) {
   revalidatePath("/colaboradores");
   return { success: "Comissão geral atualizada." };
 }
+
+/**
+ * Liga/desliga a comissão geral em todos os produtos ativos de uma vez —
+ * atalho pra quem quer que a comissão geral valha pro catálogo inteiro, sem
+ * precisar marcar produto por produto em Produtos (percentual individual
+ * continua sendo exceção, ajustada depois na edição de cada produto).
+ */
+export async function setAllProductsCommissionEnabledAction(enabled: boolean) {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar comissão." };
+  }
+
+  const result = await prisma.product.updateMany({
+    where: { tenantId: user.tenantId, active: true },
+    data: { commissionEnabled: enabled },
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath("/produtos");
+  return {
+    success: enabled
+      ? `${result.count} produto(s) marcado(s) como comissionado(s).`
+      : `Comissão removida de ${result.count} produto(s).`,
+  };
+}

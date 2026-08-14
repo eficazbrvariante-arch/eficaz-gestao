@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FormBanner } from "@/components/ui/form-banner";
 import { EmptyState } from "@/components/admin/stat-card";
 import {
@@ -16,6 +18,7 @@ import {
 import {
   createEmployeeLedgerEntryAction,
   listEmployeesAction,
+  setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
   settleEmployeeLedgerEntryAction,
   type EmployeeOption,
@@ -52,15 +55,25 @@ export function EmployeeLedgerPanel({
   entries,
   defaultCommissionPercent,
   canEditCommission,
+  totalActiveProducts,
+  commissionedProducts,
 }: {
   cardRows: EmployeeCardRow[];
   entries: EmployeeLedgerEntryRow[];
   defaultCommissionPercent: number;
   /** Gerente só visualiza a comissão (geral e por produto) — só ADMIN altera. */
   canEditCommission: boolean;
+  /** Total de produtos ativos do tenant — pra mostrar quantos entram na comissão geral. */
+  totalActiveProducts: number;
+  /** Quantos desses produtos ativos estão marcados com `commissionEnabled`. */
+  commissionedProducts: number;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
+  const [confirmAllCommission, setConfirmAllCommission] = useState<"enable" | "disable" | null>(
+    null
+  );
 
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   useEffect(() => {
@@ -115,16 +128,71 @@ export function EmployeeLedgerPanel({
     });
   }
 
+  function handleSetAllProductsCommission() {
+    if (!confirmAllCommission) return;
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await setAllProductsCommissionEnabledAction(confirmAllCommission === "enable");
+      setConfirmAllCommission(null);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setFeedback({ type: "success", message: result?.success ?? "Produtos atualizados." });
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-6">
       <FormBanner message={feedback?.message} variant={feedback?.type} />
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="mb-1 text-sm font-semibold text-slate-900">Produtos comissionados</p>
+        <p className="mb-3 text-xs text-slate-500">
+          Só produto marcado aqui entra na comissão geral de venda (abaixo). Modo mais simples:
+          marque todos de uma vez e depois abra exceção — percentual menor ou sem comissão — só
+          nos produtos específicos, direto na{" "}
+          <Link href="/produtos" className="font-medium text-slate-700 hover:underline">
+            edição de cada produto
+          </Link>
+          .{!canEditCommission && " Somente o Administrador pode alterar."}
+        </p>
+        <p className="mb-3 text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">{commissionedProducts}</span> de{" "}
+          {totalActiveProducts} produto(s) ativo(s) comissionado(s).
+        </p>
+        {canEditCommission && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth={false}
+              disabled={isPending || totalActiveProducts === 0}
+              onClick={() => setConfirmAllCommission("enable")}
+              className="px-4"
+            >
+              Comissionar todos os produtos
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth={false}
+              disabled={isPending || commissionedProducts === 0}
+              onClick={() => setConfirmAllCommission("disable")}
+              className="px-4"
+            >
+              Remover comissão de todos
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Comissão geral de venda</p>
         <p className="mb-3 text-xs text-slate-500">
-          Percentual sobre o valor líquido vendido (já com desconto do item descontado), pra
-          qualquer produto sem comissão individual própria. Comissão por produto específico é
-          definida na tela de edição do produto.
+          Percentual sobre o valor líquido vendido, usado nos produtos comissionados que não têm
+          um percentual individual próprio.
           {!canEditCommission && " Somente o Administrador pode alterar."}
         </p>
         <div className="flex items-end gap-3">
@@ -310,6 +378,36 @@ export function EmployeeLedgerPanel({
           </table>
         </div>
       </div>
+
+      <Dialog
+        open={confirmAllCommission !== null}
+        onClose={() => setConfirmAllCommission(null)}
+        title={
+          confirmAllCommission === "enable"
+            ? "Comissionar todos os produtos"
+            : "Remover comissão de todos os produtos"
+        }
+        description={
+          confirmAllCommission === "enable"
+            ? `Marca os ${totalActiveProducts} produto(s) ativo(s) pra entrar na comissão geral de venda. Você pode abrir exceção (percentual menor ou sem comissão) depois, produto por produto.`
+            : `Remove a comissão dos ${commissionedProducts} produto(s) atualmente comissionado(s). O percentual individual de cada um é mantido, só fica sem efeito até marcar de novo.`
+        }
+        footer={
+          <>
+            <Button variant="secondary" fullWidth={false} onClick={() => setConfirmAllCommission(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="brand"
+              fullWidth={false}
+              disabled={isPending}
+              onClick={handleSetAllProductsCommission}
+            >
+              Confirmar
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

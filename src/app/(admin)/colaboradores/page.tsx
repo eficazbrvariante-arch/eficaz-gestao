@@ -21,24 +21,29 @@ export default async function ColaboradoresPage() {
     );
   }
 
-  const [sellers, tenant, debtSummary, entries] = await Promise.all([
-    prisma.user.findMany({
-      where: { tenantId: user.tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.tenant.findUniqueOrThrow({
-      where: { id: user.tenantId },
-      select: { defaultCommissionPercent: true },
-    }),
-    getEmployeeLedgerSummary(user.tenantId),
-    prisma.employeeLedgerEntry.findMany({
-      where: { tenantId: user.tenantId },
-      include: { user: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-  ]);
+  const [sellers, tenant, debtSummary, entries, totalActiveProducts, commissionedProducts] =
+    await Promise.all([
+      prisma.user.findMany({
+        where: { tenantId: user.tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.tenant.findUniqueOrThrow({
+        where: { id: user.tenantId },
+        select: { defaultCommissionPercent: true },
+      }),
+      getEmployeeLedgerSummary(user.tenantId),
+      prisma.employeeLedgerEntry.findMany({
+        where: { tenantId: user.tenantId },
+        include: { user: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      }),
+      prisma.product.count({ where: { tenantId: user.tenantId, active: true } }),
+      prisma.product.count({
+        where: { tenantId: user.tenantId, active: true, commissionEnabled: true },
+      }),
+    ]);
 
   const commissionTotals = await getCommissionTotalsByUsers(
     user.tenantId,
@@ -90,6 +95,8 @@ export default async function ColaboradoresPage() {
         entries={entryRows}
         defaultCommissionPercent={Number(tenant.defaultCommissionPercent)}
         canEditCommission={canEditCommission(user.role)}
+        totalActiveProducts={totalActiveProducts}
+        commissionedProducts={commissionedProducts}
       />
     </div>
   );
