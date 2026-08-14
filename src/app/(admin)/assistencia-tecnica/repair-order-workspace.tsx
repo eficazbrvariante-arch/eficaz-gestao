@@ -449,28 +449,24 @@ export function RepairOrderWorkspace({
   }
 
   /**
-   * "Compartilhar": usa a Web Share API nativa quando o navegador suporta
-   * (abre o seletor do próprio sistema — WhatsApp, e-mail, salvar, etc.);
-   * sem suporte (a maioria dos desktops), cai pro link direto do WhatsApp
-   * como já funcionava antes — nunca deixa o botão sem fazer nada.
+   * Sempre abre direto na conversa do cliente no WhatsApp (`wa.me/telefone`)
+   * — nunca a Web Share API nativa: ela não sabe pra qual contato mandar
+   * (é feita pra "compartilhar com qualquer app", não pra abrir a conversa
+   * de um número específico), então o Windows/Android acaba só oferecendo
+   * copiar o link em vez de abrir o WhatsApp já na conversa certa.
    */
   function handleShare() {
     if (!meta) return;
     setError(undefined);
 
-    const hasNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-
-    // Sem Web Share API: precisa do telefone pro link do WhatsApp; com Web
-    // Share API o sistema decide os destinos, então o telefone não é exigido.
-    if (!hasNativeShare && !customer?.phone) {
+    if (!customer?.phone) {
       setError("Este cliente não tem telefone cadastrado.");
       return;
     }
 
     // Abre a aba já em resposta ao clique, para o navegador não bloquear o
     // popup — o link de destino só é preenchido depois que o PDF existir.
-    // Só é usado no caminho sem Web Share API (fallback do WhatsApp).
-    const receiptWindow = hasNativeShare ? null : window.open("", "_blank");
+    const receiptWindow = window.open("", "_blank");
 
     startWhatsappTransition(async () => {
       const result = await ensureRepairOrderReceiptAction(meta.id);
@@ -484,16 +480,7 @@ export function RepairOrderWorkspace({
       const osLabel = `#${String(meta.number).padStart(6, "0")}`;
       const message = `Olá! Segue o comprovante da sua Ordem de Serviço ${osLabel}: ${receiptUrl}`;
 
-      if (hasNativeShare) {
-        try {
-          await navigator.share({ title: `OS ${osLabel}`, text: message, url: receiptUrl });
-        } catch {
-          // Usuário cancelou o seletor nativo (ou o navegador recusou) — não é erro pra mostrar.
-        }
-        return;
-      }
-
-      const digits = customer!.phone!.replace(/\D/g, "");
+      const digits = customer.phone!.replace(/\D/g, "");
       const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
       if (receiptWindow) {
         receiptWindow.location.href = whatsappUrl;
@@ -1154,7 +1141,7 @@ export function RepairOrderWorkspace({
                   disabled={isSendingWhatsapp}
                   className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 sm:col-span-2"
                 >
-                  {isSendingWhatsapp ? "Gerando comprovante..." : "Compartilhar comprovante"}
+                  {isSendingWhatsapp ? "Gerando comprovante..." : "Enviar comprovante no WhatsApp"}
                 </button>
               </div>
             </>
