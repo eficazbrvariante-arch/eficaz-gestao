@@ -1,13 +1,27 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { canManageCashRegister, canViewAllSales } from "@/lib/permissions";
 import { formatBRL, formatDateTime } from "@/lib/format";
 
 export default async function HistoricoCaixaPage() {
   const user = await requireUser();
+  if (!canManageCashRegister(user.role)) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+        Seu perfil não tem permissão para acessar o histórico de caixa.
+      </div>
+    );
+  }
 
+  // Vendedor só vê o próprio caixa, e só enquanto ele estiver aberto — some
+  // da lista assim que fecha, mesmo tendo sido ele quem abriu. Admin/Gerente
+  // (canViewAllSales) continuam vendo o histórico completo, de todo mundo.
+  const seeAll = canViewAllSales(user.role);
   const registers = await prisma.cashRegister.findMany({
-    where: { tenantId: user.tenantId },
+    where: seeAll
+      ? { tenantId: user.tenantId }
+      : { tenantId: user.tenantId, openedById: user.id, status: "OPEN" },
     include: {
       openedBy: { select: { name: true } },
       closedBy: { select: { name: true } },
@@ -105,7 +119,7 @@ export default async function HistoricoCaixaPage() {
             {registers.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
-                  Nenhum caixa registrado ainda.
+                  {seeAll ? "Nenhum caixa registrado ainda." : "Você não tem nenhum caixa aberto no momento."}
                 </td>
               </tr>
             )}
