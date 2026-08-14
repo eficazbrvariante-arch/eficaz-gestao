@@ -15,8 +15,11 @@ export type CreateSaleContext = {
   tenantId: string;
   sellerId: string;
   cashRegisterId: string;
-  /** Se falso, qualquer desconto informado é rejeitado. */
+  /** Se falso, qualquer desconto informado é rejeitado (exceto a exceção de película abaixo). */
   allowDiscount: boolean;
+  /** Se falso, mesmo com `allowDiscount`, a película 3D continua presa à
+   *  trava de capinha (ver `seller-discount-rules.ts`) — só ADMIN dispensa. */
+  allowFreeDiscount: boolean;
   /** Se falso, pagamento com a forma "Fiado" é rejeitado. */
   allowFiado: boolean;
   /** Quem está operando o caixa (pode ser diferente de `sellerId`, o
@@ -103,26 +106,31 @@ export async function createSale(
     const grossTotal = round2(unitPrice * item.quantity);
 
     const itemDiscount = round2(item.discount ?? 0);
-    if (itemDiscount > 0 && !ctx.allowDiscount) {
-      // Vendedor não tem desconto livre, mas pode aplicar o desconto de
-      // segurança nas películas 3D — só com uma capinha na venda e até o
-      // teto da regra (ver `seller-discount-rules.ts`).
+    if (itemDiscount > 0 && !ctx.allowFreeDiscount) {
+      // Só ADMIN (allowFreeDiscount) tem desconto livre em qualquer item.
+      // Vendedor e Gerente podem aplicar o desconto de segurança nas
+      // películas 3D — só com uma capinha na venda e até o teto da regra
+      // (ver `seller-discount-rules.ts`) — mesmo Gerente não escapa dessa
+      // trava. Fora da película, Vendedor não desconta nada.
       const rule = getSellerDiscountRule(product.name, unitPrice);
       if (!rule) {
-        return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
-      }
-      if (!hasCapinhaInSale) {
-        return {
-          ok: false,
-          error: `O desconto em "${product.name}" só é permitido com uma capinha no carrinho.`,
-        };
-      }
-      const maxLineDiscount = round2(rule.maxDiscountPerUnit * item.quantity);
-      if (itemDiscount > maxLineDiscount + CENT) {
-        return {
-          ok: false,
-          error: `O desconto máximo em "${product.name}" é ${formatBRL(maxLineDiscount)}.`,
-        };
+        if (!ctx.allowDiscount) {
+          return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
+        }
+      } else {
+        if (!hasCapinhaInSale) {
+          return {
+            ok: false,
+            error: `O desconto em "${product.name}" só é permitido com uma capinha no carrinho.`,
+          };
+        }
+        const maxLineDiscount = round2(rule.maxDiscountPerUnit * item.quantity);
+        if (itemDiscount > maxLineDiscount + CENT) {
+          return {
+            ok: false,
+            error: `O desconto máximo em "${product.name}" é ${formatBRL(maxLineDiscount)}.`,
+          };
+        }
       }
     }
     if (itemDiscount > grossTotal + CENT) {

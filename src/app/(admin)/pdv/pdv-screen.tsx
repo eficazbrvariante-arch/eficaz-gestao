@@ -50,10 +50,13 @@ function round2(value: number) {
 
 export function PdvScreen({
   canDiscount,
+  canDiscountFreely,
   canFiado,
   autoPrintReceipt,
 }: {
   canDiscount: boolean;
+  /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
+  canDiscountFreely: boolean;
   /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
   canFiado: boolean;
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
@@ -145,28 +148,30 @@ export function PdvScreen({
   const discount = round2(cart.reduce((sum, line) => sum + (line.discount || 0), 0));
   const total = round2(Math.max(0, subtotal - discount));
 
-  // Desconto de segurança do Vendedor nas películas 3D (ver
-  // `seller-discount-rules.ts`): só liberado com uma capinha no carrinho.
-  // Gerente/Admin (canDiscount) não passam por essa trava — eles já têm
-  // desconto livre em qualquer item.
+  // Desconto de segurança nas películas 3D (ver `seller-discount-rules.ts`):
+  // só liberado com uma capinha no carrinho. Vale pra Vendedor e Gerente —
+  // só Admin (canDiscountFreely) não passa por essa trava.
   const hasCapinhaInCart = cart.some((line) => isCapinhaCategory(line.categoryName));
 
   function maxLineDiscount(line: CartLine) {
     const grossTotal = round2(line.unitPrice * line.quantity);
-    if (canDiscount) return grossTotal;
     const rule = getSellerDiscountRule(line.name, line.unitPrice);
-    if (!rule || !hasCapinhaInCart) return 0;
-    return Math.min(grossTotal, round2(rule.maxDiscountPerUnit * line.quantity));
+    if (rule) {
+      if (canDiscountFreely) return grossTotal;
+      if (!hasCapinhaInCart) return 0;
+      return Math.min(grossTotal, round2(rule.maxDiscountPerUnit * line.quantity));
+    }
+    return canDiscount ? grossTotal : 0;
   }
 
-  // Se a capinha sair do carrinho, o desconto de película que o Vendedor deu
-  // some junto — não dá pra deixar um desconto "pendurado" sem a condição
-  // que o liberou — e os totais recalculam sozinhos porque `discount`/`total`
-  // já derivam do carrinho.
+  // Se a capinha sair do carrinho, o desconto de película dado por quem não
+  // tem desconto livre (Vendedor ou Gerente) some junto — não dá pra deixar
+  // um desconto "pendurado" sem a condição que o liberou — e os totais
+  // recalculam sozinhos porque `discount`/`total` já derivam do carrinho.
   useEffect(() => {
     const hadCapinha = hadCapinhaRef.current;
     hadCapinhaRef.current = hasCapinhaInCart;
-    if (canDiscount || !hadCapinha || hasCapinhaInCart) return;
+    if (canDiscountFreely || !hadCapinha || hasCapinhaInCart) return;
 
     setCart((current) => {
       let changed = false;
@@ -182,7 +187,7 @@ export function PdvScreen({
     setDiscountNotice(
       "A capinha foi removida do carrinho — o desconto da(s) película(s) foi cancelado e os valores foram recalculados."
     );
-  }, [hasCapinhaInCart, canDiscount]);
+  }, [hasCapinhaInCart, canDiscountFreely]);
 
   const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
   const remaining = round2(total - paid);
@@ -662,9 +667,10 @@ export function PdvScreen({
 
                     {(() => {
                       const cap = maxLineDiscount(line);
-                      const sellerRule = !canDiscount && getSellerDiscountRule(line.name, line.unitPrice);
+                      const sellerRule =
+                        !canDiscountFreely && getSellerDiscountRule(line.name, line.unitPrice);
                       if (!canDiscount && !sellerRule) return null;
-                      const blockedBySellerRule = !canDiscount && cap === 0;
+                      const blockedBySellerRule = Boolean(sellerRule) && cap === 0;
                       return (
                         <div>
                           <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>

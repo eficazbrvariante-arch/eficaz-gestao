@@ -39,6 +39,16 @@ export function canApplyDiscount(role: UserRole) {
 }
 
 /**
+ * Desconto livre na película 3D, sem depender de capinha no carrinho.
+ * Diferente de `canApplyDiscount` (Admin e Gerente descontam qualquer outro
+ * item livremente): a trava de capinha (`seller-discount-rules.ts`) vale
+ * também pro Gerente, só ADMIN é dispensado dela.
+ */
+export function canDiscountFreely(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Cancelar uma venda já concluída (devolve o estoque).
  * Vendedor também pode — é o caminho pra processar uma troca (cancela a
  * venda original e lança uma nova no PDV). Fica rastreado no registro de

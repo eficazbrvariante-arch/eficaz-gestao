@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canApplyDiscount, canManageFiado, canSell } from "@/lib/permissions";
+import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
 import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
@@ -162,6 +162,7 @@ export async function createSaleAction(
       sellerId: parsed.data.sellerId,
       cashRegisterId: register.id,
       allowDiscount: canApplyDiscount(user.role),
+      allowFreeDiscount: canDiscountFreely(user.role),
       allowFiado: canManageFiado(user.role),
       operatorId: user.id,
     },
