@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateSaleInput } from "@/lib/validations/sale";
 import { createFiadoEntry } from "@/modules/fiado/fiado-service";
-import { getSellerDiscountRule, isCapinhaCategory } from "@/lib/seller-discount-rules";
+import {
+  allocateSellerDiscountBudget,
+  getSellerDiscountRule,
+  isCapinhaCategory,
+} from "@/lib/seller-discount-rules";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -54,11 +58,30 @@ export async function createSale(
   });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
-  // Desconto restrito do Vendedor (película 3D) só é liberado com uma
-  // capinha em algum item da venda — checagem em cima dos produtos da
-  // venda inteira, não só do item que está recebendo o desconto.
-  const hasCapinhaInSale = input.items.some((item) =>
-    isCapinhaCategory(productMap.get(item.productId)?.category?.name)
+  // Desconto restrito do Vendedor (película 3D): cada capinha na venda
+  // libera o desconto de uma película, nunca "qualquer quantidade de
+  // película com uma capinha só" — checagem em cima dos itens da venda
+  // inteira, não item a item isolado (ver `allocateSellerDiscountBudget`,
+  // mesma lógica usada no PDV pra mostrar o teto ao vivo — precisa dar o
+  // mesmo resultado nos dois lugares, já que aqui é a validação que vale de
+  // verdade).
+  const capinhaUnits = input.items.reduce((sum, item) => {
+    const product = productMap.get(item.productId);
+    return sum + (isCapinhaCategory(product?.category?.name) ? item.quantity : 0);
+  }, 0);
+  const sellerDiscountAllocation = allocateSellerDiscountBudget(
+    input.items.map((item, index) => {
+      const product = productMap.get(item.productId);
+      const variant = item.variantId ? product?.variants.find((v) => v.id === item.variantId) : undefined;
+      const basePrice = product ? Number(product.promoPrice ?? product.salePrice) : 0;
+      return {
+        key: String(index),
+        name: product?.name ?? "",
+        unitPrice: round2(basePrice + Number(variant?.priceAdjustment ?? 0)),
+        quantity: item.quantity,
+      };
+    }),
+    capinhaUnits
   );
 
   // Consolida quantidades por produto (o mesmo item pode vir repetido).
@@ -86,7 +109,7 @@ export async function createSale(
   let costTotal = 0;
   let discount = 0;
 
-  for (const item of input.items) {
+  for (const [itemIndex, item] of input.items.entries()) {
     const product = productMap.get(item.productId);
     if (!product) return { ok: false, error: "Produto não encontrado na venda." };
     if (!product.active) {
@@ -118,13 +141,17 @@ export async function createSale(
           return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
         }
       } else {
-        if (!hasCapinhaInSale) {
+        const allocatedUnits = sellerDiscountAllocation.get(String(itemIndex)) ?? 0;
+        if (allocatedUnits === 0) {
           return {
             ok: false,
-            error: `O desconto em "${product.name}" só é permitido com uma capinha no carrinho.`,
+            error:
+              capinhaUnits === 0
+                ? `O desconto em "${product.name}" só é permitido com uma capinha na venda.`
+                : `O desconto em "${product.name}" excede a quantidade de capinhas na venda — cada capinha libera o desconto de uma película.`,
           };
         }
-        const maxLineDiscount = round2(rule.maxDiscountPerUnit * item.quantity);
+        const maxLineDiscount = round2(allocatedUnits * rule.maxDiscountPerUnit);
         if (itemDiscount > maxLineDiscount + CENT) {
           return {
             ok: false,
