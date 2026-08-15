@@ -23,6 +23,7 @@ export function MembroForm({ convenioId }: { convenioId: string }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
   const [credentialUrl, setCredentialUrl] = useState<string | null>(null);
+  const [shortCode, setShortCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const {
@@ -45,6 +46,7 @@ export function MembroForm({ convenioId }: { convenioId: string }) {
         return;
       }
       if (result?.credentialUrl) setCredentialUrl(result.credentialUrl);
+      if (result?.shortCode) setShortCode(result.shortCode);
     });
   };
 
@@ -63,10 +65,20 @@ export function MembroForm({ convenioId }: { convenioId: string }) {
       <div>
         <h2 className="mb-2 text-base font-semibold text-slate-900">Colaborador cadastrado!</h2>
         <p className="mb-3 text-sm text-slate-500">
-          Repasse este link pra ele — mostra o status do cadastro e, quando aprovado, o QR Code da
-          carteirinha. Copie agora, ele não aparece de novo depois de sair desta tela.
+          Repasse o código abaixo pra ele — é o mais rápido pra usar no caixa, sem precisar de
+          link nem de internet. Se quiser, repasse o link também: mostra o status do cadastro e,
+          quando aprovado, o QR Code da carteirinha. Copie agora, nenhum dos dois aparece de novo
+          depois de sair desta tela.
         </p>
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+        {shortCode && (
+          <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-xs font-medium tracking-wide text-emerald-700 uppercase">Código</p>
+            <p className="mt-1 font-mono text-2xl font-bold tracking-widest text-emerald-900">
+              {shortCode}
+            </p>
+          </div>
+        )}
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3">
           <code className="flex-1 break-all rounded bg-white px-2 py-1.5 text-xs text-slate-700">
             {credentialUrl}
           </code>

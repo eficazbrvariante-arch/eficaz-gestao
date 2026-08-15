@@ -34,6 +34,7 @@ export type ConvenioMemberRow = {
   statusReason: string | null;
   selfieUrl: string;
   proofUrl: string | null;
+  shortCode: string;
   createdAt: Date;
 };
 
@@ -87,6 +88,7 @@ export function MembrosTabela({ members }: { members: ConvenioMemberRow[] }) {
               <th className="px-4 py-3 font-medium">Colaborador</th>
               <th className="px-4 py-3 font-medium">CPF</th>
               <th className="px-4 py-3 font-medium">Contato</th>
+              <th className="px-4 py-3 font-medium">Código</th>
               <th className="px-4 py-3 font-medium">Documentos</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Cadastrado em</th>
@@ -101,6 +103,11 @@ export function MembrosTabela({ members }: { members: ConvenioMemberRow[] }) {
                 <td className="px-4 py-3 text-slate-500">
                   {member.phone || "-"}
                   {member.email && <div className="text-xs text-slate-400">{member.email}</div>}
+                </td>
+                <td className="px-4 py-3">
+                  <code className="font-mono text-sm tracking-widest text-slate-700">
+                    {member.shortCode}
+                  </code>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

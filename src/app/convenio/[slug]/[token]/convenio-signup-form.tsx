@@ -21,6 +21,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
   const [credentialUrl, setCredentialUrl] = useState<string | null>(null);
+  const [shortCode, setShortCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [name, setName] = useState("");
@@ -63,6 +64,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
         return;
       }
       if (result?.credentialUrl) setCredentialUrl(result.credentialUrl);
+      if (result?.shortCode) setShortCode(result.shortCode);
     });
   }
 
@@ -81,12 +83,24 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
       <div className="text-center">
         <h2 className="mb-2 text-base font-semibold text-slate-900">Cadastro enviado!</h2>
         <p className="mb-4 text-sm text-slate-500">
-          Seu cadastro está pendente de aprovação. <strong>Salve o link abaixo agora</strong> —
-          é a sua carteirinha do convênio: mostra o status do cadastro e, assim que for aprovado,
-          o QR Code pra usar o benefício na loja. Ele não aparece de novo depois que você sair
-          desta página.
+          Seu cadastro está pendente de aprovação. Assim que for aprovado, é só informar o código
+          abaixo no caixa da loja pra usar o benefício — não precisa de link nem de internet.
         </p>
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-left">
+        {shortCode && (
+          <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-xs font-medium tracking-wide text-emerald-700 uppercase">
+              Seu código
+            </p>
+            <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-emerald-900">
+              {shortCode}
+            </p>
+          </div>
+        )}
+        <p className="mb-2 text-xs text-slate-500">
+          Se preferir, guarde também o link — ele mostra o status do cadastro e o QR Code. Não
+          aparece de novo depois que você sair desta página.
+        </p>
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-left">
           <code className="flex-1 break-all rounded bg-white px-2 py-1.5 text-xs text-slate-700">
             {credentialUrl}
           </code>

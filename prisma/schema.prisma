@@ -1299,6 +1299,15 @@ model ConvenioMember {
   /// colaborador for suspenso e reativado depois, pra não invalidar o QR que
   /// ele já salvou no celular.
   credentialTokenHash String               @unique
+  /// Código curto (6 dígitos) alternativo ao QR/link — o vendedor digita no
+  /// PDV em vez de precisar do link inteiro. Único só por tenant (não
+  /// globalmente): a validação no PDV já sabe o tenant da sessão, então não
+  /// precisa de um espaço de código gigante. Mais fraco que o token como
+  /// prova de posse (é curto, dá pra "emprestar" de boca), mas quem resgata
+  /// no PDV sempre vê a foto do colaborador antes de aplicar (ver
+  /// `ConvenioModal`) — é essa conferência visual que sustenta um código
+  /// curto sem abrir brecha de fraude.
+  shortCode           String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -1308,6 +1317,7 @@ model ConvenioMember {
   redemptions     ConvenioRedemption[]
 
   @@unique([convenioId, document])
+  @@unique([tenantId, shortCode])
   @@index([tenantId, convenioId, status])
   @@map("convenio_members")
 }

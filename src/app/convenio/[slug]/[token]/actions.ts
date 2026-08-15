@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { generateResetToken, hashToken } from "@/lib/tokens";
+import { generateUniqueConvenioShortCode } from "@/modules/convenios/convenio-redemption-service";
 import {
   buildConvenioSignupSchema,
   parseConvenioRules,
@@ -47,6 +48,7 @@ export async function submitConvenioSignupAction(rawToken: string, input: Conven
   }
 
   const credential = generateResetToken();
+  const shortCode = await generateUniqueConvenioShortCode(invite.tenantId);
   await prisma.convenioMember.create({
     data: {
       tenantId: invite.tenantId,
@@ -59,8 +61,9 @@ export async function submitConvenioSignupAction(rawToken: string, input: Conven
       proofUrl: parsed.data.proofUrl || null,
       consentAcceptedAt: new Date(),
       credentialTokenHash: credential.hashedToken,
+      shortCode,
     },
   });
 
-  return { ok: true as const, credentialUrl: credentialUrl(credential.rawToken) };
+  return { ok: true as const, credentialUrl: credentialUrl(credential.rawToken), shortCode };
 }

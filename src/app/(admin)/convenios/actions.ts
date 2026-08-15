@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canManageConvenios } from "@/lib/permissions";
 import { generateResetToken } from "@/lib/tokens";
+import { generateUniqueConvenioShortCode } from "@/modules/convenios/convenio-redemption-service";
 import {
   convenioMemberSchema,
   convenioSchema,
@@ -117,6 +118,7 @@ export async function createConvenioMemberAction(convenioId: string, input: Conv
   if (duplicate) return { error: "Esse CPF já está cadastrado neste convênio." };
 
   const { rawToken, hashedToken } = generateResetToken();
+  const shortCode = await generateUniqueConvenioShortCode(user.tenantId);
   await prisma.convenioMember.create({
     data: {
       tenantId: user.tenantId,
@@ -129,11 +131,12 @@ export async function createConvenioMemberAction(convenioId: string, input: Conv
       proofUrl: parsed.data.proofUrl,
       validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : null,
       credentialTokenHash: hashedToken,
+      shortCode,
     },
   });
 
   revalidatePath(`/convenios/${convenioId}`);
-  return { success: "Colaborador cadastrado.", credentialUrl: credentialUrl(rawToken) };
+  return { success: "Colaborador cadastrado.", credentialUrl: credentialUrl(rawToken), shortCode };
 }
 
 /**

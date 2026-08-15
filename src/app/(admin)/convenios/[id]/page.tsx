@@ -58,6 +58,7 @@ export default async function ConvenioDetalhePage({
     statusReason: member.statusReason,
     selfieUrl: member.selfieUrl,
     proofUrl: member.proofUrl,
+    shortCode: member.shortCode,
     createdAt: member.createdAt,
   }));
 

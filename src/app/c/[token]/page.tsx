@@ -49,9 +49,17 @@ export default async function ConvenioCredentialPage({
                   className="mx-auto mb-3 w-48 max-w-full"
                   dangerouslySetInnerHTML={{ __html: qrSvg }}
                 />
-                <p className="text-xs text-slate-500">
+                <p className="mb-4 text-xs text-slate-500">
                   Mostre este QR Code no caixa pra usar seu benefício.
                 </p>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                    Ou informe seu código
+                  </p>
+                  <p className="mt-1 font-mono text-2xl font-bold tracking-widest text-slate-900">
+                    {member.shortCode}
+                  </p>
+                </div>
               </>
             ) : (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-4">

@@ -66,7 +66,9 @@ export function ConvenioModal({
       onClose={onClose}
       title="Convênio corporativo"
       description={
-        resolved ? "Confira se é essa mesma pessoa antes de aplicar." : "Escaneie ou digite o código do QR."
+        resolved
+          ? "Confira se é essa mesma pessoa antes de aplicar."
+          : "Escaneie o QR, ou digite o código de 6 dígitos do colaborador."
       }
       footer={
         resolved ? (
@@ -128,7 +130,7 @@ export function ConvenioModal({
               handleValidate();
             }
           }}
-          placeholder="Código do QR ou link"
+          placeholder="Código de 6 dígitos, QR ou link"
           disabled={isPending}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />

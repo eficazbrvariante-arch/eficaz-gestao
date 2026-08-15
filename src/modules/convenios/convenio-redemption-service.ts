@@ -1,13 +1,37 @@
 import { prisma } from "@/lib/prisma";
-import { hashToken } from "@/lib/tokens";
+import { hashToken, generateShortCode } from "@/lib/tokens";
 import { addDaysISO, periodRange, todayISO } from "@/lib/format";
 import { parseConvenioRules } from "@/lib/validations/convenio";
 
-/** Aceita a URL completa lida pelo leitor (`.../c/TOKEN`) ou o token puro digitado à mão. */
+const SHORT_CODE_LENGTH = 6;
+
+/** Aceita a URL completa lida pelo leitor (`.../c/TOKEN`), o token puro ou o código curto de 6 dígitos, digitados à mão. */
 export function extractCredentialToken(rawInput: string): string {
   const trimmed = rawInput.trim();
   const match = trimmed.match(/\/c\/([^/?#]+)/);
   return (match ? match[1] : trimmed).trim();
+}
+
+function isShortCode(input: string): boolean {
+  return new RegExp(`^\\d{${SHORT_CODE_LENGTH}}$`).test(input);
+}
+
+/**
+ * Gera o código curto de um novo colaborador, único por tenant. Poucas
+ * dezenas de colaboradores por loja no máximo, então a chance de colisão é
+ * desprezível — o retry aqui é só uma rede de segurança, não algo esperado
+ * de acontecer na prática.
+ */
+export async function generateUniqueConvenioShortCode(tenantId: string): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateShortCode(SHORT_CODE_LENGTH);
+    const exists = await prisma.convenioMember.findUnique({
+      where: { tenantId_shortCode: { tenantId, shortCode: code } },
+      select: { id: true },
+    });
+    if (!exists) return code;
+  }
+  throw new Error("Não foi possível gerar um código de colaborador único. Tente novamente.");
 }
 
 const STATUS_MESSAGES: Record<string, string> = {
@@ -93,10 +117,15 @@ export async function resolveConvenioCredential(
   const scannedCode = extractCredentialToken(rawInput);
   if (!scannedCode) return { ok: false, error: "Código do convênio vazio." };
 
-  const member = await prisma.convenioMember.findUnique({
-    where: { credentialTokenHash: hashToken(scannedCode) },
-    include: { convenio: true },
-  });
+  const member = isShortCode(scannedCode)
+    ? await prisma.convenioMember.findUnique({
+        where: { tenantId_shortCode: { tenantId, shortCode: scannedCode } },
+        include: { convenio: true },
+      })
+    : await prisma.convenioMember.findUnique({
+        where: { credentialTokenHash: hashToken(scannedCode) },
+        include: { convenio: true },
+      });
   return validateMemberForRedemption(tenantId, member);
 }
 
