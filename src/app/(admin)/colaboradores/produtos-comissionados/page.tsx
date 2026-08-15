@@ -37,8 +37,8 @@ export default async function ProdutosComissionadosPage() {
         </Link>
         <h1 className="mt-2 text-xl font-semibold text-slate-900">Produtos comissionados</h1>
         <p className="text-sm text-slate-500">
-          {totalCount} produto(s) ativo(s) marcado(s) para comissão de venda. Desmarque os que não
-          devem mais entrar e clique em Salvar.
+          {totalCount} produto(s) ativo(s) marcado(s) para comissão de venda. Busque um produto pra
+          adicionar ou remover na hora, ou desmarque na lista abaixo e clique em Salvar.
         </p>
       </div>
 

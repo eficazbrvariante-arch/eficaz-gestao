@@ -15,16 +15,12 @@ import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
   type EmployeeLedgerTypeValue,
 } from "@/lib/validations/employee-ledger";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   createEmployeeLedgerEntryAction,
   listEmployeesAction,
-  searchCommissionProductsAction,
   setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
-  setProductCommissionEnabledAction,
   settleEmployeeLedgerEntryAction,
-  type CommissionProductOption,
   type EmployeeOption,
 } from "./actions";
 
@@ -94,42 +90,6 @@ export function EmployeeLedgerPanel({
     listEmployeesAction().then(setEmployees);
   }, []);
 
-  // Busca de produto por nome pra marcar/desmarcar comissão sem sair de
-  // Colaboradores (ver `searchCommissionProductsAction`) — mesmo debounce de
-  // 250ms usado na busca do PDV.
-  const [productSearch, setProductSearch] = useState("");
-  const [productResults, setProductResults] = useState<CommissionProductOption[]>([]);
-  const [productTogglingId, setProductTogglingId] = useState<string | null>(null);
-  useEffect(() => {
-    const query = productSearch.trim();
-    const timeout = window.setTimeout(() => {
-      if (query.length < 2) {
-        setProductResults([]);
-        return;
-      }
-      searchCommissionProductsAction(query).then(setProductResults);
-    }, 250);
-    return () => window.clearTimeout(timeout);
-  }, [productSearch]);
-
-  function toggleProductCommission(product: CommissionProductOption) {
-    const enabled = !product.commissionEnabled;
-    setProductTogglingId(product.id);
-    setFeedback(undefined);
-    startTransition(async () => {
-      const result = await setProductCommissionEnabledAction(product.id, enabled);
-      setProductTogglingId(null);
-      if (result?.error) {
-        setFeedback({ type: "error", message: result.error });
-        return;
-      }
-      setProductResults((current) =>
-        current.map((p) => (p.id === product.id ? { ...p, commissionEnabled: enabled } : p))
-      );
-      setCommissionedCount((current) => current + (enabled ? 1 : -1));
-    });
-  }
-
   const [userId, setUserId] = useState("");
   const [type, setType] = useState<EmployeeLedgerTypeValue>("ADVANCE");
   const [amount, setAmount] = useState("");
@@ -191,9 +151,6 @@ export function EmployeeLedgerPanel({
       }
       setFeedback({ type: "success", message: result?.success ?? "Produtos atualizados." });
       setCommissionedCount(enabled ? totalActiveProducts : 0);
-      // A lista de resultados da busca pode estar mostrando o estado antigo
-      // de comissão — reflete o que acabou de mudar em massa.
-      setProductResults((current) => current.map((p) => ({ ...p, commissionEnabled: enabled })));
       router.refresh();
     });
   }
@@ -206,8 +163,16 @@ export function EmployeeLedgerPanel({
         <p className="mb-1 text-sm font-semibold text-slate-900">Produtos comissionados</p>
         <p className="mb-3 text-xs text-slate-500">
           Só produto marcado aqui entra na comissão geral de venda (abaixo). Marque todos de uma
-          vez, ou busque um produto pelo nome logo abaixo pra marcar/desmarcar individualmente.
-          Quer um percentual diferente só num produto? Isso é exceção, ajustada na{" "}
+          vez, ou{" "}
+          <Link
+            href="/colaboradores/produtos-comissionados"
+            target="_blank"
+            className="font-medium text-slate-700 hover:underline"
+          >
+            verifique os produtos de comissão
+          </Link>{" "}
+          pra marcar/desmarcar individualmente. Quer um percentual diferente só num produto? Isso
+          é exceção, ajustada na{" "}
           <Link href="/produtos" className="font-medium text-slate-700 hover:underline">
             edição de cada produto
           </Link>
@@ -242,53 +207,6 @@ export function EmployeeLedgerPanel({
           </div>
         )}
       </div>
-
-      {canEditCommission && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-900">Buscar produto</p>
-            <Link
-              href="/colaboradores/produtos-comissionados"
-              target="_blank"
-              className="text-sm font-medium text-slate-700 hover:underline"
-            >
-              Visualizar produtos de comissão →
-            </Link>
-          </div>
-          <p className="mb-3 text-xs text-slate-500">
-            Digite o nome do produto pra marcar ou desmarcar a comissão dele individualmente.
-          </p>
-          <Input
-            value={productSearch}
-            onChange={(e) => setProductSearch(e.target.value)}
-            placeholder="Ex.: película 3D"
-            className="max-w-sm"
-          />
-          {productSearch.trim().length >= 2 && (
-            <div className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
-              {productResults.length === 0 && (
-                <p className="px-3 py-3 text-sm text-slate-400">Nenhum produto encontrado.</p>
-              )}
-              {productResults.map((product) => (
-                <label
-                  key={product.id}
-                  className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <Checkbox
-                      checked={product.commissionEnabled}
-                      disabled={productTogglingId === product.id}
-                      onChange={() => toggleProductCommission(product)}
-                    />
-                    <span className="text-slate-800">{product.name}</span>
-                  </span>
-                  <span className="text-slate-500">{formatBRL(product.salePrice)}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Comissão geral de venda</p>

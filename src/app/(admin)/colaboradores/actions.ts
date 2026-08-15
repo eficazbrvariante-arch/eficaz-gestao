@@ -108,8 +108,8 @@ export type CommissionProductOption = {
 };
 
 /**
- * Busca produto ativo pelo nome, pra marcar/desmarcar comissão individual
- * sem sair de Colaboradores — ver `ProdutosComissionadosBusca`.
+ * Busca produto ativo pelo nome, pra marcar/desmarcar comissão individual —
+ * ver `ProdutosComissionadosPicker`.
  */
 export async function searchCommissionProductsAction(
   query: string
@@ -148,6 +148,7 @@ export async function setProductCommissionEnabledAction(productId: string, enabl
   if (result.count === 0) return { error: "Produto não encontrado." };
 
   revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/produtos-comissionados");
   revalidatePath("/produtos");
   return { success: enabled ? "Produto comissionado." : "Comissão removida do produto." };
 }
