@@ -42,13 +42,13 @@ describe("resolveEffectiveUnitPrice — fonte única de preço, usada por create
   it("promoção normal já expirada é ignorada — nunca cobra um preço promocional velho", () => {
     const now = new Date("2026-08-05T12:00:00-03:00");
     const product = { ...baseProduct, promoPrice: 80, promoEndsAt: new Date("2026-08-01T00:00:00-03:00") };
-    expect(resolveEffectiveUnitPrice(product, 0, null, now)).toBe(100);
+    expect(resolveEffectiveUnitPrice(product, 0, null, null, now)).toBe(100);
   });
 
   it("promoção normal que ainda não começou é ignorada", () => {
     const now = new Date("2026-08-05T12:00:00-03:00");
     const product = { ...baseProduct, promoPrice: 80, promoStartedAt: new Date("2026-08-10T00:00:00-03:00") };
-    expect(resolveEffectiveUnitPrice(product, 0, null, now)).toBe(100);
+    expect(resolveEffectiveUnitPrice(product, 0, null, null, now)).toBe(100);
   });
 
   it("a Oferta Relâmpago do dia tem prioridade sobre a promoção normal do produto", () => {
@@ -72,5 +72,20 @@ describe("resolveEffectiveUnitPrice — fonte única de preço, usada por create
 
   it("arredonda o resultado para duas casas decimais", () => {
     expect(resolveEffectiveUnitPrice({ ...baseProduct, salePrice: 33.333 }, 0, null)).toBe(33.33);
+  });
+
+  it("aplica o desconto fixo de convênio sobre o preço normal", () => {
+    expect(resolveEffectiveUnitPrice(baseProduct, 0, null, 5)).toBe(95);
+  });
+
+  it("desconto de convênio nunca deixa o preço negativo", () => {
+    expect(resolveEffectiveUnitPrice({ ...baseProduct, salePrice: 3 }, 0, null, 5)).toBe(0);
+  });
+
+  it("convênio e Oferta Relâmpago não somam — vale o que der o preço mais baixo", () => {
+    // Oferta Relâmpago (30) é mais barata que o preço com desconto de convênio (95) — vale a Oferta Relâmpago.
+    expect(resolveEffectiveUnitPrice(baseProduct, 0, { promoPrice: 30 }, 5)).toBe(30);
+    // Desconto de convênio (95) é mais barato que a Oferta Relâmpago (98) — vale o convênio.
+    expect(resolveEffectiveUnitPrice(baseProduct, 0, { promoPrice: 98 }, 5)).toBe(95);
   });
 });

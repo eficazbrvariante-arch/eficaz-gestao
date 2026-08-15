@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema, passwordSchema } from "./customer-auth";
 
 /** Só dígitos — remove pontuação de CPF antes de comparar/salvar. */
 export function normalizeDocument(document: string) {
@@ -116,6 +117,8 @@ export type ConvenioSignupInput = {
   document: string;
   phone: string;
   email?: string;
+  username: string;
+  password: string;
   selfieUrl: string;
   proofUrl?: string;
   consent: boolean;
@@ -126,6 +129,11 @@ export type ConvenioSignupInput = {
  * colaborador preenche. `requireProof` vem da regra do convênio
  * (`Convenio.rules.requireProof`), então o schema é montado por convênio,
  * não fixo como `convenioMemberSchema` (cadastro manual do Admin).
+ *
+ * `username`/`password` são obrigatórios aqui (nunca no cadastro manual do
+ * Admin) — este cadastro cria, na mesma transação, um login de cliente pra
+ * loja online (ver `submitConvenioSignupAction`), com os mesmos requisitos
+ * de senha/usuário do cadastro normal da loja (`usernameSchema`/`passwordSchema`).
  */
 export function buildConvenioSignupSchema(requireProof: boolean) {
   return z.object({
@@ -137,6 +145,8 @@ export function buildConvenioSignupSchema(requireProof: boolean) {
       .refine(isValidCPF, "Informe um CPF válido"),
     phone: z.string().trim().min(8, "Informe um telefone de contato"),
     email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
+    username: usernameSchema,
+    password: passwordSchema,
     selfieUrl: z.string().trim().min(1, "Tire sua foto para continuar"),
     proofUrl: requireProof
       ? z.string().trim().min(1, "Envie o comprovante para continuar")

@@ -105,34 +105,35 @@ model Tenant {
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
-  users                 User[]
-  categories            Category[]
-  brands                Brand[]
-  suppliers             Supplier[]
-  products              Product[]
-  stockMovements        StockMovement[]
-  customers             Customer[]
-  cashRegisters         CashRegister[]
-  cashMovements         CashMovement[]
-  sales                 Sale[]
-  saleItemDefects       SaleItemDefect[]
-  orders                Order[]
-  deliveryZones         DeliveryZone[]
-  auditLogs             AuditLog[]
-  repairOrders          RepairOrder[]
-  repairOrderPayments   RepairOrderPayment[]
-  creditMovements       CustomerCreditMovement[]
-  fiadoEntries          FiadoEntry[]
-  employeeLedgerEntries EmployeeLedgerEntry[]
-  convenios             Convenio[]
-  convenioMembers       ConvenioMember[]
-  convenioInvites       ConvenioInvite[]
-  convenioRedemptions   ConvenioRedemption[]
-  devices               Device[]
-  visitorSessions       VisitorSession[]
-  analyticsEvents       AnalyticsEvent[]
-  attendanceEntries     AttendanceEntry[]
-  attendanceCorrections AttendanceCorrection[]
+  users                    User[]
+  categories               Category[]
+  brands                   Brand[]
+  suppliers                Supplier[]
+  products                 Product[]
+  stockMovements           StockMovement[]
+  customers                Customer[]
+  cashRegisters            CashRegister[]
+  cashMovements            CashMovement[]
+  sales                    Sale[]
+  saleItemDefects          SaleItemDefect[]
+  orders                   Order[]
+  deliveryZones            DeliveryZone[]
+  auditLogs                AuditLog[]
+  repairOrders             RepairOrder[]
+  repairOrderPayments      RepairOrderPayment[]
+  creditMovements          CustomerCreditMovement[]
+  fiadoEntries             FiadoEntry[]
+  employeeLedgerEntries    EmployeeLedgerEntry[]
+  convenios                Convenio[]
+  convenioMembers          ConvenioMember[]
+  convenioInvites          ConvenioInvite[]
+  convenioRedemptions      ConvenioRedemption[]
+  convenioProductDiscounts ConvenioProductDiscount[]
+  devices                  Device[]
+  visitorSessions          VisitorSession[]
+  analyticsEvents          AnalyticsEvent[]
+  attendanceEntries        AttendanceEntry[]
+  attendanceCorrections    AttendanceCorrection[]
 
   // Central de Atendimento WhatsApp (ver bloco "Fase 9" no fim do arquivo).
   whatsAppIntegration   WhatsAppIntegration?
@@ -497,17 +498,18 @@ model Product {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category       Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brand          Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  supplier       Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  images         ProductImage[]
-  variants       ProductVariant[]
-  stockMovements StockMovement[]
-  saleItems      SaleItem[]
-  orderItems     OrderItem[]
-  priceHistory   ProductPriceHistory[]
-  reviews        ProductReview[]
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category          Category?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brand             Brand?                    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  supplier          Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  images            ProductImage[]
+  variants          ProductVariant[]
+  stockMovements    StockMovement[]
+  saleItems         SaleItem[]
+  orderItems        OrderItem[]
+  priceHistory      ProductPriceHistory[]
+  reviews           ProductReview[]
+  convenioDiscounts ConvenioProductDiscount[]
 
   @@unique([tenantId, internalCode])
   @@index([tenantId, active, showInCatalog, catalogPrice])
@@ -664,10 +666,18 @@ model Customer {
   /// de busca, não precisa (nem faz sentido) ser único por loja.
   resetToken          String?   @unique
   resetTokenExpiresAt DateTime?
+  /// Preenchido só quando esta conta nasceu junto com um cadastro de
+  /// convênio (link público de autoatendimento) — os dois são criados na
+  /// mesma transação, referência direta, nunca por comparação de CPF/telefone
+  /// depois (ver decisão registrada em `mergeCustomers`, que evita vínculo
+  /// automático por documento). Define se mostra o card do convênio e a
+  /// vitrine de desconto no painel do cliente.
+  convenioMemberId    String?   @unique
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenioMember   ConvenioMember?          @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
   sales            Sale[]
   orders           Order[]
   creditMovements  CustomerCreditMovement[]
@@ -1235,10 +1245,11 @@ model Convenio {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members     ConvenioMember[]
-  invites     ConvenioInvite[]
-  redemptions ConvenioRedemption[]
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members          ConvenioMember[]
+  invites          ConvenioInvite[]
+  redemptions      ConvenioRedemption[]
+  productDiscounts ConvenioProductDiscount[]
 
   @@unique([tenantId, slug])
   @@map("convenios")
@@ -1269,11 +1280,11 @@ model ConvenioInvite {
 }
 
 /// Colaborador vinculado a um convênio. Nunca é um `User` (não trabalha na
-/// loja) nem um `Customer` (identidade própria ligada à empresa parceira, não
-/// ao histórico de compras). Cadastro manual (Admin/Gerente, ver
-/// `createConvenioMemberAction`) ou pelo link público de autoatendimento
-/// (ver `submitConvenioSignupAction`) — mesmo model pros dois caminhos, só o
-/// consentimento LGPD (`consentAcceptedAt`) é exclusivo do autoatendimento.
+/// loja) — identidade própria ligada à empresa parceira, não ao histórico de
+/// compras. Cadastro manual (Admin/Gerente, ver `createConvenioMemberAction`)
+/// nunca gera login de cliente; pelo link público de autoatendimento (ver
+/// `submitConvenioSignupAction`) cria também um `Customer` com login pra loja
+/// online, referenciado de volta por `Customer.convenioMemberId`.
 model ConvenioMember {
   id                  String               @id @default(cuid())
   tenantId            String
@@ -1315,6 +1326,9 @@ model ConvenioMember {
   convenio        Convenio             @relation(fields: [convenioId], references: [id], onDelete: Cascade)
   statusChangedBy User?                @relation("ConvenioMemberStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
   redemptions     ConvenioRedemption[]
+  /// Lado reverso de `Customer.convenioMemberId` — nulo se este colaborador
+  /// nunca ganhou (ou perdeu) o login de cliente vinculado.
+  customer        Customer?
 
   @@unique([convenioId, document])
   @@unique([tenantId, shortCode])
@@ -1349,6 +1363,28 @@ model ConvenioRedemption {
   @@index([tenantId, convenioId, createdAt])
   @@index([memberId, createdAt])
   @@map("convenio_redemptions")
+}
+
+/// Produto com desconto exclusivo no site pra colaboradores deste convênio —
+/// valor fixo em R$ (mesmo estilo do benefício de balcão), aplicado de
+/// verdade no carrinho/checkout online (nunca só informativo, ver
+/// `resolveEffectiveUnitPrice`). Não soma com a Oferta Relâmpago do dia —
+/// vale sempre o que der o preço mais baixo pro cliente.
+model ConvenioProductDiscount {
+  id             String   @id @default(cuid())
+  tenantId       String
+  convenioId     String
+  productId      String
+  discountAmount Decimal  @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([convenioId, productId])
+  @@index([tenantId, convenioId])
+  @@map("convenio_product_discounts")
 }
 
 // ---------------------------------------------------------------------------

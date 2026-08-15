@@ -55,6 +55,13 @@ function round2(value: number): number {
  * valor anunciado mudaria dependendo da opção clicada, o que o lojista não
  * configurou nem espera). Fora da oferta relâmpago, o ajuste de variante
  * continua somado normalmente sobre o preço promocional/de venda.
+ *
+ * `convenioDiscountAmount` (opcional) é o desconto fixo em R$ de um produto
+ * na vitrine de convênio do cliente logado (ver
+ * `loadConvenioProductDiscounts`). Convênio e Oferta Relâmpago nunca somam —
+ * quando os dois se aplicam ao mesmo produto, vale o que der o preço mais
+ * baixo. Omitir este argumento reproduz exatamente o comportamento antigo da
+ * função (nenhum chamador existente precisa mudar).
  */
 export function resolveEffectiveUnitPrice(
   product: {
@@ -65,11 +72,19 @@ export function resolveEffectiveUnitPrice(
   },
   variantPriceAdjustment: number,
   flashOverride: { promoPrice: number } | null,
+  convenioDiscountAmount: number | null = null,
   now: Date = new Date()
 ): number {
-  if (flashOverride) return round2(flashOverride.promoPrice);
-
   const promoActive = isPromoActive(product.promoPrice, product.promoStartedAt, product.promoEndsAt, now);
   const basePrice = promoActive ? product.promoPrice! : product.salePrice;
-  return round2(basePrice + variantPriceAdjustment);
+  const normalPrice = round2(basePrice + variantPriceAdjustment);
+
+  if (!convenioDiscountAmount) {
+    if (flashOverride) return round2(flashOverride.promoPrice);
+    return normalPrice;
+  }
+
+  const convenioPrice = Math.max(0, round2(normalPrice - convenioDiscountAmount));
+  if (!flashOverride) return convenioPrice;
+  return Math.min(convenioPrice, round2(flashOverride.promoPrice));
 }

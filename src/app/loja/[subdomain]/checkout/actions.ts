@@ -17,6 +17,7 @@ import {
   flashPriceOverrideFor,
 } from "@/modules/catalog/flash-deal-service";
 import { resolveEffectiveUnitPrice } from "@/modules/products/catalog-price";
+import { loadConvenioProductDiscounts } from "@/modules/convenios/convenio-customer-benefit";
 
 /**
  * Consulta a taxa de entrega de uma região.
@@ -105,6 +106,12 @@ export async function getCartPricingAction(
 
   const flashEntry = todayFlashDealEntry(await getFlashDealSchedule(tenant.id));
 
+  // Desconto de convênio só se aplica a quem já está logado (nunca a um
+  // cadastro que ainda vai ser criado no próprio checkout) — mesmo princípio
+  // de `createOrder`.
+  const session = await getCustomerSession(tenant.id);
+  const convenioDiscounts = await loadConvenioProductDiscounts(session?.customerId ?? null, productIds);
+
   const resolved = items.map((item) => {
     const product = productMap.get(item.productId);
     if (!product) return { key: item.key, available: false, unitPrice: null, stockQty: null };
@@ -127,7 +134,8 @@ export async function getCartPricingAction(
         promoEndsAt: product.promoEndsAt,
       },
       Number(variant?.priceAdjustment ?? 0),
-      flashOverride
+      flashOverride,
+      convenioDiscounts.get(product.id) ?? null
     );
 
     return {

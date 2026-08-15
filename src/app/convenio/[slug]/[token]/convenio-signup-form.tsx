@@ -22,12 +22,15 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
   const [error, setError] = useState<string>();
   const [credentialUrl, setCredentialUrl] = useState<string | null>(null);
   const [shortCode, setShortCode] = useState<string | null>(null);
+  const [storeLoginUrl, setStoreLoginUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [name, setName] = useState("");
   const [cpf, setCpf] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [selfieUrl, setSelfieUrl] = useState("");
   const [proofUrl, setProofUrl] = useState("");
   const [consent, setConsent] = useState(false);
@@ -41,6 +44,8 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
     if (!name.trim()) errors.name = "Informe seu nome completo";
     if (!cpf.trim()) errors.document = "Informe seu CPF";
     if (!phone.trim()) errors.phone = "Informe um telefone de contato";
+    if (username.trim().length < 3) errors.username = "Use pelo menos 3 caracteres";
+    if (password.length < 8) errors.password = "Mínimo de 8 caracteres";
     if (!selfieUrl) errors.selfieUrl = "Tire sua foto para continuar";
     if (requireProof && !proofUrl) errors.proofUrl = "Envie o comprovante para continuar";
     if (!consent) errors.consent = "É preciso aceitar os termos para continuar";
@@ -55,6 +60,8 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
         document: cpf,
         phone,
         email,
+        username,
+        password,
         selfieUrl,
         proofUrl,
         consent,
@@ -65,6 +72,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
       }
       if (result?.credentialUrl) setCredentialUrl(result.credentialUrl);
       if (result?.shortCode) setShortCode(result.shortCode);
+      if (result?.storeLoginUrl) setStoreLoginUrl(result.storeLoginUrl);
     });
   }
 
@@ -100,7 +108,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
           Se preferir, guarde também o link — ele mostra o status do cadastro e o QR Code. Não
           aparece de novo depois que você sair desta página.
         </p>
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-left">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-left">
           <code className="flex-1 break-all rounded bg-white px-2 py-1.5 text-xs text-slate-700">
             {credentialUrl}
           </code>
@@ -108,6 +116,16 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
             {copied ? "Copiado!" : "Copiar"}
           </Button>
         </div>
+        {storeLoginUrl && (
+          <p className="text-xs text-slate-500">
+            O usuário e senha que você criou também dão acesso à nossa loja online, com descontos
+            exclusivos por ter o convênio.{" "}
+            <a href={storeLoginUrl} className="font-medium text-slate-700 hover:underline">
+              Entrar na loja
+            </a>
+            .
+          </p>
+        )}
       </div>
     );
   }
@@ -150,6 +168,38 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
           onChange={(e) => setEmail(e.target.value)}
           disabled={isPending}
         />
+      </div>
+
+      <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-3 text-xs text-slate-600">
+          Crie um usuário e senha: além de liberar o benefício na loja física, esse cadastro
+          também dá acesso à nossa loja online, com descontos exclusivos por você ter o convênio.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="username">Usuário (arroba)</Label>
+            <Input
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={isPending}
+              placeholder="seu_usuario"
+            />
+            <FieldError message={fieldErrors.username} />
+          </div>
+          <div>
+            <Label htmlFor="password">Senha</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isPending}
+              autoComplete="new-password"
+            />
+            <FieldError message={fieldErrors.password} />
+          </div>
+        </div>
       </div>
 
       <div className="mb-6">

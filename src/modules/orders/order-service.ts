@@ -10,6 +10,7 @@ import {
 } from "@/modules/catalog/flash-deal-service";
 import { resolveEffectiveUnitPrice } from "@/modules/products/catalog-price";
 import { registerCustomer } from "@/modules/customers/customer-service";
+import { loadConvenioProductDiscounts } from "@/modules/convenios/convenio-customer-benefit";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -149,6 +150,12 @@ export async function createOrder(
   const flashEntry = todayFlashDealEntry(parseFlashDealSchedule(tenant.flashDealSchedule));
   let flashQtyUsed = 0;
 
+  // Desconto de convênio só se aplica quando o cliente já existe (sessão/login)
+  // — em `register`, o `Customer` ainda vai ser criado dentro desta mesma
+  // transação, então não tem como já estar vinculado a um convênio.
+  const knownCustomerId = auth.mode !== "register" ? auth.customerId : null;
+  const convenioDiscounts = await loadConvenioProductDiscounts(knownCustomerId, productIds);
+
   for (const item of input.items) {
     const product = productMap.get(item.productId);
     if (!product) {
@@ -190,7 +197,8 @@ export async function createOrder(
         promoEndsAt: product.promoEndsAt,
       },
       Number(variant?.priceAdjustment ?? 0),
-      flashOverride
+      flashOverride,
+      convenioDiscounts.get(product.id) ?? null
     );
     const total = round2(unitPrice * quantity);
 

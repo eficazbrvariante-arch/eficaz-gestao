@@ -53,6 +53,8 @@ type RegisterCustomerData = {
   addressCity?: string | null;
   addressState?: string | null;
   addressZip?: string | null;
+  /** Preenchido só quando a conta nasce junto com um cadastro de convênio (ver `submitConvenioSignupAction`). */
+  convenioMemberId?: string | null;
 };
 
 /** `YYYY-MM-DD` (fuso de Brasília) para `Date`, ao meio-dia para não escorregar de dia — mesma regra do cadastro feito pelo painel (`(admin)/clientes/actions.ts`). */
@@ -92,6 +94,7 @@ export async function registerCustomer(
       addressCity: data.addressCity || null,
       addressState: data.addressState || null,
       addressZip: data.addressZip || null,
+      convenioMemberId: data.convenioMemberId || null,
     },
     select: { id: true, name: true, username: true },
   });

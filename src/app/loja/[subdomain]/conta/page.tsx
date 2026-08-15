@@ -6,6 +6,7 @@ import { listCustomerOrders } from "@/modules/orders/order-service";
 import { listReviewableProducts } from "@/modules/catalog/review-service";
 import { getCustomerCreditBalance } from "@/modules/customers/customer-service";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
+import { getCustomerConvenioBenefit } from "@/modules/convenios/convenio-customer-benefit";
 import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
 import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import { LogoutButton } from "./logout-button";
@@ -27,11 +28,12 @@ export default async function CustomerAccountPage({
     redirect(`${base}/conta/entrar?returnTo=${encodeURIComponent(`${base}/conta`)}`);
   }
 
-  const [orders, reviewableProducts, creditBalance, fiadoEntries] = await Promise.all([
+  const [orders, reviewableProducts, creditBalance, fiadoEntries, convenioBenefit] = await Promise.all([
     listCustomerOrders(store.id, session.customerId),
     listReviewableProducts(store.id, session.customerId),
     getCustomerCreditBalance(store.id, session.customerId),
     listFiadoEntriesByCustomer(store.id, session.customerId),
+    getCustomerConvenioBenefit(session.customerId),
   ]);
   const pendingFiado = fiadoEntries.filter((entry) => entry.status === "PENDING");
 
@@ -44,6 +46,52 @@ export default async function CustomerAccountPage({
         </div>
         <LogoutButton subdomain={subdomain} />
       </div>
+
+      {convenioBenefit && (
+        <div className="mb-8 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <h2 className="mb-1 text-sm font-semibold text-emerald-900">
+            Convênio {convenioBenefit.convenioName}
+          </h2>
+          {!convenioBenefit.active ? (
+            <p className="text-sm text-emerald-800">
+              Seu cadastro no convênio não está ativo no momento — fale com a loja se achar que
+              isso é um engano.
+            </p>
+          ) : convenioBenefit.vitrine.length === 0 ? (
+            <p className="text-sm text-emerald-800">
+              Você tem o desconto do convênio disponível no balcão da loja. Ainda não há produtos
+              com desconto exclusivo no site.
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-sm text-emerald-800">
+                Além do desconto no balcão da loja, você tem desconto exclusivo nestes produtos do
+                site:
+              </p>
+              <ul className="space-y-2">
+                {convenioBenefit.vitrine.map((item) => (
+                  <li key={item.productId}>
+                    <Link
+                      href={`${base}/produto/${item.productId}`}
+                      className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-white p-3 text-sm hover:bg-emerald-50/50"
+                    >
+                      <span className="text-slate-800">{item.name}</span>
+                      <span className="shrink-0 text-right">
+                        <span className="mr-1.5 text-xs text-slate-400 line-through">
+                          {formatBRL(item.catalogPrice)}
+                        </span>
+                        <span className="font-semibold text-emerald-700">
+                          {formatBRL(item.finalPrice)}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {(pendingFiado.length > 0 || creditBalance > 0) && (
         <div className="mb-8 rounded-xl border border-slate-200 p-4">

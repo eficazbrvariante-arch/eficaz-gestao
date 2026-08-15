@@ -233,3 +233,100 @@ export async function revokeConvenioInviteAction(inviteId: string) {
   revalidatePath(`/convenios/${invite.convenioId}`);
   return { success: "Link revogado." };
 }
+
+export type ConvenioDiscountProductOption = {
+  id: string;
+  name: string;
+  salePrice: number;
+  /** 0 quando o produto ainda não tem desconto neste convênio. */
+  discountAmount: number;
+};
+
+/**
+ * Busca produto ativo e visível no catálogo online pelo nome, pra definir/
+ * remover o desconto exclusivo dele neste convênio — ver `ProdutosDescontoPicker`.
+ * Exclui produto `!showInCatalog` (ex.: película/capinha, venda exclusiva de
+ * balcão): não faz sentido dar desconto "no site" num produto que nunca
+ * aparece lá — a vitrine do cliente linka pra página do produto, que daria
+ * 404 nesse caso.
+ */
+export async function searchProductsForConvenioDiscountAction(
+  convenioId: string,
+  query: string
+): Promise<ConvenioDiscountProductOption[]> {
+  const auth = await requireConvenioManager();
+  if ("error" in auth) return [];
+  const { user } = auth;
+  const term = query.trim();
+  if (term.length < 2) return [];
+
+  const convenio = await prisma.convenio.findFirst({
+    where: { id: convenioId, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (!convenio) return [];
+
+  const products = await prisma.product.findMany({
+    where: {
+      tenantId: user.tenantId,
+      active: true,
+      showInCatalog: true,
+      name: { contains: term, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      name: true,
+      salePrice: true,
+      convenioDiscounts: { where: { convenioId }, select: { discountAmount: true } },
+    },
+    orderBy: { name: "asc" },
+    take: 20,
+  });
+
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    salePrice: Number(p.salePrice),
+    discountAmount: Number(p.convenioDiscounts[0]?.discountAmount ?? 0),
+  }));
+}
+
+/** Define (amount > 0) ou remove (amount <= 0) o desconto exclusivo de um produto neste convênio. */
+export async function setConvenioProductDiscountAction(
+  convenioId: string,
+  productId: string,
+  amount: number
+) {
+  const auth = await requireConvenioManager();
+  if ("error" in auth) return { error: "Seu perfil não tem permissão para configurar convênios." };
+  const { user } = auth;
+
+  const convenio = await prisma.convenio.findFirst({
+    where: { id: convenioId, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (!convenio) return { error: "Convênio não encontrado." };
+
+  const product = await prisma.product.findFirst({
+    where: { id: productId, tenantId: user.tenantId },
+    select: { id: true, showInCatalog: true },
+  });
+  if (!product) return { error: "Produto não encontrado." };
+  if (amount > 0 && !product.showInCatalog) {
+    return { error: "Esse produto não aparece no catálogo online — não dá pra dar desconto exclusivo do site nele." };
+  }
+
+  if (amount > 0) {
+    await prisma.convenioProductDiscount.upsert({
+      where: { convenioId_productId: { convenioId, productId } },
+      create: { tenantId: user.tenantId, convenioId, productId, discountAmount: amount },
+      update: { discountAmount: amount },
+    });
+  } else {
+    await prisma.convenioProductDiscount.deleteMany({ where: { convenioId, productId } });
+  }
+
+  revalidatePath(`/convenios/${convenioId}`);
+  revalidatePath("/produtos");
+  return { success: amount > 0 ? "Desconto do produto atualizado." : "Desconto removido do produto." };
+}

@@ -8,6 +8,7 @@ import { formatBRL } from "@/lib/format";
 import { parseConvenioRules } from "@/lib/validations/convenio";
 import { MembrosTabela, type ConvenioMemberRow } from "./membros-tabela";
 import { InviteLinkPanel, type ActiveInvite } from "./invite-link-panel";
+import { ProdutosDescontoPicker, type ConvenioDiscountRow } from "./produtos-desconto-picker";
 
 export default async function ConvenioDetalhePage({
   params,
@@ -24,7 +25,7 @@ export default async function ConvenioDetalhePage({
     );
   }
 
-  const [convenio, activeInviteRow] = await Promise.all([
+  const [convenio, activeInviteRow, discountRows] = await Promise.all([
     prisma.convenio.findFirst({
       where: { id, tenantId: user.tenantId },
       include: {
@@ -36,8 +37,19 @@ export default async function ConvenioDetalhePage({
       include: { createdBy: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.convenioProductDiscount.findMany({
+      where: { convenioId: id, tenantId: user.tenantId },
+      include: { product: { select: { name: true } } },
+      orderBy: { product: { name: "asc" } },
+    }),
   ]);
   if (!convenio) notFound();
+
+  const discountProductRows: ConvenioDiscountRow[] = discountRows.map((d) => ({
+    productId: d.productId,
+    name: d.product.name,
+    discountAmount: Number(d.discountAmount),
+  }));
 
   const activeInvite: ActiveInvite | null = activeInviteRow
     ? {
@@ -118,6 +130,16 @@ export default async function ConvenioDetalhePage({
       </div>
 
       <MembrosTabela members={memberRows} />
+
+      <div className="mt-8 mb-4">
+        <h2 className="text-lg font-semibold text-slate-900">Produtos com desconto exclusivo no site</h2>
+        <p className="text-sm text-slate-500">
+          Além do benefício de balcão, colaboradores ativos deste convênio veem estes produtos com
+          desconto no painel de cliente da loja online — e já compram com o preço reduzido pelo
+          site.
+        </p>
+      </div>
+      <ProdutosDescontoPicker convenioId={convenio.id} initialProducts={discountProductRows} />
     </div>
   );
 }
