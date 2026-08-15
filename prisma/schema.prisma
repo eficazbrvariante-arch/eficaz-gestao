@@ -126,6 +126,7 @@ model Tenant {
   employeeLedgerEntries EmployeeLedgerEntry[]
   convenios             Convenio[]
   convenioMembers       ConvenioMember[]
+  convenioInvites       ConvenioInvite[]
   devices               Device[]
   visitorSessions       VisitorSession[]
   analyticsEvents       AnalyticsEvent[]
@@ -224,6 +225,7 @@ model User {
   employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
   employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
   convenioMembersStatusChanged ConvenioMember[]         @relation("ConvenioMemberStatusChangedBy")
+  convenioInvitesCreated       ConvenioInvite[]         @relation("ConvenioInviteCreatedBy")
   devicesRequested             Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
 
@@ -1227,16 +1229,42 @@ model Convenio {
 
   tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   members ConvenioMember[]
+  invites ConvenioInvite[]
 
   @@unique([tenantId, slug])
   @@map("convenios")
 }
 
+/// Link de convite pro cadastro público de colaborador — separado da
+/// credencial de uso (QR Code, ainda não existe, chega na Fase 3). Um só
+/// link reutilizável por convênio (o mesmo espírito de "compartilhar no
+/// grupo da empresa"), revogável a qualquer momento sem afetar quem já
+/// está aprovado. Hash SHA-256 do token, nunca o valor em claro — mesmo
+/// padrão de `User.resetToken`.
+model ConvenioInvite {
+  id          String    @id @default(cuid())
+  tenantId    String
+  convenioId  String
+  tokenHash   String    @unique
+  expiresAt   DateTime?
+  createdById String
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio  Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("ConvenioInviteCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, convenioId])
+  @@map("convenio_invites")
+}
+
 /// Colaborador vinculado a um convênio. Nunca é um `User` (não trabalha na
 /// loja) nem um `Customer` (identidade própria ligada à empresa parceira, não
-/// ao histórico de compras). Cadastro manual nesta fase — ver
-/// `createConvenioMemberAction`; a partir da Fase 2 o próprio colaborador se
-/// cadastra por um link, sem mudar este modelo.
+/// ao histórico de compras). Cadastro manual (Admin/Gerente, ver
+/// `createConvenioMemberAction`) ou pelo link público de autoatendimento
+/// (ver `submitConvenioSignupAction`) — mesmo model pros dois caminhos, só o
+/// consentimento LGPD (`consentAcceptedAt`) é exclusivo do autoatendimento.
 model ConvenioMember {
   id                String               @id @default(cuid())
   tenantId          String
@@ -1247,12 +1275,15 @@ model ConvenioMember {
   phone             String?
   email             String?
   selfieUrl         String
-  proofUrl          String
+  /// Nulo quando o convênio não exige comprovante (`Convenio.rules.requireProof`).
+  proofUrl          String?
   status            ConvenioMemberStatus @default(PENDING)
   statusReason      String?
   statusChangedById String?
   statusChangedAt   DateTime?
   validUntil        DateTime?
+  /// Preenchido só no cadastro por autoatendimento — nulo em cadastro manual.
+  consentAcceptedAt DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 

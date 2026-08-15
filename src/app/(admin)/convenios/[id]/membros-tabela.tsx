@@ -33,7 +33,7 @@ export type ConvenioMemberRow = {
   status: ConvenioMemberStatusValue;
   statusReason: string | null;
   selfieUrl: string;
-  proofUrl: string;
+  proofUrl: string | null;
   createdAt: Date;
 };
 
@@ -112,14 +112,18 @@ export function MembrosTabela({ members }: { members: ConvenioMemberRow[] }) {
                     >
                       Foto
                     </a>
-                    <a
-                      href={member.proofUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-slate-600 hover:underline"
-                    >
-                      Comprovante
-                    </a>
+                    {member.proofUrl ? (
+                      <a
+                        href={member.proofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-slate-600 hover:underline"
+                      >
+                        Comprovante
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-300">Sem comprovante</span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3">

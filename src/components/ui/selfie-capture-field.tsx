@@ -19,11 +19,17 @@ export function SelfieCaptureField({
   onWaive,
   canWaive = false,
   disabled = false,
+  uploadUrl = "/api/ponto/upload",
+  clientPayload,
 }: {
   onCaptured: (url: string) => void;
   onWaive?: (reason: string) => void;
   canWaive?: boolean;
   disabled?: boolean;
+  /** Endpoint de upload — outro além do Ponto (ex.: cadastro público de Convênios, sem sessão). */
+  uploadUrl?: string;
+  /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
+  clientPayload?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -126,8 +132,9 @@ export function SelfieCaptureField({
     try {
       const blob = await upload(`selfie-${Date.now()}.jpg`, capturedBlob, {
         access: "public",
-        handleUploadUrl: "/api/ponto/upload",
+        handleUploadUrl: uploadUrl,
         contentType: capturedBlob.type || "image/jpeg",
+        clientPayload,
       });
       onCaptured(blob.url);
     } catch {

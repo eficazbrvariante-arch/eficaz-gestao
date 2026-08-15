@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatBRL } from "@/lib/format";
 import { parseConvenioRules } from "@/lib/validations/convenio";
 import { MembrosTabela, type ConvenioMemberRow } from "./membros-tabela";
+import { InviteLinkPanel, type ActiveInvite } from "./invite-link-panel";
 
 export default async function ConvenioDetalhePage({
   params,
@@ -23,13 +24,28 @@ export default async function ConvenioDetalhePage({
     );
   }
 
-  const convenio = await prisma.convenio.findFirst({
-    where: { id, tenantId: user.tenantId },
-    include: {
-      members: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  const [convenio, activeInviteRow] = await Promise.all([
+    prisma.convenio.findFirst({
+      where: { id, tenantId: user.tenantId },
+      include: {
+        members: { orderBy: { createdAt: "desc" } },
+      },
+    }),
+    prisma.convenioInvite.findFirst({
+      where: { convenioId: id, tenantId: user.tenantId, revokedAt: null },
+      include: { createdBy: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!convenio) notFound();
+
+  const activeInvite: ActiveInvite | null = activeInviteRow
+    ? {
+        id: activeInviteRow.id,
+        createdAt: activeInviteRow.createdAt,
+        createdByName: activeInviteRow.createdBy.name,
+      }
+    : null;
 
   const rules = parseConvenioRules(convenio.rules);
   const memberRows: ConvenioMemberRow[] = convenio.members.map((member) => ({
@@ -84,6 +100,10 @@ export default async function ConvenioDetalhePage({
             {convenio.responsiblePhone && ` · ${convenio.responsiblePhone}`}
           </p>
         )}
+      </div>
+
+      <div className="mb-6">
+        <InviteLinkPanel convenioId={convenio.id} activeInvite={activeInvite} />
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-4">

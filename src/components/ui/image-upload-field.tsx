@@ -8,10 +8,16 @@ export function ImageUploadField({
   value,
   onChange,
   disabled,
+  uploadUrl = "/api/produtos/upload",
+  clientPayload,
 }: {
   value?: string;
   onChange: (url: string) => void;
   disabled?: boolean;
+  /** Endpoint de upload — outro além do padrão (ex.: cadastro público de Convênios, sem sessão). */
+  uploadUrl?: string;
+  /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
+  clientPayload?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | undefined>(value);
@@ -28,8 +34,9 @@ export function ImageUploadField({
     try {
       const blob = await upload(file.name, file, {
         access: "public",
-        handleUploadUrl: "/api/produtos/upload",
+        handleUploadUrl: uploadUrl,
         contentType: file.type,
+        clientPayload,
       });
       onChange(blob.url);
       setPreview(blob.url);

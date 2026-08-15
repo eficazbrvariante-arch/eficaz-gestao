@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canManageConvenios } from "@/lib/permissions";
+import { generateResetToken } from "@/lib/tokens";
 import {
   convenioMemberSchema,
   convenioSchema,
@@ -164,4 +165,60 @@ export async function updateConvenioMemberStatusAction(
 
   revalidatePath(`/convenios/${member.convenioId}`);
   return { success: "Status do colaborador atualizado." };
+}
+
+function inviteUrl(slug: string, rawToken: string) {
+  const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return `${origin}/convenio/${slug}/${rawToken}`;
+}
+
+/**
+ * Sempre gera um link novo, revogando qualquer outro ainda ativo — só um
+ * convite "vivo" por vez (o mesmo espírito de "compartilhar um link só no
+ * grupo da empresa"). Não dá pra "reaproveitar e mostrar de novo" um convite
+ * já existente: só o hash do token fica salvo (ver `ConvenioInvite.tokenHash`,
+ * mesmo padrão de `User.resetToken`), então a URL completa só existe aqui,
+ * no instante em que é gerada — se o Admin perder o link, o jeito é gerar
+ * outro (e o antigo já para de funcionar).
+ */
+export async function getOrCreateConvenioInviteAction(convenioId: string) {
+  const auth = await requireConvenioManager();
+  if ("error" in auth) return { error: auth.error };
+  const { user } = auth;
+
+  const convenio = await prisma.convenio.findFirst({
+    where: { id: convenioId, tenantId: user.tenantId },
+  });
+  if (!convenio) return { error: "Convênio não encontrado." };
+
+  const { rawToken, hashedToken } = generateResetToken();
+  const invite = await prisma.$transaction(async (tx) => {
+    await tx.convenioInvite.updateMany({
+      where: { convenioId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return tx.convenioInvite.create({
+      data: { tenantId: user.tenantId, convenioId, tokenHash: hashedToken, createdById: user.id },
+    });
+  });
+
+  revalidatePath(`/convenios/${convenioId}`);
+  return { success: "Link de convite gerado.", inviteId: invite.id, url: inviteUrl(convenio.slug, rawToken) };
+}
+
+/** Invalida o link — quem já tinha o link antigo não consegue mais se cadastrar por ele. */
+export async function revokeConvenioInviteAction(inviteId: string) {
+  const auth = await requireConvenioManager();
+  if ("error" in auth) return { error: auth.error };
+  const { user } = auth;
+
+  const invite = await prisma.convenioInvite.findFirst({
+    where: { id: inviteId, tenantId: user.tenantId },
+  });
+  if (!invite) return { error: "Convite não encontrado." };
+
+  await prisma.convenioInvite.update({ where: { id: inviteId }, data: { revokedAt: new Date() } });
+
+  revalidatePath(`/convenios/${invite.convenioId}`);
+  return { success: "Link revogado." };
 }

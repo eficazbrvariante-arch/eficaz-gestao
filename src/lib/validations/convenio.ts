@@ -5,6 +5,30 @@ export function normalizeDocument(document: string) {
   return document.replace(/\D/g, "");
 }
 
+/**
+ * Valida o dígito verificador do CPF — só usado no cadastro público
+ * (autoatendimento), mais exposto a erro de digitação e fraude simples do
+ * que o cadastro manual do Admin/Gerente.
+ */
+export function isValidCPF(document: string): boolean {
+  const digits = normalizeDocument(document);
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+
+  const checkDigit = (base: string) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) {
+      sum += Number(base[i]) * (base.length + 1 - i);
+    }
+    const remainder = (sum * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+
+  return (
+    checkDigit(digits.slice(0, 9)) === Number(digits[9]) &&
+    checkDigit(digits.slice(0, 10)) === Number(digits[10])
+  );
+}
+
 export const convenioSchema = z.object({
   name: z.string().trim().min(1, "Informe o nome da empresa parceira"),
   slug: z
@@ -85,3 +109,38 @@ export const updateConvenioMemberStatusSchema = z.object({
   reason: z.string().trim().optional().or(z.literal("")),
 });
 export type UpdateConvenioMemberStatusInput = z.infer<typeof updateConvenioMemberStatusSchema>;
+
+/** Forma dos campos do formulário público — igual nos dois casos de `requireProof`; o que muda é só a obrigatoriedade de `proofUrl`, decidida em runtime pela regra do convênio. */
+export type ConvenioSignupInput = {
+  name: string;
+  document: string;
+  phone: string;
+  email?: string;
+  selfieUrl: string;
+  proofUrl?: string;
+  consent: boolean;
+};
+
+/**
+ * Cadastro por autoatendimento (link público, Fase 2) — o próprio
+ * colaborador preenche. `requireProof` vem da regra do convênio
+ * (`Convenio.rules.requireProof`), então o schema é montado por convênio,
+ * não fixo como `convenioMemberSchema` (cadastro manual do Admin).
+ */
+export function buildConvenioSignupSchema(requireProof: boolean) {
+  return z.object({
+    name: z.string().trim().min(1, "Informe seu nome completo"),
+    document: z
+      .string()
+      .trim()
+      .transform(normalizeDocument)
+      .refine(isValidCPF, "Informe um CPF válido"),
+    phone: z.string().trim().min(8, "Informe um telefone de contato"),
+    email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
+    selfieUrl: z.string().trim().min(1, "Tire sua foto para continuar"),
+    proofUrl: requireProof
+      ? z.string().trim().min(1, "Envie o comprovante para continuar")
+      : z.string().trim().optional().or(z.literal("")),
+    consent: z.boolean().refine((v) => v === true, "É preciso aceitar os termos para continuar"),
+  });
+}
