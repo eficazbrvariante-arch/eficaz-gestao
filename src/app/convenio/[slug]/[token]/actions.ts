@@ -1,12 +1,17 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { hashToken } from "@/lib/tokens";
+import { generateResetToken, hashToken } from "@/lib/tokens";
 import {
   buildConvenioSignupSchema,
   parseConvenioRules,
   type ConvenioSignupInput,
 } from "@/lib/validations/convenio";
+
+function credentialUrl(rawToken: string) {
+  const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return `${origin}/c/${rawToken}`;
+}
 
 /**
  * Cadastro público — sem login, sem `requireUser()`. O token do link é a
@@ -41,6 +46,7 @@ export async function submitConvenioSignupAction(rawToken: string, input: Conven
     };
   }
 
+  const credential = generateResetToken();
   await prisma.convenioMember.create({
     data: {
       tenantId: invite.tenantId,
@@ -52,8 +58,9 @@ export async function submitConvenioSignupAction(rawToken: string, input: Conven
       selfieUrl: parsed.data.selfieUrl,
       proofUrl: parsed.data.proofUrl || null,
       consentAcceptedAt: new Date(),
+      credentialTokenHash: credential.hashedToken,
     },
   });
 
-  return { ok: true as const };
+  return { ok: true as const, credentialUrl: credentialUrl(credential.rawToken) };
 }

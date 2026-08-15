@@ -9,6 +9,13 @@ import { ConvenioSignupForm } from "./convenio-signup-form";
 // aparecer como opção pública no catálogo/site (ver item 3 do plano do módulo).
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
+/** Descreve o limite de uso em linguagem natural, pro colaborador entender antes de se cadastrar. */
+function benefitFrequencyLabel(usesPerPeriod: number, periodDays: number) {
+  if (periodDays === 1) return usesPerPeriod === 1 ? "uma vez por dia" : `${usesPerPeriod} vezes por dia`;
+  if (usesPerPeriod === 1) return `uma vez a cada ${periodDays} dias`;
+  return `${usesPerPeriod} vezes a cada ${periodDays} dias`;
+}
+
 export default async function ConvenioSignupPage({
   params,
 }: {
@@ -36,29 +43,33 @@ export default async function ConvenioSignupPage({
           </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="mb-6 text-center">
-              {invite.convenio.logoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- logo de convênio, domínio variável
-                <img
-                  src={invite.convenio.logoUrl}
-                  alt={invite.convenio.name}
-                  className="mx-auto mb-3 h-16 w-16 rounded-full object-cover"
-                />
-              )}
-              <h1 className="text-lg font-semibold text-slate-900">
-                Convênio {invite.convenio.name}
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Cadastre-se como colaborador da {invite.convenio.name} e ganhe{" "}
-                <strong>{formatBRL(parseConvenioRules(invite.convenio.rules).benefitAmount)}</strong>{" "}
-                de desconto nas suas compras.
-              </p>
-            </div>
+            {(() => {
+              const rules = parseConvenioRules(invite.convenio.rules);
+              return (
+                <>
+                  <div className="mb-6 text-center">
+                    {invite.convenio.logoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element -- logo de convênio, domínio variável
+                      <img
+                        src={invite.convenio.logoUrl}
+                        alt={invite.convenio.name}
+                        className="mx-auto mb-3 h-16 w-16 rounded-full object-cover"
+                      />
+                    )}
+                    <h1 className="text-lg font-semibold text-slate-900">
+                      Convênio {invite.convenio.name}
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Cadastre-se como colaborador da {invite.convenio.name} e ganhe{" "}
+                      <strong>{formatBRL(rules.benefitAmount)}</strong> de desconto nas suas compras,{" "}
+                      {benefitFrequencyLabel(rules.usesPerPeriod, rules.periodDays)}.
+                    </p>
+                  </div>
 
-            <ConvenioSignupForm
-              token={token}
-              requireProof={parseConvenioRules(invite.convenio.rules).requireProof}
-            />
+                  <ConvenioSignupForm token={token} requireProof={rules.requireProof} />
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { convenioMemberSchema, type ConvenioMemberInput } from "@/lib/validations/convenio";
@@ -21,6 +22,8 @@ import { ImageUploadField } from "@/components/ui/image-upload-field";
 export function MembroForm({ convenioId }: { convenioId: string }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
+  const [credentialUrl, setCredentialUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const {
     register,
@@ -39,9 +42,44 @@ export function MembroForm({ convenioId }: { convenioId: string }) {
       const result = await createConvenioMemberAction(convenioId, data);
       if (result?.error) {
         setServerError(result.error);
+        return;
       }
+      if (result?.credentialUrl) setCredentialUrl(result.credentialUrl);
     });
   };
+
+  async function handleCopy() {
+    if (!credentialUrl) return;
+    try {
+      await navigator.clipboard.writeText(credentialUrl);
+      setCopied(true);
+    } catch {
+      setServerError("Não foi possível copiar — selecione e copie manualmente.");
+    }
+  }
+
+  if (credentialUrl) {
+    return (
+      <div>
+        <h2 className="mb-2 text-base font-semibold text-slate-900">Colaborador cadastrado!</h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Repasse este link pra ele — mostra o status do cadastro e, quando aprovado, o QR Code da
+          carteirinha. Copie agora, ele não aparece de novo depois de sair desta tela.
+        </p>
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+          <code className="flex-1 break-all rounded bg-white px-2 py-1.5 text-xs text-slate-700">
+            {credentialUrl}
+          </code>
+          <Button type="button" variant="secondary" fullWidth={false} onClick={handleCopy}>
+            {copied ? "Copiado!" : "Copiar"}
+          </Button>
+        </div>
+        <Link href={`/convenios/${convenioId}`} className="text-sm text-slate-600 hover:underline">
+          ← Voltar para o convênio
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>

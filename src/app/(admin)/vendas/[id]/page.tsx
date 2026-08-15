@@ -37,6 +37,9 @@ export default async function ComprovantePage({
         customer: true,
         seller: { select: { name: true } },
         cancelledBy: { select: { name: true } },
+        convenioRedemption: {
+          include: { member: { select: { name: true } }, convenio: { select: { name: true } } },
+        },
       },
     }),
     prisma.tenant.findUniqueOrThrow({ where: { id: user.tenantId } }),
@@ -190,6 +193,16 @@ export default async function ComprovantePage({
             <div className="flex justify-between text-slate-600">
               <span>Desconto</span>
               <span>-{formatBRL(sale.discount)}</span>
+            </div>
+          )}
+          {sale.convenioRedemption && Number(sale.convenioDiscount) > 0 && (
+            <div className="flex justify-between text-slate-600">
+              <span>
+                Benefício Convênio {sale.convenioRedemption.convenio.name} —{" "}
+                {sale.convenioRedemption.member.name}
+                {sale.convenioRedemption.reversedAt ? " (revertido)" : ""}
+              </span>
+              <span>-{formatBRL(sale.convenioDiscount)}</span>
             </div>
           )}
           <div className="receipt-total flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-slate-900">

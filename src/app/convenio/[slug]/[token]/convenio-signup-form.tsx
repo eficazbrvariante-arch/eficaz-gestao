@@ -20,7 +20,8 @@ import { submitConvenioSignupAction } from "./actions";
 export function ConvenioSignupForm({ token, requireProof }: { token: string; requireProof: boolean }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
-  const [submitted, setSubmitted] = useState(false);
+  const [credentialUrl, setCredentialUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [name, setName] = useState("");
   const [cpf, setCpf] = useState("");
@@ -61,18 +62,38 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
         setError(result.error);
         return;
       }
-      setSubmitted(true);
+      if (result?.credentialUrl) setCredentialUrl(result.credentialUrl);
     });
   }
 
-  if (submitted) {
+  async function handleCopy() {
+    if (!credentialUrl) return;
+    try {
+      await navigator.clipboard.writeText(credentialUrl);
+      setCopied(true);
+    } catch {
+      // Sem Clipboard API — o link já fica visível pra selecionar e copiar na mão.
+    }
+  }
+
+  if (credentialUrl) {
     return (
       <div className="text-center">
         <h2 className="mb-2 text-base font-semibold text-slate-900">Cadastro enviado!</h2>
-        <p className="text-sm text-slate-500">
-          Seu cadastro foi recebido e está pendente de aprovação. Assim que for aprovado, seu
-          benefício fica liberado nas compras.
+        <p className="mb-4 text-sm text-slate-500">
+          Seu cadastro está pendente de aprovação. <strong>Salve o link abaixo agora</strong> —
+          é a sua carteirinha do convênio: mostra o status do cadastro e, assim que for aprovado,
+          o QR Code pra usar o benefício na loja. Ele não aparece de novo depois que você sair
+          desta página.
         </p>
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-left">
+          <code className="flex-1 break-all rounded bg-white px-2 py-1.5 text-xs text-slate-700">
+            {credentialUrl}
+          </code>
+          <Button type="button" variant="secondary" fullWidth={false} onClick={handleCopy}>
+            {copied ? "Copiado!" : "Copiar"}
+          </Button>
+        </div>
       </div>
     );
   }

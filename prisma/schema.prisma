@@ -127,6 +127,7 @@ model Tenant {
   convenios             Convenio[]
   convenioMembers       ConvenioMember[]
   convenioInvites       ConvenioInvite[]
+  convenioRedemptions   ConvenioRedemption[]
   devices               Device[]
   visitorSessions       VisitorSession[]
   analyticsEvents       AnalyticsEvent[]
@@ -226,6 +227,7 @@ model User {
   employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
   convenioMembersStatusChanged ConvenioMember[]         @relation("ConvenioMemberStatusChangedBy")
   convenioInvitesCreated       ConvenioInvite[]         @relation("ConvenioInviteCreatedBy")
+  convenioRedemptionsSold      ConvenioRedemption[]     @relation("ConvenioRedemptionSeller")
   devicesRequested             Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
 
@@ -980,6 +982,11 @@ model Sale {
   status            SaleStatus @default(COMPLETED)
   subtotal          Decimal    @db.Decimal(12, 2)
   discount          Decimal    @default(0) @db.Decimal(12, 2)
+  /// Benefício de Convênio Corporativo aplicado na venda — separado de
+  /// `discount` de propósito: nunca reduz a comissão do vendedor (calculada
+  /// em cima de `SaleItem.total`, que este campo nunca toca). Ver
+  /// `ConvenioRedemption`, a linha que registra o uso em si.
+  convenioDiscount  Decimal    @default(0) @db.Decimal(12, 2)
   total             Decimal    @db.Decimal(12, 2)
   /// Soma do custo dos itens no momento da venda, para apurar lucro bruto.
   costTotal         Decimal    @default(0) @db.Decimal(12, 2)
@@ -992,18 +999,19 @@ model Sale {
   cancelledById     String?
   cancelReason      String?
 
-  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  cashRegister    CashRegister             @relation(fields: [cashRegisterId], references: [id])
-  customer        Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  seller          User                     @relation("SaleSeller", fields: [sellerId], references: [id])
-  assistantSeller User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
-  cancelledBy     User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
-  items           SaleItem[]
-  payments        Payment[]
-  stockMovements  StockMovement[]
-  creditMovements CustomerCreditMovement[]
-  fiadoEntries    FiadoEntry[]
-  itemDefects     SaleItemDefect[]
+  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashRegister       CashRegister             @relation(fields: [cashRegisterId], references: [id])
+  customer           Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  seller             User                     @relation("SaleSeller", fields: [sellerId], references: [id])
+  assistantSeller    User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
+  cancelledBy        User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+  items              SaleItem[]
+  payments           Payment[]
+  stockMovements     StockMovement[]
+  creditMovements    CustomerCreditMovement[]
+  fiadoEntries       FiadoEntry[]
+  itemDefects        SaleItemDefect[]
+  convenioRedemption ConvenioRedemption?
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -1227,9 +1235,10 @@ model Convenio {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members ConvenioMember[]
-  invites ConvenioInvite[]
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     ConvenioMember[]
+  invites     ConvenioInvite[]
+  redemptions ConvenioRedemption[]
 
   @@unique([tenantId, slug])
   @@map("convenios")
@@ -1266,34 +1275,70 @@ model ConvenioInvite {
 /// (ver `submitConvenioSignupAction`) — mesmo model pros dois caminhos, só o
 /// consentimento LGPD (`consentAcceptedAt`) é exclusivo do autoatendimento.
 model ConvenioMember {
-  id                String               @id @default(cuid())
-  tenantId          String
-  convenioId        String
-  name              String
+  id                  String               @id @default(cuid())
+  tenantId            String
+  convenioId          String
+  name                String
   /// CPF, só dígitos — normalizado antes de salvar (ver `normalizeDocument`).
-  document          String
-  phone             String?
-  email             String?
-  selfieUrl         String
+  document            String
+  phone               String?
+  email               String?
+  selfieUrl           String
   /// Nulo quando o convênio não exige comprovante (`Convenio.rules.requireProof`).
-  proofUrl          String?
-  status            ConvenioMemberStatus @default(PENDING)
-  statusReason      String?
-  statusChangedById String?
-  statusChangedAt   DateTime?
-  validUntil        DateTime?
+  proofUrl            String?
+  status              ConvenioMemberStatus @default(PENDING)
+  statusReason        String?
+  statusChangedById   String?
+  statusChangedAt     DateTime?
+  validUntil          DateTime?
   /// Preenchido só no cadastro por autoatendimento — nulo em cadastro manual.
-  consentAcceptedAt DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  consentAcceptedAt   DateTime?
+  /// Hash SHA-256 do token da "carteirinha" (QR Code) — gerado na criação do
+  /// cadastro (mesmo hash em qualquer status), nunca o valor em claro (mesmo
+  /// padrão de `ConvenioInvite.tokenHash`). Fica estável mesmo se o
+  /// colaborador for suspenso e reativado depois, pra não invalidar o QR que
+  /// ele já salvou no celular.
+  credentialTokenHash String               @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  convenio        Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
-  statusChangedBy User?    @relation("ConvenioMemberStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio        Convenio             @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  statusChangedBy User?                @relation("ConvenioMemberStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  redemptions     ConvenioRedemption[]
 
   @@unique([convenioId, document])
   @@index([tenantId, convenioId, status])
   @@map("convenio_members")
+}
+
+/// Um uso do benefício numa venda — a peça central da auditoria e do
+/// dashboard do convênio. `saleId` é único: no máximo um benefício de
+/// convênio por venda. `reversedAt` é preenchido quando a venda é cancelada
+/// (ver `cancelSale`) — deixa de contar pro limite de uso do colaborador e
+/// pros totais do convênio, sem apagar o registro histórico.
+model ConvenioRedemption {
+  id             String    @id @default(cuid())
+  tenantId       String
+  convenioId     String
+  memberId       String
+  saleId         String    @unique
+  sellerId       String
+  cashRegisterId String
+  benefitAmount  Decimal   @db.Decimal(10, 2)
+  reversedAt     DateTime?
+  reversedReason String?
+  createdAt      DateTime  @default(now())
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio Convenio       @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  member   ConvenioMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sale     Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  seller   User           @relation("ConvenioRedemptionSeller", fields: [sellerId], references: [id])
+
+  @@index([tenantId, convenioId, createdAt])
+  @@index([memberId, createdAt])
+  @@map("convenio_redemptions")
 }
 
 // ---------------------------------------------------------------------------

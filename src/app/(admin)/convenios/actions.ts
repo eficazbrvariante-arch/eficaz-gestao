@@ -116,6 +116,7 @@ export async function createConvenioMemberAction(convenioId: string, input: Conv
   });
   if (duplicate) return { error: "Esse CPF já está cadastrado neste convênio." };
 
+  const { rawToken, hashedToken } = generateResetToken();
   await prisma.convenioMember.create({
     data: {
       tenantId: user.tenantId,
@@ -127,11 +128,12 @@ export async function createConvenioMemberAction(convenioId: string, input: Conv
       selfieUrl: parsed.data.selfieUrl,
       proofUrl: parsed.data.proofUrl,
       validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : null,
+      credentialTokenHash: hashedToken,
     },
   });
 
   revalidatePath(`/convenios/${convenioId}`);
-  redirect(`/convenios/${convenioId}`);
+  return { success: "Colaborador cadastrado.", credentialUrl: credentialUrl(rawToken) };
 }
 
 /**
@@ -170,6 +172,12 @@ export async function updateConvenioMemberStatusAction(
 function inviteUrl(slug: string, rawToken: string) {
   const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   return `${origin}/convenio/${slug}/${rawToken}`;
+}
+
+/** URL da "carteirinha" — status do cadastro e, quando ativo, o QR Code (ver `/c/[token]`). */
+function credentialUrl(rawToken: string) {
+  const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return `${origin}/c/${rawToken}`;
 }
 
 /**

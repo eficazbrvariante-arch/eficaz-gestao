@@ -19,6 +19,8 @@ import {
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
+import { ConvenioModal } from "./convenio-modal";
+import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
 import {
   allocateSellerDiscountBudget,
   getSellerDiscountRule,
@@ -96,6 +98,13 @@ export function PdvScreen({
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
 
+  // Benefício de Convênio Corporativo — nunca escolhido/digitado como valor
+  // pelo vendedor, só o resultado já validado do QR (ver `ConvenioModal`).
+  // Some do carrinho se o vendedor remover, e a venda é revalidada de novo
+  // no servidor no momento de fechar (ver `revalidateConvenioMember`).
+  const [convenioMember, setConvenioMember] = useState<ConvenioCredential | null>(null);
+  const [convenioModalOpen, setConvenioModalOpen] = useState(false);
+
   // Aviso de sucesso depois de finalizar uma venda — o PDV fica pronto pra
   // próxima venda na hora, sem navegar pra página do comprovante; este
   // banner só oferece o link de impressão pra quem precisar dele.
@@ -149,7 +158,12 @@ export function PdvScreen({
 
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
   const discount = round2(cart.reduce((sum, line) => sum + (line.discount || 0), 0));
-  const total = round2(Math.max(0, subtotal - discount));
+  // Nunca some com `discount` — o benefício de convênio é separado de
+  // propósito (ver nota em `sale-service.ts`), só pra não afetar a comissão.
+  const convenioBenefit = convenioMember
+    ? round2(Math.min(convenioMember.benefitAmount, Math.max(0, subtotal - discount)))
+    : 0;
+  const total = round2(Math.max(0, subtotal - discount - convenioBenefit));
 
   // Desconto de segurança nas películas 3D (ver `seller-discount-rules.ts`):
   // cada capinha no carrinho libera o desconto de uma película — nunca
@@ -410,6 +424,7 @@ export function PdvScreen({
         })),
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
+        convenioMemberId: convenioMember?.member.id ?? "",
       });
 
       if ("error" in result && result.error) {
@@ -437,6 +452,7 @@ export function PdvScreen({
         setAmounts(EMPTY_PAYMENT_AMOUNTS);
         setCashReceived("");
         setFiadoDueDate("");
+        setConvenioMember(null);
         setSellerId(null);
         setSellerName(null);
 
@@ -855,6 +871,29 @@ export function PdvScreen({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <Label className="mb-1 text-sm font-bold text-black">Convênio corporativo</Label>
+            {convenioMember ? (
+              <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+                <div>
+                  <span className="block text-sm font-bold text-black">{convenioMember.member.name}</span>
+                  <span className="text-xs text-slate-500">Convênio {convenioMember.convenio.name}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConvenioMember(null)}
+                  className="text-xs font-medium text-slate-700 hover:underline"
+                >
+                  Remover
+                </button>
+              </div>
+            ) : (
+              <Button type="button" variant="secondary" onClick={() => setConvenioModalOpen(true)}>
+                Escanear QR do convênio
+              </Button>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="space-y-1.5 text-base">
               <div className="flex justify-between font-medium text-slate-700">
                 <span>Subtotal</span>
@@ -864,6 +903,12 @@ export function PdvScreen({
                 <div className="flex justify-between font-medium text-slate-700">
                   <span>Desconto (nos itens)</span>
                   <span className="font-bold text-black">-{formatBRL(discount)}</span>
+                </div>
+              )}
+              {convenioBenefit > 0 && (
+                <div className="flex justify-between font-medium text-slate-700">
+                  <span>Benefício convênio</span>
+                  <span className="font-bold text-black">-{formatBRL(convenioBenefit)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-slate-200 pt-2 text-xl font-bold text-black">
@@ -966,6 +1011,15 @@ export function PdvScreen({
           setSellerId(seller.id);
           setSellerName(seller.name);
           setSellerModalOpen(false);
+        }}
+      />
+
+      <ConvenioModal
+        open={convenioModalOpen}
+        onClose={() => setConvenioModalOpen(false)}
+        onConfirm={(credential) => {
+          setConvenioMember(credential);
+          setConvenioModalOpen(false);
         }}
       />
 

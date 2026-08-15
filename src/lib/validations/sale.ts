@@ -30,6 +30,10 @@ export const createSaleSchema = z.object({
    *  válido depende de haver ou não parcela em fiado). `YYYY-MM-DD`. */
   fiadoDueDate: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().optional().or(z.literal("")),
+  /** Colaborador de Convênio Corporativo já validado no PDV (ver
+   *  `validateConvenioCredentialAction`) — revalidado de novo aqui dentro de
+   *  `createSale`, nunca aceito só porque o cliente diz que já validou. */
+  convenioMemberId: z.string().trim().optional().or(z.literal("")),
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;

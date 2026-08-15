@@ -7,6 +7,10 @@ import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
 import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
+import {
+  resolveConvenioCredential,
+  type ConvenioCredential,
+} from "@/modules/convenios/convenio-redemption-service";
 import { createSaleSchema, type CreateSaleInput } from "@/lib/validations/sale";
 
 export type PdvProduct = {
@@ -125,6 +129,22 @@ export async function listActiveSellersAction(): Promise<PdvSellerOption[]> {
     orderBy: { name: "asc" },
   });
   return sellers.filter((seller) => canSell(seller.role));
+}
+
+/**
+ * Checagem prévia do QR do convênio — só pra mostrar o "confirme que é essa
+ * pessoa" pro vendedor antes de aplicar. Não é a validação que vale de
+ * verdade: `createSale` refaz tudo de novo no momento de fechar a venda.
+ */
+export async function validateConvenioCredentialAction(
+  rawInput: string
+): Promise<{ error: string } | ({ ok: true } & ConvenioCredential)> {
+  const user = await requireUser();
+  if (!canSell(user.role)) return { error: "Seu perfil não tem permissão para vender." };
+
+  const result = await resolveConvenioCredential(user.tenantId, rawInput);
+  if (!result.ok) return { error: result.error };
+  return result;
 }
 
 export async function createSaleAction(

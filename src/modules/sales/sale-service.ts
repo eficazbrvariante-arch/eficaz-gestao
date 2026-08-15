@@ -6,6 +6,7 @@ import {
   getSellerDiscountRule,
   isCapinhaCategory,
 } from "@/lib/seller-discount-rules";
+import { revalidateConvenioMember } from "@/modules/convenios/convenio-redemption-service";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -185,7 +186,22 @@ export async function createSale(
     costTotal = round2(costTotal + unitCost * item.quantity);
   }
 
-  const total = round2(subtotal - discount);
+  // Benefício de Convênio Corporativo — revalidado aqui de novo (status,
+  // convênio ativo, limite de uso do período), nunca só porque o PDV já
+  // validou antes de montar o carrinho: o tempo entre escanear e pagar pode
+  // ter mudado o status. Nunca reduz `discount` nem o desconto de item algum
+  // — `convenioDiscount` é separado de propósito, pra não afetar a comissão
+  // do vendedor (calculada em cima de `SaleItem.total`, intocado aqui).
+  let convenioMember: { id: string; name: string; convenioId: string } | null = null;
+  let convenioDiscount = 0;
+  if (input.convenioMemberId) {
+    const result = await revalidateConvenioMember(ctx.tenantId, input.convenioMemberId);
+    if (!result.ok) return { ok: false, error: result.error };
+    convenioMember = { ...result.member, convenioId: result.convenio.id };
+    convenioDiscount = round2(Math.min(result.benefitAmount, round2(subtotal - discount)));
+  }
+
+  const total = round2(subtotal - discount - convenioDiscount);
 
   const paidAmount = round2(input.payments.reduce((sum, p) => sum + p.amount, 0));
   if (Math.abs(paidAmount - total) > CENT) {
@@ -281,6 +297,7 @@ export async function createSale(
           assistantSellerId,
           subtotal,
           discount,
+          convenioDiscount,
           total,
           costTotal,
           cashReceived,
@@ -377,6 +394,20 @@ export async function createSale(
           },
           tx
         );
+      }
+
+      if (convenioMember) {
+        await tx.convenioRedemption.create({
+          data: {
+            tenantId: ctx.tenantId,
+            convenioId: convenioMember.convenioId,
+            memberId: convenioMember.id,
+            saleId: created.id,
+            sellerId: ctx.sellerId,
+            cashRegisterId: ctx.cashRegisterId,
+            benefitAmount: convenioDiscount,
+          },
+        });
       }
 
       return created;
@@ -494,6 +525,14 @@ export async function cancelSale(
           userId,
           reason: `Cancelamento da venda #${sale.number}`,
         },
+      });
+
+      // Venda cancelada não pode continuar contando pro limite de uso do
+      // colaborador nem pros totais do convênio — reverte sem apagar o
+      // registro histórico (ver `ConvenioRedemption.reversedAt`).
+      await tx.convenioRedemption.updateMany({
+        where: { saleId: sale.id, reversedAt: null },
+        data: { reversedAt: new Date(), reversedReason: `Venda #${sale.number} cancelada` },
       });
     });
 
