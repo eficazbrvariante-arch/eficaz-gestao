@@ -90,11 +90,11 @@ export async function resolveConvenioCredential(
   tenantId: string,
   rawInput: string
 ): Promise<ResolveConvenioCredentialResult> {
-  const token = extractCredentialToken(rawInput);
-  if (!token) return { ok: false, error: "Código do convênio vazio." };
+  const scannedCode = extractCredentialToken(rawInput);
+  if (!scannedCode) return { ok: false, error: "Código do convênio vazio." };
 
   const member = await prisma.convenioMember.findUnique({
-    where: { credentialTokenHash: hashToken(token) },
+    where: { credentialTokenHash: hashToken(scannedCode) },
     include: { convenio: true },
   });
   return validateMemberForRedemption(tenantId, member);
