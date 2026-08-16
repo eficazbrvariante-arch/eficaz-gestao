@@ -5,6 +5,7 @@ import {
   allocateSellerDiscountBudget,
   getSellerDiscountRule,
   isCapinhaCategory,
+  isPeliculaCategory,
 } from "@/lib/seller-discount-rules";
 import { revalidateConvenioMember } from "@/modules/convenios/convenio-redemption-service";
 import { formatBRL } from "@/lib/format";
@@ -70,6 +71,23 @@ export async function createSale(
     const product = productMap.get(item.productId);
     return sum + (isCapinhaCategory(product?.category?.name) ? item.quantity : 0);
   }, 0);
+
+  // Proteção Eficaz: revalidada aqui de novo, nunca aceita só porque o PDV
+  // mandou o campo marcado — só vale numa venda com capinha + película
+  // juntas (ver `isPeliculaCategory`/`isCapinhaCategory`).
+  if (input.protecaoEficazOptedIn) {
+    const peliculaUnits = input.items.reduce((sum, item) => {
+      const product = productMap.get(item.productId);
+      return sum + (isPeliculaCategory(product?.category?.name) ? item.quantity : 0);
+    }, 0);
+    if (capinhaUnits === 0 || peliculaUnits === 0) {
+      return {
+        ok: false,
+        error: "Proteção Eficaz só é válida numa venda com capinha e película juntas.",
+      };
+    }
+  }
+
   const sellerDiscountAllocation = allocateSellerDiscountBudget(
     input.items.map((item, index) => {
       const product = productMap.get(item.productId);
@@ -302,6 +320,7 @@ export async function createSale(
           costTotal,
           cashReceived,
           changeAmount,
+          protecaoEficazOptedIn: input.protecaoEficazOptedIn ?? false,
           notes: input.notes || null,
           items: {
             create: resolvedItems.map((item) => ({

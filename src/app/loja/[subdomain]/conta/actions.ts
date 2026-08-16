@@ -10,6 +10,11 @@ import {
 import { getCustomerSession, createCustomerSession } from "@/modules/customers/customer-session";
 import { submitCustomerReview } from "@/modules/catalog/review-service";
 import { changeCustomerPassword } from "@/modules/customers/customer-service";
+import {
+  submitProtecaoEficazSchema,
+  type SubmitProtecaoEficazFormValues,
+} from "@/lib/validations/protecao-eficaz";
+import { submitProtecaoEficazRegistration } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 
 /**
  * `customerId` nunca vem do formulário — só de uma sessão de verdade,
@@ -74,4 +79,39 @@ export async function changePasswordAction(subdomain: string, input: ChangeCusto
   await createCustomerSession(tenant.id, subdomain, session.customerId);
 
   return { success: "Senha alterada com sucesso." };
+}
+
+/**
+ * `customerId` vem só da sessão. A checagem de elegibilidade real (a venda
+ * existe, tem capinha + película, o cliente marcou no PDV) não acontece
+ * aqui — é sempre manual, na aprovação do Admin (ver
+ * `approveProtecaoEficaz`). Aqui só grava o cadastro como pendente.
+ */
+export async function submitProtecaoEficazAction(
+  subdomain: string,
+  input: SubmitProtecaoEficazFormValues
+) {
+  const tenant = await prisma.tenant.findFirst({
+    where: { subdomain: subdomain.toLowerCase(), catalogEnabled: true },
+    select: { id: true },
+  });
+  if (!tenant) return { error: "Loja indisponível no momento." };
+
+  const session = await getCustomerSession(tenant.id);
+  if (!session) return { error: "Sua sessão expirou. Atualize a página e entre novamente." };
+
+  const parsed = submitProtecaoEficazSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+  }
+
+  const result = await submitProtecaoEficazRegistration(tenant.id, session.customerId, {
+    saleNumber: parsed.data.saleNumber,
+    proofPhotoUrl: parsed.data.proofPhotoUrl,
+  });
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath(`/loja/${subdomain}/conta`);
+
+  return { success: true as const };
 }

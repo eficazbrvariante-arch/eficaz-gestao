@@ -6,7 +6,6 @@ import { formatBRL, formatDateTime } from "@/lib/format";
 import { canCancelSale, canViewAllSales } from "@/lib/permissions";
 import { storeDisplayHost, storeOrigin } from "@/modules/catalog/tenant-resolver";
 import { SaleActions } from "./sale-controls";
-import { AutoPrint } from "./auto-print";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Dinheiro",
@@ -22,10 +21,10 @@ export default async function ComprovantePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ nova?: string; cancelar?: string }>;
+  searchParams: Promise<{ cancelar?: string }>;
 }) {
   const { id } = await params;
-  const { nova, cancelar } = await searchParams;
+  const { cancelar } = await searchParams;
   const user = await requireUser();
 
   const [sale, tenant] = await Promise.all([
@@ -64,21 +63,8 @@ export default async function ComprovantePage({
     remaining: item.quantity - item.defects.reduce((sum, d) => sum + d.quantity, 0),
   }));
 
-  const shouldAutoPrint = nova === "1" && !isCancelled && tenant.autoPrintReceipt;
-
   return (
     <div>
-      <AutoPrint enabled={shouldAutoPrint} />
-
-      {nova === "1" && !isCancelled && (
-        <div className="mb-4 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800 print:hidden">
-          Venda #{sale.number} registrada com sucesso.
-          {Number(sale.changeAmount) > 0 && (
-            <strong className="ml-1">Troco: {formatBRL(sale.changeAmount)}</strong>
-          )}
-        </div>
-      )}
-
       <div className="mb-4 print:hidden">
         <SaleActions
           saleId={sale.id}
@@ -210,6 +196,16 @@ export default async function ComprovantePage({
             <span>{formatBRL(sale.total)}</span>
           </div>
         </div>
+
+        {sale.protecaoEficazOptedIn && (
+          <div className="mt-3 rounded border border-dashed border-slate-400 p-2 text-center text-xs text-slate-700">
+            <p className="font-semibold">🛡 Proteção Eficaz ativada</p>
+            <p>
+              Cadastre-se em {siteHost || "nossa loja online"}/conta e valide esta nota (venda
+              #{sale.number}) em até 30 dias da compra pra garantir a troca da película.
+            </p>
+          </div>
+        )}
 
         <div className="mt-3 space-y-1 border-t border-dashed border-slate-300 pt-3 text-xs text-slate-600">
           {sale.payments.map((payment) => (

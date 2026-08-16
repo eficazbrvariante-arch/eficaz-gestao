@@ -4,6 +4,7 @@ import {
   canManageEmployeeLedger,
   canManageFlashDeals,
   canManageProducts,
+  canManageProtecaoEficaz,
   canManageRepairOrders,
   canManageSettings,
   canManageStock,
@@ -61,6 +62,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/convenios",
     available: true,
     visibleTo: canManageConvenios,
+  },
+  {
+    label: "Proteção Eficaz",
+    href: "/protecao-eficaz",
+    available: true,
+    visibleTo: canManageProtecaoEficaz,
   },
   { label: "Dispositivos", href: "/dispositivos", available: true, visibleTo: canManageSettings },
   {

@@ -34,6 +34,10 @@ export const createSaleSchema = z.object({
    *  `validateConvenioCredentialAction`) — revalidado de novo aqui dentro de
    *  `createSale`, nunca aceito só porque o cliente diz que já validou. */
   convenioMemberId: z.string().trim().optional().or(z.literal("")),
+  /** Cliente abriu mão do desconto de película pra ganhar a Proteção Eficaz
+   *  (ver `Sale.protecaoEficazOptedIn`) — marcado manualmente pelo vendedor,
+   *  só aparece no PDV quando o carrinho já tem capinha + película juntas. */
+  protecaoEficazOptedIn: z.boolean().optional(),
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;

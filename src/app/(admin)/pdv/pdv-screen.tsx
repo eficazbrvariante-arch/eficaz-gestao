@@ -25,6 +25,7 @@ import {
   allocateSellerDiscountBudget,
   getSellerDiscountRule,
   isCapinhaCategory,
+  isPeliculaCategory,
 } from "@/lib/seller-discount-rules";
 
 type CartLine = {
@@ -105,6 +106,13 @@ export function PdvScreen({
   const [convenioMember, setConvenioMember] = useState<ConvenioCredential | null>(null);
   const [convenioModalOpen, setConvenioModalOpen] = useState(false);
 
+  // Proteção Eficaz: cliente abre mão do desconto de película em troca da
+  // garantia de troca em 30 dias (ver `Sale.protecaoEficazOptedIn`). Marcação
+  // manual do vendedor — só aparece quando o carrinho já é elegível (capinha
+  // + película juntas), e é revalidada de novo no servidor (nunca aceita só
+  // porque veio marcada daqui).
+  const [protecaoEficazOptedIn, setProtecaoEficazOptedIn] = useState(false);
+
   // Aviso de sucesso depois de finalizar uma venda — o PDV fica pronto pra
   // próxima venda na hora, sem navegar pra página do comprovante; este
   // banner só oferece o link de impressão pra quem precisar dele.
@@ -174,6 +182,19 @@ export function PdvScreen({
     0
   );
   const sellerDiscountAllocation = allocateSellerDiscountBudget(cart, capinhaUnits);
+
+  // Proteção Eficaz: vale pra qualquer película do catálogo (não só as duas
+  // elegíveis ao desconto de segurança acima), desde que haja capinha junto.
+  const peliculaUnits = cart.reduce(
+    (sum, line) => sum + (isPeliculaCategory(line.categoryName) ? line.quantity : 0),
+    0
+  );
+  const protecaoEficazEligible = capinhaUnits > 0 && peliculaUnits > 0;
+  // Se o carrinho deixar de ser elegível (removeu a capinha ou a película),
+  // a marcação não fica presa escondida — desmarca sozinha.
+  if (!protecaoEficazEligible && protecaoEficazOptedIn) {
+    setProtecaoEficazOptedIn(false);
+  }
 
   function maxLineDiscount(line: CartLine) {
     const grossTotal = round2(line.unitPrice * line.quantity);
@@ -425,6 +446,7 @@ export function PdvScreen({
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
         convenioMemberId: convenioMember?.member.id ?? "",
+        protecaoEficazOptedIn,
       });
 
       if ("error" in result && result.error) {
@@ -455,6 +477,7 @@ export function PdvScreen({
         setConvenioMember(null);
         setSellerId(null);
         setSellerName(null);
+        setProtecaoEficazOptedIn(false);
 
         searchRef.current?.focus();
       }
@@ -490,9 +513,16 @@ export function PdvScreen({
       {printSaleId && (
         <iframe
           key={printSaleId}
-          src={`/vendas/${printSaleId}?nova=1`}
+          src={`/vendas/${printSaleId}`}
           aria-hidden="true"
           tabIndex={-1}
+          // Chama print() no iframe a partir do PAI, só depois do `onLoad`
+          // (documento carregado por completo) — mais confiável do que o
+          // próprio documento do iframe se auto-imprimir ao montar (ver
+          // histórico de `AutoPrint`, removido): alguns navegadores tratam
+          // `window.print()` disparado de dentro de um iframe recém-criado
+          // de forma inconsistente, silenciosamente ignorando a chamada.
+          onLoad={(e) => e.currentTarget.contentWindow?.print()}
           style={{ position: "fixed", top: 0, left: "-10000px", width: "380px", height: "600px", border: "none" }}
         />
       )}
@@ -892,6 +922,28 @@ export function PdvScreen({
               </Button>
             )}
           </div>
+
+          {protecaoEficazEligible && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={protecaoEficazOptedIn}
+                  onChange={(e) => setProtecaoEficazOptedIn(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                />
+                <span>
+                  <span className="block text-sm font-bold text-black">
+                    Cliente optou pela Proteção Eficaz
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    Sem desconto na película agora — em troca, garantia de trocar a película em
+                    até 30 dias da venda. Sai marcado no cupom; o cliente valida em /conta no site.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="space-y-1.5 text-base">

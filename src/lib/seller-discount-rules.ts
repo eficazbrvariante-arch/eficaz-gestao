@@ -6,6 +6,7 @@ export type SellerDiscountRule = {
 };
 
 const CAPINHA_CATEGORY_NAME = "Capas";
+const PELICULA_CATEGORY_NAME = "Película";
 
 /**
  * Desconto que o Vendedor pode aplicar sozinho, sem passar por Gerente —
@@ -33,6 +34,16 @@ export function getSellerDiscountRule(
 /** O desconto de película do Vendedor só é liberado com uma capinha no carrinho. */
 export function isCapinhaCategory(categoryName: string | null | undefined): boolean {
   return categoryName === CAPINHA_CATEGORY_NAME;
+}
+
+/**
+ * Toda película do catálogo (hidrogel, 3D comum, privativa — não só as duas
+ * elegíveis ao desconto de segurança do Vendedor, ver `getSellerDiscountRule`
+ * acima). Usada pra elegibilidade da Proteção Eficaz, que vale pra qualquer
+ * película da categoria, desde que a venda também tenha uma capinha.
+ */
+export function isPeliculaCategory(categoryName: string | null | undefined): boolean {
+  return categoryName === PELICULA_CATEGORY_NAME;
 }
 
 export type SellerDiscountBudgetLine = {

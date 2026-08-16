@@ -231,3 +231,12 @@ export function canMergeCustomers(role: UserRole) {
 export function canManageConvenios(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
+
+/**
+ * Validar manualmente os cadastros de Proteção Eficaz (comparar a foto da
+ * nota do cliente com o rascunho da venda, aprovar/rejeitar, marcar como
+ * trocado). Só ADMIN — é o próprio dono quem faz essa conferência.
+ */
+export function canManageProtecaoEficaz(role: UserRole) {
+  return role === "ADMIN";
+}

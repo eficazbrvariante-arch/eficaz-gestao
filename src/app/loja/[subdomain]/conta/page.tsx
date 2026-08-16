@@ -7,11 +7,13 @@ import { listReviewableProducts } from "@/modules/catalog/review-service";
 import { getCustomerCreditBalance } from "@/modules/customers/customer-service";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { getCustomerConvenioBenefit } from "@/modules/convenios/convenio-customer-benefit";
+import { listCustomerProtecaoEficaz } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
 import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import { LogoutButton } from "./logout-button";
 import { ReviewForm } from "./review-form";
 import { ChangePasswordForm } from "./change-password-form";
+import { ProtecaoEficazSection } from "./protecao-eficaz-form";
 
 export default async function CustomerAccountPage({
   params,
@@ -28,13 +30,15 @@ export default async function CustomerAccountPage({
     redirect(`${base}/conta/entrar?returnTo=${encodeURIComponent(`${base}/conta`)}`);
   }
 
-  const [orders, reviewableProducts, creditBalance, fiadoEntries, convenioBenefit] = await Promise.all([
-    listCustomerOrders(store.id, session.customerId),
-    listReviewableProducts(store.id, session.customerId),
-    getCustomerCreditBalance(store.id, session.customerId),
-    listFiadoEntriesByCustomer(store.id, session.customerId),
-    getCustomerConvenioBenefit(session.customerId),
-  ]);
+  const [orders, reviewableProducts, creditBalance, fiadoEntries, convenioBenefit, protecaoEficazRegistrations] =
+    await Promise.all([
+      listCustomerOrders(store.id, session.customerId),
+      listReviewableProducts(store.id, session.customerId),
+      getCustomerCreditBalance(store.id, session.customerId),
+      listFiadoEntriesByCustomer(store.id, session.customerId),
+      getCustomerConvenioBenefit(session.customerId),
+      listCustomerProtecaoEficaz(store.id, session.customerId),
+    ]);
   const pendingFiado = fiadoEntries.filter((entry) => entry.status === "PENDING");
 
   return (
@@ -92,6 +96,8 @@ export default async function CustomerAccountPage({
           )}
         </div>
       )}
+
+      <ProtecaoEficazSection subdomain={subdomain} registrations={protecaoEficazRegistrations} />
 
       {(pendingFiado.length > 0 || creditBalance > 0) && (
         <div className="mb-8 rounded-xl border border-slate-200 p-4">

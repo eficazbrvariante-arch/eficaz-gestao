@@ -105,35 +105,36 @@ model Tenant {
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
-  users                    User[]
-  categories               Category[]
-  brands                   Brand[]
-  suppliers                Supplier[]
-  products                 Product[]
-  stockMovements           StockMovement[]
-  customers                Customer[]
-  cashRegisters            CashRegister[]
-  cashMovements            CashMovement[]
-  sales                    Sale[]
-  saleItemDefects          SaleItemDefect[]
-  orders                   Order[]
-  deliveryZones            DeliveryZone[]
-  auditLogs                AuditLog[]
-  repairOrders             RepairOrder[]
-  repairOrderPayments      RepairOrderPayment[]
-  creditMovements          CustomerCreditMovement[]
-  fiadoEntries             FiadoEntry[]
-  employeeLedgerEntries    EmployeeLedgerEntry[]
-  convenios                Convenio[]
-  convenioMembers          ConvenioMember[]
-  convenioInvites          ConvenioInvite[]
-  convenioRedemptions      ConvenioRedemption[]
-  convenioProductDiscounts ConvenioProductDiscount[]
-  devices                  Device[]
-  visitorSessions          VisitorSession[]
-  analyticsEvents          AnalyticsEvent[]
-  attendanceEntries        AttendanceEntry[]
-  attendanceCorrections    AttendanceCorrection[]
+  users                       User[]
+  categories                  Category[]
+  brands                      Brand[]
+  suppliers                   Supplier[]
+  products                    Product[]
+  stockMovements              StockMovement[]
+  customers                   Customer[]
+  cashRegisters               CashRegister[]
+  cashMovements               CashMovement[]
+  sales                       Sale[]
+  saleItemDefects             SaleItemDefect[]
+  orders                      Order[]
+  deliveryZones               DeliveryZone[]
+  auditLogs                   AuditLog[]
+  repairOrders                RepairOrder[]
+  repairOrderPayments         RepairOrderPayment[]
+  creditMovements             CustomerCreditMovement[]
+  fiadoEntries                FiadoEntry[]
+  employeeLedgerEntries       EmployeeLedgerEntry[]
+  convenios                   Convenio[]
+  convenioMembers             ConvenioMember[]
+  convenioInvites             ConvenioInvite[]
+  convenioRedemptions         ConvenioRedemption[]
+  convenioProductDiscounts    ConvenioProductDiscount[]
+  protecaoEficazRegistrations ProtecaoEficaz[]
+  devices                     Device[]
+  visitorSessions             VisitorSession[]
+  analyticsEvents             AnalyticsEvent[]
+  attendanceEntries           AttendanceEntry[]
+  attendanceCorrections       AttendanceCorrection[]
 
   // Central de Atendimento WhatsApp (ver bloco "Fase 9" no fim do arquivo).
   whatsAppIntegration   WhatsAppIntegration?
@@ -231,6 +232,8 @@ model User {
   convenioRedemptionsSold      ConvenioRedemption[]     @relation("ConvenioRedemptionSeller")
   devicesRequested             Device[]                 @relation("DeviceRequestedBy")
   devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
+  protecaoEficazReviewed       ProtecaoEficaz[]         @relation("ProtecaoEficazReviewedBy")
+  protecaoEficazRedeemed       ProtecaoEficaz[]         @relation("ProtecaoEficazRedeemedBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -676,16 +679,17 @@ model Customer {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  convenioMember   ConvenioMember?          @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
-  sales            Sale[]
-  orders           Order[]
-  creditMovements  CustomerCreditMovement[]
-  fiadoEntries     FiadoEntry[]
-  repairOrders     RepairOrder[]
-  sessions         CustomerSession[]
-  reviews          ProductReview[]
-  whatsAppContacts WhatsAppContact[]
+  tenant                      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenioMember              ConvenioMember?          @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
+  sales                       Sale[]
+  orders                      Order[]
+  creditMovements             CustomerCreditMovement[]
+  fiadoEntries                FiadoEntry[]
+  repairOrders                RepairOrder[]
+  sessions                    CustomerSession[]
+  reviews                     ProductReview[]
+  whatsAppContacts            WhatsAppContact[]
+  protecaoEficazRegistrations ProtecaoEficaz[]
 
   @@unique([tenantId, username])
   @@index([tenantId, name])
@@ -979,35 +983,41 @@ enum SaleStatus {
 }
 
 model Sale {
-  id                String     @id @default(cuid())
-  tenantId          String
+  id                    String     @id @default(cuid())
+  tenantId              String
   /// Número sequencial por empresa, exibido no comprovante.
-  number            Int
-  cashRegisterId    String
-  customerId        String?
-  sellerId          String
+  number                Int
+  cashRegisterId        String
+  customerId            String?
+  sellerId              String
   /// Segunda pessoa envolvida na venda (opcional). Só estrutura de dados —
   /// nenhuma regra de comissão/relatório usa este campo ainda.
-  assistantSellerId String?
-  status            SaleStatus @default(COMPLETED)
-  subtotal          Decimal    @db.Decimal(12, 2)
-  discount          Decimal    @default(0) @db.Decimal(12, 2)
+  assistantSellerId     String?
+  status                SaleStatus @default(COMPLETED)
+  subtotal              Decimal    @db.Decimal(12, 2)
+  discount              Decimal    @default(0) @db.Decimal(12, 2)
   /// Benefício de Convênio Corporativo aplicado na venda — separado de
   /// `discount` de propósito: nunca reduz a comissão do vendedor (calculada
   /// em cima de `SaleItem.total`, que este campo nunca toca). Ver
   /// `ConvenioRedemption`, a linha que registra o uso em si.
-  convenioDiscount  Decimal    @default(0) @db.Decimal(12, 2)
-  total             Decimal    @db.Decimal(12, 2)
+  convenioDiscount      Decimal    @default(0) @db.Decimal(12, 2)
+  /// Cliente abriu mão do desconto de película pra ganhar direito à
+  /// Proteção Eficaz (troca da película em até 30 dias da venda) — marcado
+  /// pelo vendedor no PDV, nunca inferido. Impresso no cupom; validado
+  /// depois pelo cliente em `/conta` e aprovado manualmente pelo Admin (ver
+  /// `ProtecaoEficaz`).
+  protecaoEficazOptedIn Boolean    @default(false)
+  total                 Decimal    @db.Decimal(12, 2)
   /// Soma do custo dos itens no momento da venda, para apurar lucro bruto.
-  costTotal         Decimal    @default(0) @db.Decimal(12, 2)
+  costTotal             Decimal    @default(0) @db.Decimal(12, 2)
   /// Valor em dinheiro recebido do cliente (apenas quando há pagamento em espécie).
-  cashReceived      Decimal?   @db.Decimal(12, 2)
-  changeAmount      Decimal    @default(0) @db.Decimal(12, 2)
-  notes             String?
-  createdAt         DateTime   @default(now())
-  cancelledAt       DateTime?
-  cancelledById     String?
-  cancelReason      String?
+  cashReceived          Decimal?   @db.Decimal(12, 2)
+  changeAmount          Decimal    @default(0) @db.Decimal(12, 2)
+  notes                 String?
+  createdAt             DateTime   @default(now())
+  cancelledAt           DateTime?
+  cancelledById         String?
+  cancelReason          String?
 
   tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister       CashRegister             @relation(fields: [cashRegisterId], references: [id])
@@ -1845,4 +1855,53 @@ model WhatsAppQuickReply {
 
   @@unique([tenantId, shortcut])
   @@map("whatsapp_quick_replies")
+}
+
+// ---------------------------------------------------------------------------
+// Proteção Eficaz — garantia de troca de película em 30 dias
+// ---------------------------------------------------------------------------
+
+enum ProtecaoEficazStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Cadastro do cliente pra validar a Proteção Eficaz — cliente que comprou
+/// capinha + película e, no PDV, abriu mão do desconto da película em troca
+/// desta garantia (`Sale.protecaoEficazOptedIn`). Cliente informa o número
+/// da venda (impresso no cupom) e uma foto da nota física; sem vínculo
+/// automático com `Sale` — venda de balcão é anônima, mesma limitação do
+/// vínculo de Convênio (ver `Customer.convenioMemberId`). Validação é sempre
+/// manual (Admin compara a foto com o rascunho da venda no sistema).
+model ProtecaoEficaz {
+  id                  String               @id @default(cuid())
+  tenantId            String
+  customerId          String
+  /// `Sale.number` informado pelo cliente — não é uma FK: a venda pode não
+  /// existir ou não bater, e cabe ao Admin julgar isso na comparação manual.
+  saleNumber          Int
+  proofPhotoUrl       String
+  status              ProtecaoEficazStatus @default(PENDING)
+  rejectionReason     String?
+  termsAcceptedAt     DateTime
+  reviewedById        String?
+  reviewedAt          DateTime?
+  /// 30 dias a partir da DATA DA VENDA (não da aprovação) — calculado só na
+  /// aprovação, quando o Admin já confirmou que `saleNumber` corresponde a
+  /// uma venda real com capinha + película.
+  protectionExpiresAt DateTime?
+  redeemedAt          DateTime?
+  redeemedById        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reviewedBy User?    @relation("ProtecaoEficazReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  redeemedBy User?    @relation("ProtecaoEficazRedeemedBy", fields: [redeemedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, saleNumber])
+  @@index([tenantId, status])
+  @@map("protecao_eficaz")
 }
