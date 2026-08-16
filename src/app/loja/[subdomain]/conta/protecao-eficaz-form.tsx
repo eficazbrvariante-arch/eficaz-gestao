@@ -64,11 +64,32 @@ export function ProtecaoEficazSection({
   return (
     <div className="mb-8 rounded-xl border border-slate-200 p-4">
       <h2 className="mb-1 text-sm font-semibold text-slate-900">Proteção Eficaz</h2>
-      <p className="mb-3 text-sm text-slate-500">
+      <p className="mb-1 text-sm text-slate-500">
         Comprou capinha + película e optou pela Proteção Eficaz no caixa (em vez do desconto)?
         Cadastre a nota aqui pra validar sua garantia de troca da película em até 30 dias da
-        compra.
+        data de emissão da nota.
       </p>
+
+      <details className="mb-3 text-sm">
+        <summary className="cursor-pointer font-medium text-slate-700">Como funciona?</summary>
+        <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          <p>
+            Na compra, você escolhe: levar o <strong>desconto na película</strong> na hora, ou
+            abrir mão dele e ganhar a <strong>Proteção Eficaz</strong> — o direito de trocar a
+            película uma vez, sem custo, dentro de 30 dias a partir da data de emissão da nota.
+          </p>
+          <ol className="list-decimal space-y-1 pl-4">
+            <li>No caixa, peça pro vendedor marcar a Proteção Eficaz no cupom.</li>
+            <li>Crie sua conta aqui no site (ou entre, se já tiver).</li>
+            <li>Volte nesta tela e informe o número da venda (no cupom) + uma foto da nota.</li>
+            <li>Aceite os termos e envie — a loja confere e libera a garantia.</li>
+          </ol>
+          <p>
+            Só vale quando a nota tem capinha <strong>e</strong> película juntas, e só um
+            cadastro por nota. Promoção válida a partir de 17/08/2026.
+          </p>
+        </div>
+      </details>
 
       {registrations.length > 0 && (
         <ul className="mb-4 space-y-2">
