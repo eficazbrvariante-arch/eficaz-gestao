@@ -162,17 +162,8 @@ export function EmployeeLedgerPanel({
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Produtos comissionados</p>
         <p className="mb-3 text-xs text-slate-500">
-          Só produto marcado aqui entra na comissão geral de venda (abaixo). Marque todos de uma
-          vez, ou{" "}
-          <Link
-            href="/colaboradores/produtos-comissionados"
-            target="_blank"
-            className="font-medium text-slate-700 hover:underline"
-          >
-            verifique os produtos de comissão
-          </Link>{" "}
-          pra marcar/desmarcar individualmente. Quer um percentual diferente só num produto? Isso
-          é exceção, ajustada na{" "}
+          Só produto marcado entra na comissão geral de venda (abaixo). Quer um percentual
+          diferente só num produto? Isso é exceção, ajustada na{" "}
           <Link href="/produtos" className="font-medium text-slate-700 hover:underline">
             edição de cada produto
           </Link>
@@ -182,30 +173,39 @@ export function EmployeeLedgerPanel({
           <span className="font-semibold text-slate-900">{commissionedCount}</span> de{" "}
           {totalActiveProducts} produto(s) ativo(s) comissionado(s).
         </p>
-        {canEditCommission && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth={false}
-              disabled={isPending || totalActiveProducts === 0}
-              onClick={() => setConfirmAllCommission("enable")}
-              className="px-4"
-            >
-              Comissionar todos os produtos
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth={false}
-              disabled={isPending || commissionedCount === 0}
-              onClick={() => setConfirmAllCommission("disable")}
-              className="px-4"
-            >
-              Remover comissão de todos
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/colaboradores/produtos-comissionados"
+            target="_blank"
+            className="inline-flex w-auto items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+          >
+            Selecionar produtos comissionados
+          </Link>
+          {canEditCommission && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                fullWidth={false}
+                disabled={isPending || totalActiveProducts === 0}
+                onClick={() => setConfirmAllCommission("enable")}
+                className="px-4"
+              >
+                Comissionar todos os produtos
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                fullWidth={false}
+                disabled={isPending || commissionedCount === 0}
+                onClick={() => setConfirmAllCommission("disable")}
+                className="px-4"
+              >
+                Remover comissão de todos
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
