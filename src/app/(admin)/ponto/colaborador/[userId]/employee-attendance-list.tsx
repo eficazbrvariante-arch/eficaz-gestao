@@ -2,13 +2,29 @@
 
 import { useState } from "react";
 import { formatDateTime, formatISODate } from "@/lib/format";
-import { ATTENDANCE_TYPE_LABELS, formatWorkedMinutes } from "@/modules/attendance/attendance-rules";
+import {
+  ATTENDANCE_TYPE_LABELS,
+  formatBalanceMinutes,
+  formatWorkedMinutes,
+  type BreakBalance,
+} from "@/modules/attendance/attendance-rules";
 import { AttendanceCorrectionForm } from "./attendance-correction-form";
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
+
+/** Verde quando ficou a mais (crédito), vermelho quando ficou a menos (débito) — nunca cinza neutro pra saldo diferente de zero. */
+function BalanceBadge({ minutes }: { minutes: number }) {
+  const colorClass =
+    minutes > 0 ? "text-emerald-700" : minutes < 0 ? "text-red-600" : "text-slate-500";
+  return <span className={`text-sm font-medium ${colorClass}`}>{formatBalanceMinutes(minutes)}</span>;
+}
 
 type DayGroup = {
   date: string;
   worked: { workedMinutes: number; open: boolean };
+  /** Saldo do dia (trabalhado - jornada esperada) — positivo é crédito, negativo é débito. */
+  balanceMinutes: number;
+  /** `null` quando o dia ainda não tem os dois marcos do intervalo. */
+  breakBalance: BreakBalance | null;
   entries: {
     id: string;
     type: AttendanceEntryType;
@@ -42,9 +58,11 @@ export function EmployeeAttendanceList({
         <div key={day.date} className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <span className="text-sm font-semibold text-slate-900">{formatISODate(day.date)}</span>
-            <span className="text-sm text-slate-600">
+            <span className="flex items-center gap-2 text-sm text-slate-600">
               {formatWorkedMinutes(day.worked.workedMinutes)}
               {day.worked.open && " (em andamento)"}
+              <span className="text-slate-300">·</span>
+              <BalanceBadge minutes={day.balanceMinutes} />
             </span>
           </div>
           <ul className="divide-y divide-slate-100">
@@ -58,6 +76,13 @@ export function EmployeeAttendanceList({
                     )}
                     {entry.selfieWaived && (
                       <span className="ml-1 text-xs text-slate-400">(sem selfie)</span>
+                    )}
+                    {entry.type === "BREAK_END" && day.breakBalance && (
+                      <span className="ml-2 text-xs text-slate-400">
+                        intervalo de {formatWorkedMinutes(day.breakBalance.breakMinutes)}
+                        {" · "}
+                        <BalanceBadge minutes={day.breakBalance.deltaMinutes} />
+                      </span>
                     )}
                   </span>
                   <div className="flex items-center gap-3">

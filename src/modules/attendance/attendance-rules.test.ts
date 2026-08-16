@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeBreakBalance,
+  computeDailyBalanceMinutes,
   computeWorkedMinutes,
+  formatBalanceMinutes,
   formatWorkedMinutes,
   getNextExpectedAttendanceType,
+  parseAttendanceSettings,
   resolveEffectiveAttendanceEntry,
 } from "./attendance-rules";
 
@@ -143,4 +147,86 @@ describe("formatWorkedMinutes", () => {
   it("só horas", () => expect(formatWorkedMinutes(480)).toBe("8h"));
   it("só minutos", () => expect(formatWorkedMinutes(45)).toBe("45min"));
   it("zero", () => expect(formatWorkedMinutes(0)).toBe("0min"));
+});
+
+describe("parseAttendanceSettings", () => {
+  it("sem configuração, usa 8h de jornada e 1h de intervalo", () => {
+    expect(parseAttendanceSettings(null)).toEqual({ dailyMinutes: 480, breakMinutes: 60 });
+    expect(parseAttendanceSettings(undefined)).toEqual({ dailyMinutes: 480, breakMinutes: 60 });
+    expect(parseAttendanceSettings({})).toEqual({ dailyMinutes: 480, breakMinutes: 60 });
+  });
+
+  it("usa os valores configurados quando válidos", () => {
+    expect(parseAttendanceSettings({ dailyMinutes: 360, breakMinutes: 90 })).toEqual({
+      dailyMinutes: 360,
+      breakMinutes: 90,
+    });
+  });
+
+  it("ignora valor inválido (não numérico ou <= 0) e cai no padrão", () => {
+    expect(parseAttendanceSettings({ dailyMinutes: -10, breakMinutes: "1h" })).toEqual({
+      dailyMinutes: 480,
+      breakMinutes: 60,
+    });
+  });
+});
+
+describe("computeBreakBalance", () => {
+  it("saída à 13h, volta às 14h10 (padrão de 1h) — 10 minutos negativos", () => {
+    const entries = [
+      { type: "CLOCK_IN" as const, occurredAt: new Date("2026-08-09T08:00:00-03:00") },
+      { type: "BREAK_START" as const, occurredAt: new Date("2026-08-09T13:00:00-03:00") },
+      { type: "BREAK_END" as const, occurredAt: new Date("2026-08-09T14:10:00-03:00") },
+    ];
+    expect(computeBreakBalance(entries)).toEqual({ breakMinutes: 70, deltaMinutes: -10 });
+  });
+
+  it("voltou antes do esperado — saldo positivo (crédito)", () => {
+    const entries = [
+      { type: "BREAK_START" as const, occurredAt: new Date("2026-08-09T13:00:00-03:00") },
+      { type: "BREAK_END" as const, occurredAt: new Date("2026-08-09T13:50:00-03:00") },
+    ];
+    expect(computeBreakBalance(entries)).toEqual({ breakMinutes: 50, deltaMinutes: 10 });
+  });
+
+  it("sem os dois marcos do intervalo, não há saldo pra calcular", () => {
+    expect(
+      computeBreakBalance([{ type: "BREAK_START" as const, occurredAt: new Date("2026-08-09T13:00:00-03:00") }])
+    ).toBeNull();
+  });
+
+  it("respeita intervalo esperado diferente do padrão", () => {
+    const entries = [
+      { type: "BREAK_START" as const, occurredAt: new Date("2026-08-09T13:00:00-03:00") },
+      { type: "BREAK_END" as const, occurredAt: new Date("2026-08-09T14:20:00-03:00") },
+    ];
+    expect(computeBreakBalance(entries, 90)?.deltaMinutes).toBe(10);
+  });
+});
+
+describe("computeDailyBalanceMinutes", () => {
+  it("trabalhou exatamente 8h — saldo zero", () => {
+    expect(computeDailyBalanceMinutes(480)).toBe(0);
+  });
+
+  it("trabalhou mais que 8h — saldo positivo (hora extra)", () => {
+    expect(computeDailyBalanceMinutes(500)).toBe(20);
+  });
+
+  it("trabalhou menos que 8h (ex.: por causa do intervalo maior) — saldo negativo", () => {
+    // Mesmo exemplo do intervalo: chegou/saiu no horário certo, só o intervalo
+    // 10min maior já reduz o total trabalhado em 10min — o saldo do dia
+    // reflete isso sozinho, sem precisar somar o débito do intervalo à parte.
+    expect(computeDailyBalanceMinutes(470)).toBe(-10);
+  });
+
+  it("respeita jornada esperada diferente do padrão", () => {
+    expect(computeDailyBalanceMinutes(360, 360)).toBe(0);
+  });
+});
+
+describe("formatBalanceMinutes", () => {
+  it("positivo", () => expect(formatBalanceMinutes(20)).toBe("+20min"));
+  it("negativo", () => expect(formatBalanceMinutes(-97)).toBe("-1h 37min"));
+  it("zero", () => expect(formatBalanceMinutes(0)).toBe("0min"));
 });

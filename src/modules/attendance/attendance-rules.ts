@@ -102,6 +102,84 @@ export function formatWorkedMinutes(minutes: number): string {
   return `${hours}h ${remainder}min`;
 }
 
+/** Jornada diária e intervalo padrão quando a empresa não configurou nada em `Tenant.attendanceSettings`. */
+const DEFAULT_EXPECTED_DAILY_MINUTES = 8 * 60;
+const DEFAULT_EXPECTED_BREAK_MINUTES = 60;
+
+export type AttendanceSettings = {
+  /** Jornada diária esperada, em minutos (padrão 8h). */
+  dailyMinutes: number;
+  /** Duração esperada do intervalo, em minutos (padrão 1h). */
+  breakMinutes: number;
+};
+
+/**
+ * Lê `Tenant.attendanceSettings` (JSON livre, formato `{ dailyMinutes,
+ * breakMinutes }`) com defaults seguros pra qualquer valor ausente/inválido —
+ * mesma convenção de `parseConvenioRules`/`parseFlashDealSchedule`, nunca
+ * quebra por configuração incompleta.
+ */
+export function parseAttendanceSettings(value: unknown): AttendanceSettings {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  return {
+    dailyMinutes:
+      typeof raw.dailyMinutes === "number" && raw.dailyMinutes > 0
+        ? raw.dailyMinutes
+        : DEFAULT_EXPECTED_DAILY_MINUTES,
+    breakMinutes:
+      typeof raw.breakMinutes === "number" && raw.breakMinutes > 0
+        ? raw.breakMinutes
+        : DEFAULT_EXPECTED_BREAK_MINUTES,
+  };
+}
+
+export type BreakBalance = {
+  /** Duração real do intervalo, em minutos. */
+  breakMinutes: number;
+  /** Positivo = voltou antes do esperado (crédito); negativo = ficou a mais (débito). */
+  deltaMinutes: number;
+};
+
+/**
+ * Saldo do intervalo do dia — `null` quando ainda não tem os dois marcos
+ * (saída e volta) pra comparar. Usa os mesmos horários efetivos (já
+ * resolvidos por correção) que `computeWorkedMinutes`, nunca uma segunda
+ * leitura própria dos dados brutos.
+ */
+export function computeBreakBalance(
+  entries: { type: AttendanceEntryType; occurredAt: Date }[],
+  expectedBreakMinutes: number = DEFAULT_EXPECTED_BREAK_MINUTES
+): BreakBalance | null {
+  const byType = new Map(entries.map((e) => [e.type, e.occurredAt]));
+  const breakStart = byType.get("BREAK_START");
+  const breakEnd = byType.get("BREAK_END");
+  if (!breakStart || !breakEnd) return null;
+
+  const breakMinutes = Math.round((breakEnd.getTime() - breakStart.getTime()) / 60000);
+  return { breakMinutes, deltaMinutes: expectedBreakMinutes - breakMinutes };
+}
+
+/**
+ * Saldo do dia: `workedMinutes` já sai líquido do intervalo real (ver
+ * `computeWorkedMinutes`), então esta conta sozinha já é "o positivo somado
+ * com o negativo" — jornada mais longa vira crédito, intervalo mais longo ou
+ * jornada mais curta vira débito, sem precisar somar as duas coisas à parte.
+ * Positivo = crédito (ficou a mais no total do dia); negativo = débito.
+ */
+export function computeDailyBalanceMinutes(
+  workedMinutes: number,
+  expectedDailyMinutes: number = DEFAULT_EXPECTED_DAILY_MINUTES
+): number {
+  return workedMinutes - expectedDailyMinutes;
+}
+
+/** Formato com sinal pra saldo (crédito/débito): "+10min", "-1h 37min", "0min". */
+export function formatBalanceMinutes(minutes: number): string {
+  if (minutes === 0) return "0min";
+  const sign = minutes > 0 ? "+" : "-";
+  return `${sign}${formatWorkedMinutes(Math.abs(minutes))}`;
+}
+
 export const ATTENDANCE_TYPE_LABELS: Record<AttendanceEntryType, string> = {
   CLOCK_IN: "Entrada",
   BREAK_START: "Saída para intervalo",

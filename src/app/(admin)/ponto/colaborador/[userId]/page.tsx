@@ -7,7 +7,12 @@ import {
   listEffectiveEntries,
   type EffectiveAttendanceEntry,
 } from "@/modules/attendance/attendance-service";
-import { computeWorkedMinutes } from "@/modules/attendance/attendance-rules";
+import {
+  computeBreakBalance,
+  computeDailyBalanceMinutes,
+  computeWorkedMinutes,
+  parseAttendanceSettings,
+} from "@/modules/attendance/attendance-rules";
 import { resolvePeriod } from "../../../relatorios/period";
 import { PeriodPicker } from "../../../relatorios/report-nav";
 import { EmployeeAttendanceList } from "./employee-attendance-list";
@@ -23,11 +28,19 @@ export default async function EmployeeAttendancePage({
   if (!canViewAttendancePanel(user.role)) redirect("/ponto");
 
   const { userId } = await params;
-  const employee = await prisma.user.findFirst({
-    where: { id: userId, tenantId: user.tenantId },
-    select: { id: true, name: true },
-  });
+  const [employee, tenant] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: userId, tenantId: user.tenantId },
+      select: { id: true, name: true },
+    }),
+    prisma.tenant.findUniqueOrThrow({
+      where: { id: user.tenantId },
+      select: { attendanceSettings: true },
+    }),
+  ]);
   if (!employee) notFound();
+
+  const { dailyMinutes, breakMinutes } = parseAttendanceSettings(tenant.attendanceSettings);
 
   const period = resolvePeriod(await searchParams);
   const { start, end } = periodRange(period.from, period.to);
@@ -45,7 +58,14 @@ export default async function EmployeeAttendancePage({
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      return { date, entries: sorted, worked: computeWorkedMinutes(sorted) };
+      const worked = computeWorkedMinutes(sorted);
+      return {
+        date,
+        entries: sorted,
+        worked,
+        balanceMinutes: computeDailyBalanceMinutes(worked.workedMinutes, dailyMinutes),
+        breakBalance: computeBreakBalance(sorted, breakMinutes),
+      };
     });
 
   return (
