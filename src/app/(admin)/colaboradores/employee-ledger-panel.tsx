@@ -29,6 +29,7 @@ export type EmployeeCardRow = {
   userName: string;
   advancePending: number;
   purchasePending: number;
+  hourlyPending: number;
   totalPending: number;
   /** Acumulado de todas as vendas concluídas — não é "pendente", é o total já ganho. */
   commissionTotal: number;
@@ -322,6 +323,10 @@ export function EmployeeLedgerPanel({
                     <span>Mercadoria</span>
                     <span>{formatBRL(row.purchasePending)}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span>Pagamento por hora</span>
+                    <span>{formatBRL(row.hourlyPending)}</span>
+                  </div>
                 </div>
                 <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold text-black">
                   <span>Total pendente</span>
@@ -334,6 +339,14 @@ export function EmployeeLedgerPanel({
                 >
                   <span>Comissão de venda</span>
                   <span>{formatBRL(row.commissionTotal)}</span>
+                </Link>
+                <Link
+                  href={`/colaboradores/${row.userId}/horas`}
+                  target="_blank"
+                  className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-slate-700 hover:underline"
+                >
+                  <span>Pagamento por horas</span>
+                  <span>Calcular →</span>
                 </Link>
               </div>
             ))}

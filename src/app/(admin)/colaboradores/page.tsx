@@ -58,6 +58,7 @@ export default async function ColaboradoresPage() {
       userName: seller.name,
       advancePending: debt?.advancePending ?? 0,
       purchasePending: debt?.purchasePending ?? 0,
+      hourlyPending: debt?.hourlyPending ?? 0,
       totalPending: debt?.totalPending ?? 0,
       commissionTotal: commissionTotals.get(seller.id) ?? 0,
     };

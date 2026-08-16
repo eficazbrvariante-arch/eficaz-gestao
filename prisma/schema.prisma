@@ -206,6 +206,11 @@ model User {
   lastLoginAt         DateTime?
   resetToken          String?   @unique
   resetTokenExpiresAt DateTime?
+  /// Valor pago por hora trabalhada — usado na calculadora de pagamento por
+  /// horas em Colaboradores (`hourly-payment-service.ts`), a partir do que já
+  /// é registrado no Ponto. Só ADMIN altera (mesma trava de
+  /// `Product.commissionPercent` — quem ganha quanto). 0 = não configurado.
+  hourlyRate          Decimal   @default(0) @db.Decimal(10, 2)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -1173,6 +1178,10 @@ enum EmployeeLedgerType {
   ADVANCE
   /// Mercadoria da loja levada pelo colaborador, a descontar depois.
   PURCHASE
+  /// Pagamento por horas trabalhadas — valor sempre recalculado no servidor a
+  /// partir do Ponto × `User.hourlyRate` no momento do registro (ver
+  /// `hourly-payment-service.ts`), nunca digitado livremente.
+  HOURLY_PAYMENT
 }
 
 /// PAID é estado final, igual `FiadoStatus` — nunca some da lista, só muda o status.

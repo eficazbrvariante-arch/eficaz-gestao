@@ -56,6 +56,7 @@ export type EmployeeLedgerSummaryRow = {
   userName: string;
   advancePending: number;
   purchasePending: number;
+  hourlyPending: number;
   totalPending: number;
 };
 
@@ -73,12 +74,14 @@ export async function getEmployeeLedgerSummary(tenantId: string): Promise<Employ
       userName: entry.user.name,
       advancePending: 0,
       purchasePending: 0,
+      hourlyPending: 0,
       totalPending: 0,
     };
     const amount = Number(entry.amount);
     if (entry.type === "ADVANCE") current.advancePending = round2(current.advancePending + amount);
-    else current.purchasePending = round2(current.purchasePending + amount);
-    current.totalPending = round2(current.advancePending + current.purchasePending);
+    else if (entry.type === "PURCHASE") current.purchasePending = round2(current.purchasePending + amount);
+    else current.hourlyPending = round2(current.hourlyPending + amount);
+    current.totalPending = round2(current.advancePending + current.purchasePending + current.hourlyPending);
     byUser.set(entry.userId, current);
   }
 

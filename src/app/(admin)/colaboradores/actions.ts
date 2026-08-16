@@ -9,9 +9,14 @@ import {
   settleEmployeeLedgerEntry,
 } from "@/modules/employees/employee-ledger-service";
 import { setDefaultCommissionPercent } from "@/modules/employees/commission-service";
+import { setHourlyRate, registerHourlyPayment } from "@/modules/employees/hourly-payment-service";
 import {
   createEmployeeLedgerEntrySchema,
+  setHourlyRateSchema,
+  registerHourlyPaymentSchema,
   type CreateEmployeeLedgerEntryInput,
+  type SetHourlyRateInput,
+  type RegisterHourlyPaymentInput,
 } from "@/lib/validations/employee-ledger";
 
 export type EmployeeOption = { id: string; name: string };
@@ -173,4 +178,55 @@ export async function bulkRemoveProductCommissionAction(productIds: string[]) {
   revalidatePath("/colaboradores/produtos-comissionados");
   revalidatePath("/produtos");
   return { success: `Comissão removida de ${result.count} produto(s).` };
+}
+
+/**
+ * Valor pago por hora — mesma trava de `canEditCommission` (só ADMIN decide
+ * quanto cada colaborador ganha), diferente do restante do painel de
+ * Colaboradores, que Gerente também opera.
+ */
+export async function setHourlyRateAction(input: SetHourlyRateInput) {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) {
+    return { error: "Seu perfil não tem permissão para configurar o valor por hora." };
+  }
+
+  const parsed = setHourlyRateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const found = await setHourlyRate(user.tenantId, parsed.data.userId, parsed.data.hourlyRate);
+  if (!found) return { error: "Colaborador não encontrado." };
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
+  return { success: "Valor por hora atualizado." };
+}
+
+/**
+ * Registra o pagamento por horas do período como lançamento — o valor nunca
+ * vem do formulário, é recalculado aqui dentro a partir do Ponto (ver
+ * `registerHourlyPayment`).
+ */
+export async function registerHourlyPaymentAction(input: RegisterHourlyPaymentInput) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para registrar pagamentos de colaboradores." };
+  }
+
+  const parsed = registerHourlyPaymentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const result = await registerHourlyPayment(
+    { tenantId: user.tenantId, createdById: user.id },
+    parsed.data
+  );
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
+  return { success: `Pagamento de ${result.amount.toFixed(2)} registrado.` };
 }
