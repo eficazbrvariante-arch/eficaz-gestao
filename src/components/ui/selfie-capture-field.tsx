@@ -21,6 +21,7 @@ export function SelfieCaptureField({
   disabled = false,
   uploadUrl = "/api/ponto/upload",
   clientPayload,
+  maxSizeBytes = 3 * 1024 * 1024,
 }: {
   onCaptured: (url: string) => void;
   onWaive?: (reason: string) => void;
@@ -30,6 +31,14 @@ export function SelfieCaptureField({
   uploadUrl?: string;
   /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
   clientPayload?: string;
+  /**
+   * Precisa bater com o `maximumSizeInBytes` real da rota de upload — só se
+   * aplica ao fallback de arquivo (a captura ao vivo já sai pequena, sempre
+   * comprimida em `capture()` abaixo). Sem essa checagem, uma foto grande
+   * escolhida da galeria estourava o limite do servidor sem aviso nenhum,
+   * ficando "Enviando..." pra sempre.
+   */
+  maxSizeBytes?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -110,6 +119,13 @@ export function SelfieCaptureField({
   function handleFallbackFile(file: File | undefined) {
     if (!file) return;
     setError(undefined);
+    if (file.size > maxSizeBytes) {
+      setError(
+        `Foto muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB) — o limite é ${(maxSizeBytes / 1024 / 1024).toFixed(0)}MB. Tente uma foto com menos qualidade/resolução.`
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setCapturedBlob(file);
     setPreviewUrl(URL.createObjectURL(file));
     setMode("preview");

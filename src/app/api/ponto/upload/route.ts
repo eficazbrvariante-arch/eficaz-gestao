@@ -15,7 +15,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       body,
       request,
       onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ["image/jpeg", "image/png", "image/webp"],
+        allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
         maximumSizeInBytes: 3 * 1024 * 1024,
         addRandomSuffix: true,
       }),

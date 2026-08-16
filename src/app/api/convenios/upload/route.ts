@@ -26,8 +26,12 @@ export async function POST(request: Request): Promise<NextResponse> {
           throw new Error("Convite inválido ou expirado.");
         }
         return {
-          allowedContentTypes: ["image/jpeg", "image/png", "image/webp"],
-          maximumSizeInBytes: 5 * 1024 * 1024,
+          allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          // Foto de celular real (não a nossa selfie de teste) passa fácil de
+          // 5MB — limite antigo travava upload de colaborador real sem
+          // mostrar erro nenhum (ver ImageUploadField/SelfieCaptureField,
+          // que agora barram isso antes de tentar, com aviso claro).
+          maximumSizeInBytes: 10 * 1024 * 1024,
           addRandomSuffix: true,
         };
       },

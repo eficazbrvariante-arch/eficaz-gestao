@@ -212,6 +212,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
           onCaptured={setSelfieUrl}
           uploadUrl="/api/convenios/upload"
           clientPayload={token}
+          maxSizeBytes={10 * 1024 * 1024}
           disabled={isPending}
         />
         <FieldError message={fieldErrors.selfieUrl} />
@@ -226,6 +227,7 @@ export function ConvenioSignupForm({ token, requireProof }: { token: string; req
             onChange={setProofUrl}
             uploadUrl="/api/convenios/upload"
             clientPayload={token}
+            maxSizeBytes={10 * 1024 * 1024}
             disabled={isPending}
           />
           <FieldError message={fieldErrors.proofUrl} />

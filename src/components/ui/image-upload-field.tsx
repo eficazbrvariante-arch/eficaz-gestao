@@ -10,6 +10,7 @@ export function ImageUploadField({
   disabled,
   uploadUrl = "/api/produtos/upload",
   clientPayload,
+  maxSizeBytes = 5 * 1024 * 1024,
 }: {
   value?: string;
   onChange: (url: string) => void;
@@ -18,6 +19,15 @@ export function ImageUploadField({
   uploadUrl?: string;
   /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
   clientPayload?: string;
+  /**
+   * Precisa bater com o `maximumSizeInBytes` real da rota de upload (ver
+   * arquivo de rota correspondente) — checado aqui ANTES de tentar enviar,
+   * pra recusar na hora com mensagem clara. Sem isso, foto de celular real
+   * (frequentemente 6-15MB) estourava o limite do servidor sem avisar nada:
+   * o botão só ficava em "Enviando..." indefinidamente numa conexão de
+   * dados móvel, parecendo travado.
+   */
+  maxSizeBytes?: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | undefined>(value);
@@ -27,6 +37,14 @@ export function ImageUploadField({
   const handleFileChange = async (file: File | undefined) => {
     if (!file) return;
     setError(undefined);
+
+    if (file.size > maxSizeBytes) {
+      setError(
+        `Foto muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB) — o limite é ${(maxSizeBytes / 1024 / 1024).toFixed(0)}MB. Tente uma foto com menos qualidade/resolução.`
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
 
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
