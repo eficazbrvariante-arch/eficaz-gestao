@@ -184,6 +184,61 @@ export async function listProtecaoEficazForAdmin(tenantId: string): Promise<Admi
   );
 }
 
+export type ProtecaoEficazRedemptionCredential = {
+  registrationId: string;
+  customerName: string;
+  saleNumber: number;
+  protectionExpiresAt: Date;
+};
+
+export type ResolveProtecaoEficazRedemptionResult =
+  | ({ ok: true } & ProtecaoEficazRedemptionCredential)
+  | { ok: false; error: string };
+
+/**
+ * Checagem prévia da troca no PDV — igual `resolveConvenioCredential`, só
+ * pra mostrar o nome do cliente pro vendedor antes de aplicar. `createSale`
+ * revalida tudo de novo (nunca confia só nesta checagem).
+ */
+export async function resolveProtecaoEficazRedemption(
+  tenantId: string,
+  saleNumber: number
+): Promise<ResolveProtecaoEficazRedemptionResult> {
+  const registration = await prisma.protecaoEficaz.findUnique({
+    where: { tenantId_saleNumber: { tenantId, saleNumber } },
+    select: {
+      id: true,
+      status: true,
+      redeemedAt: true,
+      protectionExpiresAt: true,
+      customer: { select: { name: true } },
+    },
+  });
+  if (!registration) {
+    return { ok: false, error: `Nenhum cadastro de Proteção Eficaz encontrado pra venda #${saleNumber}.` };
+  }
+  if (registration.redeemedAt) {
+    return { ok: false, error: "Essa Proteção Eficaz já foi trocada antes." };
+  }
+  if (registration.status === "PENDING") {
+    return { ok: false, error: "Esse cadastro ainda está pendente de aprovação." };
+  }
+  if (registration.status === "REJECTED") {
+    return { ok: false, error: "Esse cadastro foi rejeitado." };
+  }
+  if (!registration.protectionExpiresAt || registration.protectionExpiresAt < new Date()) {
+    return { ok: false, error: "O prazo de 30 dias dessa Proteção Eficaz já venceu." };
+  }
+
+  return {
+    ok: true,
+    registrationId: registration.id,
+    customerName: registration.customer.name,
+    saleNumber,
+    protectionExpiresAt: registration.protectionExpiresAt,
+  };
+}
+
 export type ReviewProtecaoEficazResult = { ok: true } | { ok: false; error: string };
 
 /** Aprova: exige que a venda exista de verdade (é dela que sai o prazo de 30 dias). */

@@ -8,6 +8,7 @@ import {
   isPeliculaCategory,
 } from "@/lib/seller-discount-rules";
 import { revalidateConvenioMember } from "@/modules/convenios/convenio-redemption-service";
+import { resolveProtecaoEficazRedemption } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -88,6 +89,40 @@ export async function createSale(
     }
   }
 
+  // Troca gratuita da Proteção Eficaz aprovada: revalidada aqui de novo
+  // (nunca confia na checagem prévia do PDV). Exige exatamente 1 película no
+  // carrinho — nenhuma ambiguidade sobre qual linha fica grátis — e força o
+  // desconto integral dessa linha mais abaixo, ignorando `item.discount`
+  // vindo do cliente e sem passar pela trava normal de desconto do vendedor
+  // (a autorização aqui vem do cadastro aprovado, não da permissão de
+  // desconto de quem está vendendo).
+  let protecaoEficazRedemptionRegistrationId: string | null = null;
+  let protecaoEficazRedemptionItemIndex: number | null = null;
+  if (input.protecaoEficazRedemptionSaleNumber) {
+    const peliculaUnitsInCart = input.items.reduce((sum, item) => {
+      const product = productMap.get(item.productId);
+      return sum + (isPeliculaCategory(product?.category?.name) ? item.quantity : 0);
+    }, 0);
+    if (peliculaUnitsInCart !== 1) {
+      return {
+        ok: false,
+        error: "A troca da Proteção Eficaz exige exatamente 1 película no carrinho.",
+      };
+    }
+
+    const redemption = await resolveProtecaoEficazRedemption(
+      ctx.tenantId,
+      input.protecaoEficazRedemptionSaleNumber
+    );
+    if (!redemption.ok) return { ok: false, error: redemption.error };
+
+    protecaoEficazRedemptionRegistrationId = redemption.registrationId;
+    protecaoEficazRedemptionItemIndex = input.items.findIndex((item) => {
+      const product = productMap.get(item.productId);
+      return isPeliculaCategory(product?.category?.name);
+    });
+  }
+
   const sellerDiscountAllocation = allocateSellerDiscountBudget(
     input.items.map((item, index) => {
       const product = productMap.get(item.productId);
@@ -147,8 +182,9 @@ export async function createSale(
     const unitCost = Number(product.costPrice);
     const grossTotal = round2(unitPrice * item.quantity);
 
-    const itemDiscount = round2(item.discount ?? 0);
-    if (itemDiscount > 0 && !ctx.allowFreeDiscount) {
+    const isProtecaoEficazRedemptionItem = itemIndex === protecaoEficazRedemptionItemIndex;
+    const itemDiscount = isProtecaoEficazRedemptionItem ? grossTotal : round2(item.discount ?? 0);
+    if (!isProtecaoEficazRedemptionItem && itemDiscount > 0 && !ctx.allowFreeDiscount) {
       // Só ADMIN (allowFreeDiscount) tem desconto livre em qualquer item.
       // Vendedor e Gerente podem aplicar o desconto de segurança nas
       // películas 3D — só com uma capinha na venda e até o teto da regra
@@ -220,6 +256,14 @@ export async function createSale(
   }
 
   const total = round2(subtotal - discount - convenioDiscount);
+
+  // Abaixo de zero total (ex.: troca 100% grátis da Proteção Eficaz), não há
+  // forma de pagamento nenhuma pra exigir — só acima de zero é obrigatório
+  // informar pelo menos uma (o schema não trava isso porque não conhece o
+  // total, calculado aqui a partir dos itens).
+  if (input.payments.length === 0 && total > CENT) {
+    return { ok: false, error: "Informe a forma de pagamento." };
+  }
 
   const paidAmount = round2(input.payments.reduce((sum, p) => sum + p.amount, 0));
   if (Math.abs(paidAmount - total) > CENT) {
@@ -429,11 +473,27 @@ export async function createSale(
         });
       }
 
+      if (protecaoEficazRedemptionRegistrationId) {
+        // `redeemedAt: null` na condição fecha a corrida rara de duas vendas
+        // simultâneas tentando trocar o mesmo cadastro — só uma ganha, a
+        // outra derruba a transação inteira (nada é gravado pela metade).
+        const redeemed = await tx.protecaoEficaz.updateMany({
+          where: { id: protecaoEficazRedemptionRegistrationId, redeemedAt: null },
+          data: { redeemedAt: new Date(), redeemedById: ctx.operatorId },
+        });
+        if (redeemed.count === 0) {
+          throw new Error("Essa Proteção Eficaz já foi trocada em outra venda.");
+        }
+      }
+
       return created;
     });
 
     return { ok: true, saleId: sale.id, number: sale.number, changeAmount };
-  } catch {
+  } catch (error) {
+    if (protecaoEficazRedemptionRegistrationId && error instanceof Error) {
+      return { ok: false, error: error.message };
+    }
     return { ok: false, error: "Não foi possível registrar a venda. Tente novamente." };
   }
 }

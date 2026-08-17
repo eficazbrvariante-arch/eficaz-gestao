@@ -11,6 +11,10 @@ import {
   resolveConvenioCredential,
   type ConvenioCredential,
 } from "@/modules/convenios/convenio-redemption-service";
+import {
+  resolveProtecaoEficazRedemption,
+  type ProtecaoEficazRedemptionCredential,
+} from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import { createSaleSchema, type CreateSaleInput } from "@/lib/validations/sale";
 
 export type PdvProduct = {
@@ -143,6 +147,22 @@ export async function validateConvenioCredentialAction(
   if (!canSell(user.role)) return { error: "Seu perfil não tem permissão para vender." };
 
   const result = await resolveConvenioCredential(user.tenantId, rawInput);
+  if (!result.ok) return { error: result.error };
+  return result;
+}
+
+/**
+ * Checagem prévia da troca de Proteção Eficaz — mesmo princípio da checagem
+ * do convênio: só mostra o nome do cliente pro vendedor confirmar. `createSale`
+ * revalida tudo de novo (status, prazo, se já foi trocada) no momento de fechar.
+ */
+export async function validateProtecaoEficazRedemptionAction(
+  saleNumber: number
+): Promise<{ error: string } | ({ ok: true } & ProtecaoEficazRedemptionCredential)> {
+  const user = await requireUser();
+  if (!canSell(user.role)) return { error: "Seu perfil não tem permissão para vender." };
+
+  const result = await resolveProtecaoEficazRedemption(user.tenantId, saleNumber);
   if (!result.ok) return { error: result.error };
   return result;
 }

@@ -22,7 +22,12 @@ export const createSaleSchema = z.object({
   /** Auxiliar opcional da venda (estrutura para comissão dividida no futuro). */
   assistantSellerId: z.string().trim().optional().or(z.literal("")),
   items: z.array(saleItemSchema).min(1, "Adicione pelo menos um produto"),
-  payments: z.array(salePaymentSchema).min(1, "Informe a forma de pagamento"),
+  /** Sem mínimo aqui — uma venda que fecha em R$0 (ex.: troca 100% grátis da
+   *  Proteção Eficaz) não tem forma de pagamento nenhuma pra informar. A
+   *  exigência de pelo menos uma forma quando o total é maior que zero fica
+   *  em `createSale`, que é quem conhece o total (calculado a partir dos
+   *  itens, nunca confiado do cliente). */
+  payments: z.array(salePaymentSchema),
   /** Quanto o cliente entregou em dinheiro (para cálculo do troco). */
   cashReceived: z.coerce.number().min(0).optional(),
   /** Data prevista de pagamento do fiado — exigida só quando há pagamento
@@ -38,6 +43,10 @@ export const createSaleSchema = z.object({
    *  (ver `Sale.protecaoEficazOptedIn`) — marcado manualmente pelo vendedor,
    *  só aparece no PDV quando o carrinho já tem capinha + película juntas. */
   protecaoEficazOptedIn: z.boolean().optional(),
+  /** Número da venda original de uma Proteção Eficaz aprovada, quando o
+   *  vendedor está processando a troca gratuita da película — revalidado
+   *  em `createSale` (nunca confia só na checagem prévia do PDV). */
+  protecaoEficazRedemptionSaleNumber: z.coerce.number().int().positive().optional(),
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;

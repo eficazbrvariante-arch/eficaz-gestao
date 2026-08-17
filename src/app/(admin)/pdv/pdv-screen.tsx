@@ -20,7 +20,9 @@ import { searchProductsAction, createSaleAction, type PdvProduct } from "./actio
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
+import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
+import type { ProtecaoEficazRedemptionCredential } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import {
   allocateSellerDiscountBudget,
   getSellerDiscountRule,
@@ -113,6 +115,15 @@ export function PdvScreen({
   // porque veio marcada daqui).
   const [protecaoEficazOptedIn, setProtecaoEficazOptedIn] = useState(false);
 
+  // Troca gratuita de uma Proteção Eficaz já aprovada — validada no
+  // `ProtecaoEficazRedemptionModal` (número da venda original), some do
+  // carrinho se o vendedor remover. Só some efeito de fato com exatamente 1
+  // película no carrinho (ver `protecaoEficazRedemptionReady` abaixo);
+  // revalidada de novo no servidor ao fechar (`resolveProtecaoEficazRedemption`).
+  const [protecaoEficazRedemption, setProtecaoEficazRedemption] =
+    useState<ProtecaoEficazRedemptionCredential | null>(null);
+  const [protecaoEficazRedemptionModalOpen, setProtecaoEficazRedemptionModalOpen] = useState(false);
+
   // Aviso de sucesso depois de finalizar uma venda — o PDV fica pronto pra
   // próxima venda na hora, sem navegar pra página do comprovante; este
   // banner só oferece o link de impressão pra quem precisar dele.
@@ -171,7 +182,6 @@ export function PdvScreen({
   const convenioBenefit = convenioMember
     ? round2(Math.min(convenioMember.benefitAmount, Math.max(0, subtotal - discount)))
     : 0;
-  const total = round2(Math.max(0, subtotal - discount - convenioBenefit));
 
   // Desconto de segurança nas películas 3D (ver `seller-discount-rules.ts`):
   // cada capinha no carrinho libera o desconto de uma película — nunca
@@ -190,10 +200,39 @@ export function PdvScreen({
     0
   );
   const protecaoEficazEligible = capinhaUnits > 0 && peliculaUnits > 0;
+
+  // Troca gratuita da Proteção Eficaz: só tem efeito com exatamente 1
+  // película no carrinho (nenhuma ambiguidade sobre qual linha fica grátis
+  // — mesma trava do servidor). `line.discount` já foi somado em `discount`
+  // acima, então só falta o que resta daquela linha pra zerá-la de vez.
+  const protecaoEficazPeliculaLine = protecaoEficazRedemption
+    ? cart.find((line) => isPeliculaCategory(line.categoryName))
+    : undefined;
+  const protecaoEficazRedemptionReady = Boolean(protecaoEficazRedemption) && peliculaUnits === 1;
+  const protecaoEficazRedemptionAmount =
+    protecaoEficazRedemptionReady && protecaoEficazPeliculaLine
+      ? round2(
+          Math.max(
+            0,
+            protecaoEficazPeliculaLine.unitPrice * protecaoEficazPeliculaLine.quantity -
+              protecaoEficazPeliculaLine.discount
+          )
+        )
+      : 0;
+
+  const total = round2(
+    Math.max(0, subtotal - discount - convenioBenefit - protecaoEficazRedemptionAmount)
+  );
+
   // Se o carrinho deixar de ser elegível (removeu a capinha ou a película),
   // a marcação não fica presa escondida — desmarca sozinha.
   if (!protecaoEficazEligible && protecaoEficazOptedIn) {
     setProtecaoEficazOptedIn(false);
+  }
+  // Sem nenhuma película no carrinho não há mais o que trocar — limpa a
+  // validação pra não ficar presa "confirmada" sem sentido nenhum.
+  if (protecaoEficazRedemption && peliculaUnits === 0) {
+    setProtecaoEficazRedemption(null);
   }
 
   function maxLineDiscount(line: CartLine) {
@@ -428,6 +467,14 @@ export function PdvScreen({
       setError("Informe a data prevista de pagamento do fiado.");
       return;
     }
+    if (protecaoEficazRedemption && !protecaoEficazRedemptionReady) {
+      setError(
+        peliculaUnits === 0
+          ? "Adicione a película ao carrinho pra aplicar a troca da Proteção Eficaz."
+          : "A troca da Proteção Eficaz exige exatamente 1 película no carrinho — remova as demais."
+      );
+      return;
+    }
 
     startTransition(async () => {
       const result = await createSaleAction({
@@ -447,6 +494,7 @@ export function PdvScreen({
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
         convenioMemberId: convenioMember?.member.id ?? "",
         protecaoEficazOptedIn,
+        protecaoEficazRedemptionSaleNumber: protecaoEficazRedemption?.saleNumber,
       });
 
       if ("error" in result && result.error) {
@@ -478,6 +526,7 @@ export function PdvScreen({
         setSellerId(null);
         setSellerName(null);
         setProtecaoEficazOptedIn(false);
+        setProtecaoEficazRedemption(null);
 
         searchRef.current?.focus();
       }
@@ -946,6 +995,46 @@ export function PdvScreen({
           )}
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <Label className="mb-1 text-sm font-bold text-black">Troca — Proteção Eficaz</Label>
+            {protecaoEficazRedemption ? (
+              <div>
+                <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+                  <div>
+                    <span className="block text-sm font-bold text-black">
+                      {protecaoEficazRedemption.customerName}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Venda original #{protecaoEficazRedemption.saleNumber}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setProtecaoEficazRedemption(null)}
+                    className="text-xs font-medium text-slate-700 hover:underline"
+                  >
+                    Remover
+                  </button>
+                </div>
+                {!protecaoEficazRedemptionReady && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {peliculaUnits === 0
+                      ? "Adicione a película ao carrinho pra aplicar."
+                      : "Exige exatamente 1 película no carrinho — remova as demais pra aplicar."}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setProtecaoEficazRedemptionModalOpen(true)}
+              >
+                Validar troca de película
+              </Button>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="space-y-1.5 text-base">
               <div className="flex justify-between font-medium text-slate-700">
                 <span>Subtotal</span>
@@ -961,6 +1050,12 @@ export function PdvScreen({
                 <div className="flex justify-between font-medium text-slate-700">
                   <span>Benefício convênio</span>
                   <span className="font-bold text-black">-{formatBRL(convenioBenefit)}</span>
+                </div>
+              )}
+              {protecaoEficazRedemptionAmount > 0 && (
+                <div className="flex justify-between font-medium text-slate-700">
+                  <span>Troca Proteção Eficaz</span>
+                  <span className="font-bold text-black">-{formatBRL(protecaoEficazRedemptionAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-slate-200 pt-2 text-xl font-bold text-black">
@@ -1072,6 +1167,15 @@ export function PdvScreen({
         onConfirm={(credential) => {
           setConvenioMember(credential);
           setConvenioModalOpen(false);
+        }}
+      />
+
+      <ProtecaoEficazRedemptionModal
+        open={protecaoEficazRedemptionModalOpen}
+        onClose={() => setProtecaoEficazRedemptionModalOpen(false)}
+        onConfirm={(credential) => {
+          setProtecaoEficazRedemption(credential);
+          setProtecaoEficazRedemptionModalOpen(false);
         }}
       />
 
