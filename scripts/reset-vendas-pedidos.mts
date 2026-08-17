@@ -92,7 +92,11 @@ try {
     "caixas (aberturas/fechamentos)": caixasRows[0].n,
     "movimentações de estoque ligadas a vendas": movimentacoesRows[0].n,
   });
-  console.log("\nNumeração de venda/pedido volta para 0 (próxima venda = #1, próximo pedido = #1).");
+  console.log(
+    "\nNumeração de venda volta para 0 (próxima venda = #1). Numeração de pedido NÃO é reiniciada: " +
+      "pedido é cancelado, não apagado, então o número continua ocupado — reiniciar o contador " +
+      "colidiria com pedidos cancelados que ainda existem na tabela."
+  );
 
   if (!confirmado) {
     console.log("\nNada foi alterado. Rode de novo com --confirmar para executar.");
@@ -185,10 +189,14 @@ try {
     await client.query(`DELETE FROM cash_movements WHERE "tenantId" = $1`, [tenantId]);
     await client.query(`DELETE FROM cash_registers WHERE "tenantId" = $1`, [tenantId]);
 
-    await client.query(
-      `UPDATE tenants SET "saleSequence" = 0, "orderSequence" = 0 WHERE id = $1`,
-      [tenantId]
-    );
+    // Só a venda é zerada (o registro é apagado de verdade acima). O pedido
+    // continua na tabela como CANCELLED (histórico do cliente é preservado),
+    // então `orderSequence` NUNCA pode voltar a 0 — colidiria com o número
+    // de um pedido cancelado que ainda existe (`@@unique([tenantId, number])`
+    // em `Order`). Bug real que já aconteceu em produção: mantido aqui como
+    // no-op explícito, não removido, pra não passar despercebido de novo se
+    // alguém tentar "consertar" trazendo o reset de volta.
+    await client.query(`UPDATE tenants SET "saleSequence" = 0 WHERE id = $1`, [tenantId]);
 
     await client.query("COMMIT");
   } catch (err) {
