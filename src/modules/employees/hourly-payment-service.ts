@@ -7,7 +7,14 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export type DayWorkedMinutes = { date: string; workedMinutes: number };
+export type DayWorkedMinutes = {
+  date: string;
+  workedMinutes: number;
+  /** Dia passado sem "saída" batida — marcação esquecida, não turno em
+   *  andamento (isso só é normal em `date === hoje`). `workedMinutes` vem
+   *  zerado quando `true`, nunca extrapolado até agora. */
+  incomplete: boolean;
+};
 
 /**
  * Agrupa marcações efetivas por dia (`YYYY-MM-DD`) e soma os minutos
@@ -15,7 +22,11 @@ export type DayWorkedMinutes = { date: string; workedMinutes: number };
  * pra poder testar a soma do período isoladamente do fetch das marcações.
  * Mesmo agrupamento usado em `/ponto/colaborador/[userId]`.
  */
-export function sumWorkedMinutesByDay(entries: EffectiveAttendanceEntry[]): DayWorkedMinutes[] {
+export function sumWorkedMinutesByDay(
+  entries: EffectiveAttendanceEntry[],
+  now: Date = new Date()
+): DayWorkedMinutes[] {
+  const todayKey = todayISO(now);
   const byDay = new Map<string, EffectiveAttendanceEntry[]>();
   for (const entry of entries) {
     const key = todayISO(entry.occurredAt);
@@ -28,7 +39,14 @@ export function sumWorkedMinutesByDay(entries: EffectiveAttendanceEntry[]): DayW
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      return { date, workedMinutes: computeWorkedMinutes(sorted).workedMinutes };
+      const { workedMinutes, open } = computeWorkedMinutes(sorted, now);
+      // `computeWorkedMinutes` conta até `now` quando falta "saída" — certo
+      // pra hoje (turno em andamento), errado pra um dia passado (aí é
+      // marcação esquecida): sem isso, um "esqueci de bater saída" há 5 dias
+      // virava "122h trabalhadas" nesse dia, um valor absurdo somado ao
+      // pagamento. Fica zerado e marcado como incompleto até corrigir no Ponto.
+      const incomplete = open && date !== todayKey;
+      return { date, workedMinutes: incomplete ? 0 : workedMinutes, incomplete };
     });
 }
 
@@ -39,6 +57,10 @@ export type HourlyPaymentPreview = {
   /** Horas em decimal (ex.: 7.5), já arredondado a 2 casas. */
   totalHours: number;
   amount: number;
+  /** `true` se algum dia do período está com marcação incompleta (falta
+   *  "saída") — o total já exclui esses dias, mas registrar o pagamento
+   *  assim mesmo pagaria a menos sem avisar; bloqueado até corrigir. */
+  hasIncompleteDays: boolean;
 };
 
 /**
@@ -65,8 +87,9 @@ export async function computeHourlyPaymentPreview(
   const totalMinutes = days.reduce((sum, day) => sum + day.workedMinutes, 0);
   const totalHours = round2(totalMinutes / 60);
   const amount = round2(totalHours * hourlyRate);
+  const hasIncompleteDays = days.some((day) => day.incomplete);
 
-  return { hourlyRate, days, totalMinutes, totalHours, amount };
+  return { hourlyRate, days, totalMinutes, totalHours, amount, hasIncompleteDays };
 }
 
 export type RegisterHourlyPaymentResult =
@@ -95,6 +118,13 @@ export async function registerHourlyPayment(
     from: input.from,
     to: input.to,
   });
+  if (preview.hasIncompleteDays) {
+    return {
+      ok: false,
+      error:
+        "Tem dia com marcação incompleta no período (falta bater saída) — corrija no Ponto antes de registrar o pagamento.",
+    };
+  }
   if (preview.totalMinutes <= 0) {
     return { ok: false, error: "Nenhuma hora trabalhada registrada no Ponto nesse período." };
   }

@@ -18,6 +18,7 @@ export function HorasPanel({
   days,
   totalMinutes,
   amount,
+  hasIncompleteDays,
   from,
   to,
 }: {
@@ -28,6 +29,9 @@ export function HorasPanel({
   days: DayWorkedMinutes[];
   totalMinutes: number;
   amount: number;
+  /** Algum dia do período tem marcação sem "saída" — total já exclui esses
+   *  dias, mas registrar assim mesmo pagaria a menos sem avisar. */
+  hasIncompleteDays: boolean;
   from: string;
   to: string;
 }) {
@@ -111,11 +115,17 @@ export function HorasPanel({
             </p>
           ) : (
             days.map((day) => (
-              <div key={day.date} className="flex justify-between px-4 py-2 text-sm">
+              <div key={day.date} className="flex items-center justify-between px-4 py-2 text-sm">
                 <span className="text-slate-600">{formatISODate(day.date)}</span>
-                <span className="font-medium text-slate-900">
-                  {formatWorkedMinutes(day.workedMinutes)}
-                </span>
+                {day.incomplete ? (
+                  <span className="text-xs font-medium text-red-600">
+                    Falta bater saída — corrigir no Ponto
+                  </span>
+                ) : (
+                  <span className="font-medium text-slate-900">
+                    {formatWorkedMinutes(day.workedMinutes)}
+                  </span>
+                )}
               </div>
             ))
           )}
@@ -136,9 +146,16 @@ export function HorasPanel({
         </div>
       </div>
 
+      {hasIncompleteDays && (
+        <p className="text-sm text-red-600">
+          Tem dia com marcação incompleta no período (sem saída batida) — corrija no Ponto antes
+          de registrar, senão o total fica menor do que o real.
+        </p>
+      )}
+
       <Button
         type="button"
-        disabled={isPending || amount <= 0}
+        disabled={isPending || amount <= 0 || hasIncompleteDays}
         onClick={handleRegister}
         fullWidth={false}
         className="px-4"
