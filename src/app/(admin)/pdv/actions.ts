@@ -38,10 +38,10 @@ export type PdvProduct = {
  */
 export async function searchProductsAction(
   query: string
-): Promise<{ products: PdvProduct[]; exact: boolean }> {
+): Promise<{ products: PdvProduct[]; exact: boolean; totalCount: number }> {
   const user = await requireUser();
   const term = query.trim();
-  if (term.length < 1) return { products: [], exact: false };
+  if (term.length < 1) return { products: [], exact: false, totalCount: 0 };
 
   const select = {
     id: true,
@@ -97,25 +97,46 @@ export async function searchProductsAction(
   });
 
   if (exactMatch) {
-    return { products: [toPdvProduct(exactMatch)], exact: true };
+    return { products: [toPdvProduct(exactMatch)], exact: true, totalCount: 1 };
   }
 
-  const products = await prisma.product.findMany({
-    where: {
-      tenantId: user.tenantId,
-      active: true,
+  // Cada palavra digitada precisa aparecer em algum lugar (nome, código
+  // interno ou código de barras) — não a frase inteira como um bloco só.
+  // Sem isso, buscar só o modelo sem a categoria antes (ex.: "13 pro", sem
+  // escrever "capa"/"película" primeiro) ou em ordem diferente da que está
+  // cadastrada (ex.: nome "... 13 / 13 PRO / 14 ...", busca "pro 13") não
+  // batia com nada, mesmo o produto existindo.
+  const words = term.split(/\s+/).filter(Boolean);
+  const where = {
+    tenantId: user.tenantId,
+    active: true,
+    AND: words.map((word) => ({
       OR: [
-        { name: { contains: term, mode: "insensitive" } },
-        { internalCode: { contains: term, mode: "insensitive" } },
-        { barcode: { contains: term, mode: "insensitive" } },
+        { name: { contains: word, mode: "insensitive" as const } },
+        { internalCode: { contains: word, mode: "insensitive" as const } },
+        { barcode: { contains: word, mode: "insensitive" as const } },
       ],
-    },
-    select,
-    orderBy: { name: "asc" },
-    take: 15,
-  });
+    })),
+  };
 
-  return { products: products.map(toPdvProduct), exact: false };
+  // `take` limita quantos aparecem na sugestão, mas com um termo genérico
+  // (ex.: "película 3d", que já bateu em 249 produtos — um por modelo de
+  // celular) só os 15 primeiros em ordem alfabética apareciam, sem nenhum
+  // aviso de que havia mais — parecia que o produto procurado não existia.
+  // `totalCount` deixa a tela avisar "mostrando X de Y" pra o vendedor saber
+  // que precisa digitar mais (ex.: a marca/modelo) pra achar o certo.
+
+  const [products, totalCount] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      select,
+      orderBy: { name: "asc" },
+      take: 30,
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return { products: products.map(toPdvProduct), exact: false, totalCount };
 }
 
 export type PdvSellerOption = { id: string; name: string; role: string };

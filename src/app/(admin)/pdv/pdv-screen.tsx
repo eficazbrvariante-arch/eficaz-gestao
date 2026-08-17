@@ -78,6 +78,10 @@ export function PdvScreen({
 
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<PdvProduct[]>([]);
+  // Total de produtos que batem com a busca — pode ser maior que `results`
+  // (a sugestão mostra só os 30 primeiros); usado só pra avisar "mostrando X
+  // de Y" quando corta, nunca pra decidir o que renderizar.
+  const [resultsTotalCount, setResultsTotalCount] = useState(0);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -150,12 +154,14 @@ export function PdvScreen({
     const timeout = window.setTimeout(() => {
       if (query.length < 2) {
         setResults([]);
+        setResultsTotalCount(0);
         setSuggestionsOpen(false);
         return;
       }
       startTransition(async () => {
-        const { products } = await searchProductsAction(query);
+        const { products, totalCount } = await searchProductsAction(query);
         setResults(products);
+        setResultsTotalCount(totalCount);
         setSuggestionsOpen(true);
       });
     }, 250);
@@ -336,6 +342,7 @@ export function PdvScreen({
 
     setTerm("");
     setResults([]);
+    setResultsTotalCount(0);
     setSuggestionsOpen(false);
     searchRef.current?.focus();
   }
@@ -345,17 +352,19 @@ export function PdvScreen({
     if (!query) return;
     setSearching(true);
     startTransition(async () => {
-      const { products, exact } = await searchProductsAction(query);
+      const { products, exact, totalCount } = await searchProductsAction(query);
       setSearching(false);
       if (exact && products.length === 1 && products[0].variants.length === 0) {
         addToCart(products[0], null);
       } else if (products.length === 0) {
         setError(`Nenhum produto encontrado para "${query}".`);
         setResults([]);
+        setResultsTotalCount(0);
         setSuggestionsOpen(false);
       } else {
         setError(undefined);
         setResults(products);
+        setResultsTotalCount(totalCount);
         setSuggestionsOpen(true);
       }
     });
@@ -705,6 +714,12 @@ export function PdvScreen({
                   </div>
                 );
               })}
+              {resultsTotalCount > results.length && (
+                <p className="bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Mostrando {results.length} de {resultsTotalCount} — digite mais pra refinar (ex.:
+                  a marca ou o modelo).
+                </p>
+              )}
             </div>
           )}
         </div>
