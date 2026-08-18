@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { todayRange } from "@/lib/format";
+import { periodRange, todayISO, todayRange } from "@/lib/format";
 import {
   computeWorkedMinutes,
   getNextExpectedAttendanceType,
@@ -277,10 +277,8 @@ export async function addMissingAttendanceEntry(
   });
   if (!employee) return { ok: false, error: "Colaborador não encontrado." };
 
-  const dayStart = new Date(input.occurredAt);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  const dayKey = todayISO(input.occurredAt);
+  const { start: dayStart, end: dayEnd } = periodRange(dayKey, dayKey);
 
   const sameDayEntries = await prisma.attendanceEntry.findMany({
     where: { tenantId, userId: input.userId, occurredAt: { gte: dayStart, lt: dayEnd } },
