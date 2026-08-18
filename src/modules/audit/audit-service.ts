@@ -35,7 +35,8 @@ export type AuditAction =
   | "attendance.selfie_waived"
   | "repair.payment_received"
   | "repair.delivered"
-  | "repair.courtesy_grant";
+  | "repair.courtesy_grant"
+  | "employee_ledger.confirm_paid";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -65,6 +66,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "repair.payment_received": "Pagamento recebido em OS de assistência técnica",
   "repair.delivered": "OS de assistência técnica entregue",
   "repair.courtesy_grant": "Cortesia concedida em OS de assistência técnica",
+  "employee_ledger.confirm_paid": "Pagamento confirmado por selfie pelo colaborador",
 };
 
 export type AuditEntry = {

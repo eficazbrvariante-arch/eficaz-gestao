@@ -1,21 +1,34 @@
 import { z } from "zod";
 
-export const EMPLOYEE_LEDGER_TYPES = ["ADVANCE", "PURCHASE", "HOURLY_PAYMENT"] as const;
+export const EMPLOYEE_LEDGER_TYPES = ["ADVANCE", "PURCHASE", "HOURLY_PAYMENT", "OTHER"] as const;
 export type EmployeeLedgerTypeValue = (typeof EMPLOYEE_LEDGER_TYPES)[number];
 
 export const EMPLOYEE_LEDGER_TYPE_LABELS: Record<EmployeeLedgerTypeValue, string> = {
   ADVANCE: "Adiantamento de salário",
   PURCHASE: "Compra de mercadoria",
   HOURLY_PAYMENT: "Pagamento por horas",
+  OTHER: "Outro (lançamento livre)",
 };
 
-export const createEmployeeLedgerEntrySchema = z.object({
-  userId: z.string().trim().min(1, "Selecione o colaborador"),
-  type: z.enum(EMPLOYEE_LEDGER_TYPES),
-  amount: z.coerce.number().positive("Informe um valor maior que zero"),
-  description: z.string().trim().optional().or(z.literal("")),
-});
+export const createEmployeeLedgerEntrySchema = z
+  .object({
+    userId: z.string().trim().min(1, "Selecione o colaborador"),
+    type: z.enum(EMPLOYEE_LEDGER_TYPES),
+    amount: z.coerce.number().positive("Informe um valor maior que zero"),
+    description: z.string().trim().optional().or(z.literal("")),
+  })
+  .refine((data) => data.type !== "OTHER" || data.description, {
+    message: "Descreva o motivo do lançamento",
+    path: ["description"],
+  });
 export type CreateEmployeeLedgerEntryInput = z.infer<typeof createEmployeeLedgerEntrySchema>;
+
+export const confirmEmployeeLedgerEntrySchema = z.object({
+  entryId: z.string().trim().min(1),
+  userId: z.string().trim().min(1),
+  selfieUrl: z.string().trim().url("Selfie obrigatória"),
+});
+export type ConfirmEmployeeLedgerEntryInput = z.infer<typeof confirmEmployeeLedgerEntrySchema>;
 
 export const setHourlyRateSchema = z.object({
   userId: z.string().trim().min(1),

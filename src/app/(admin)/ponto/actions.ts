@@ -15,6 +15,11 @@ import {
   punchAttendance,
   type EffectiveAttendanceEntry,
 } from "@/modules/attendance/attendance-service";
+import {
+  confirmEmployeeLedgerEntryBySelfie,
+  listPendingLedgerEntriesForEmployee,
+  type PendingLedgerEntry,
+} from "@/modules/employees/employee-ledger-service";
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
 import {
   addMissingAttendanceEntrySchema,
@@ -24,6 +29,10 @@ import {
   type CorrectAttendanceEntryInput,
   type PunchAttendanceInput,
 } from "@/lib/validations/attendance";
+import {
+  confirmEmployeeLedgerEntrySchema,
+  type ConfirmEmployeeLedgerEntryInput,
+} from "@/lib/validations/employee-ledger";
 
 /**
  * Confere que `userId` é um colaborador ativo do mesmo tenant de quem está
@@ -184,6 +193,57 @@ export async function addMissingAttendanceEntryAction(input: AddMissingAttendanc
 
   revalidatePath("/ponto/painel");
   revalidatePath(`/ponto/colaborador/${parsed.data.userId}`);
+
+  return { ok: true as const };
+}
+
+/** Lançamentos pendentes do colaborador selecionado — pra confirmar recebimento com selfie no Ponto. */
+export async function getPendingLedgerEntriesAction(
+  userId: string
+): Promise<PendingLedgerEntry[] | { error: string }> {
+  const user = await requireUser();
+
+  const employee = await requireActiveTenantEmployee(user.tenantId, userId);
+  if (!employee) {
+    return { error: "Selecione um colaborador válido." };
+  }
+
+  return listPendingLedgerEntriesForEmployee(user.tenantId, userId);
+}
+
+export async function confirmEmployeeLedgerEntryAction(input: ConfirmEmployeeLedgerEntryInput) {
+  const user = await requireUser();
+
+  const parsed = confirmEmployeeLedgerEntrySchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const employee = await requireActiveTenantEmployee(user.tenantId, parsed.data.userId);
+  if (!employee) {
+    return { error: "Selecione um colaborador válido." };
+  }
+
+  const result = await confirmEmployeeLedgerEntryBySelfie(
+    user.tenantId,
+    parsed.data.userId,
+    parsed.data.entryId,
+    parsed.data.selfieUrl
+  );
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name,
+    action: "employee_ledger.confirm_paid",
+    entity: "EmployeeLedgerEntry",
+    entityId: result.id,
+    description: `${employee.name} confirmou o recebimento de um pagamento com selfie no Ponto.`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
 
   return { ok: true as const };
 }

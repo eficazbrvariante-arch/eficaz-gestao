@@ -59,6 +59,7 @@ export default async function ColaboradoresPage() {
       advancePending: debt?.advancePending ?? 0,
       purchasePending: debt?.purchasePending ?? 0,
       hourlyPending: debt?.hourlyPending ?? 0,
+      otherPending: debt?.otherPending ?? 0,
       totalPending: debt?.totalPending ?? 0,
       commissionTotal: commissionTotals.get(seller.id) ?? 0,
     };
@@ -72,6 +73,7 @@ export default async function ColaboradoresPage() {
     description: entry.description,
     status: entry.status,
     createdAt: entry.createdAt,
+    paidSelfieUrl: entry.paidSelfieUrl,
   }));
 
   const totalPending = debtSummary.reduce((sum, row) => sum + row.totalPending, 0);

@@ -30,6 +30,7 @@ export type EmployeeCardRow = {
   advancePending: number;
   purchasePending: number;
   hourlyPending: number;
+  otherPending: number;
   totalPending: number;
   /** Acumulado de todas as vendas concluídas — não é "pendente", é o total já ganho. */
   commissionTotal: number;
@@ -43,6 +44,8 @@ export type EmployeeLedgerEntryRow = {
   description: string | null;
   status: "PENDING" | "PAID";
   createdAt: Date;
+  /** Selfie do colaborador confirmando o recebimento — null quando foi o Admin/Gerente quem marcou como pago. */
+  paidSelfieUrl: string | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -285,18 +288,20 @@ export function EmployeeLedgerPanel({
             />
           </div>
           <div>
-            <Label htmlFor="description">Descrição (opcional)</Label>
+            <Label htmlFor="description">
+              Descrição{type === "OTHER" ? "" : " (opcional)"}
+            </Label>
             <Input
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex.: cabo USB-C"
+              placeholder={type === "OTHER" ? "Ex.: vale-transporte, comissão relâmpago" : "Ex.: cabo USB-C"}
             />
           </div>
         </div>
         <Button
           type="button"
-          disabled={isPending || !userId || !amount}
+          disabled={isPending || !userId || !amount || (type === "OTHER" && !description.trim())}
           onClick={handleCreate}
           fullWidth={false}
           className="mt-4 px-4"
@@ -327,6 +332,12 @@ export function EmployeeLedgerPanel({
                     <span>Pagamento por hora</span>
                     <span>{formatBRL(row.hourlyPending)}</span>
                   </div>
+                  {row.otherPending > 0 && (
+                    <div className="flex justify-between">
+                      <span>Outro</span>
+                      <span>{formatBRL(row.otherPending)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold text-black">
                   <span>Total pendente</span>
@@ -385,6 +396,16 @@ export function EmployeeLedgerPanel({
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[entry.status]}`}>
                       {STATUS_LABEL[entry.status]}
                     </span>
+                    {entry.paidSelfieUrl && (
+                      <a
+                        href={entry.paidSelfieUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-xs font-medium text-slate-500 hover:underline"
+                      >
+                        ver selfie
+                      </a>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {entry.status === "PENDING" && (

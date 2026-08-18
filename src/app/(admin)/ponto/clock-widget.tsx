@@ -5,10 +5,18 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FormBanner } from "@/components/ui/form-banner";
 import { SelfieCaptureField } from "@/components/ui/selfie-capture-field";
-import { formatDateTime } from "@/lib/format";
-import { getPunchStatusAction, punchAttendanceAction, type ActiveEmployeeOption } from "./actions";
+import { formatBRL, formatDateTime } from "@/lib/format";
+import {
+  confirmEmployeeLedgerEntryAction,
+  getPendingLedgerEntriesAction,
+  getPunchStatusAction,
+  punchAttendanceAction,
+  type ActiveEmployeeOption,
+} from "./actions";
 import { ATTENDANCE_TYPE_LABELS } from "@/modules/attendance/attendance-rules";
 import type { EffectiveAttendanceEntry } from "@/modules/attendance/attendance-service";
+import type { PendingLedgerEntry } from "@/modules/employees/employee-ledger-service";
+import { EMPLOYEE_LEDGER_TYPE_LABELS } from "@/lib/validations/employee-ledger";
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
 
 export function ClockWidget({
@@ -30,6 +38,12 @@ export function ClockWidget({
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
 
+  const [pendingPayments, setPendingPayments] = useState<PendingLedgerEntry[]>([]);
+  const [confirmingEntryId, setConfirmingEntryId] = useState<string>();
+  const [paymentError, setPaymentError] = useState<string>();
+  const [paymentSuccess, setPaymentSuccess] = useState<string>();
+  const [confirmPending, startConfirmTransition] = useTransition();
+
   function submit(payload: { selfieUrl?: string; waived: boolean; waiveReason?: string }) {
     setError(undefined);
     startTransition(async () => {
@@ -44,12 +58,30 @@ export function ClockWidget({
     });
   }
 
+  function confirmPayment(entryId: string, selfieUrl: string) {
+    setPaymentError(undefined);
+    startConfirmTransition(async () => {
+      const result = await confirmEmployeeLedgerEntryAction({ entryId, userId: selectedId, selfieUrl });
+      if ("error" in result) {
+        setPaymentError(result.error);
+        return;
+      }
+      setConfirmingEntryId(undefined);
+      setPendingPayments((current) => current.filter((entry) => entry.id !== entryId));
+      setPaymentSuccess("Recebimento confirmado.");
+    });
+  }
+
   function selectEmployee(id: string) {
     setSelectedId(id);
     setSuccess(undefined);
     setError(undefined);
     setCapturing(false);
     setStatusError(undefined);
+    setPendingPayments([]);
+    setConfirmingEntryId(undefined);
+    setPaymentError(undefined);
+    setPaymentSuccess(undefined);
 
     if (!id) {
       setNextType(null);
@@ -66,6 +98,11 @@ export function ClockWidget({
       }
       setNextType(result.nextType);
       setTodaysEntries(result.todaysEntries);
+    });
+
+    getPendingLedgerEntriesAction(id).then((result) => {
+      if (!Array.isArray(result)) return;
+      setPendingPayments(result);
     });
   }
 
@@ -157,6 +194,61 @@ export function ClockWidget({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {selectedId && pendingPayments.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Pagamentos pendentes</h2>
+          <FormBanner message={paymentSuccess} variant="success" />
+          <ul className="space-y-3">
+            {pendingPayments.map((entry) => (
+              <li key={entry.id} className="rounded-md border border-slate-100 p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-slate-900">
+                    {EMPLOYEE_LEDGER_TYPE_LABELS[entry.type]}
+                  </span>
+                  <span className="font-semibold text-slate-900">{formatBRL(entry.amount)}</span>
+                </div>
+                {entry.description && (
+                  <p className="mt-1 text-xs text-slate-500">{entry.description}</p>
+                )}
+                {confirmingEntryId !== entry.id ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    fullWidth={false}
+                    className="mt-2 px-3 py-1 text-xs"
+                    onClick={() => {
+                      setPaymentError(undefined);
+                      setPaymentSuccess(undefined);
+                      setConfirmingEntryId(entry.id);
+                    }}
+                  >
+                    Confirmar recebimento
+                  </Button>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-slate-500">
+                      Tire uma selfie pra confirmar que recebeu este pagamento.
+                    </p>
+                    <SelfieCaptureField
+                      disabled={confirmPending}
+                      onCaptured={(url) => confirmPayment(entry.id, url)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingEntryId(undefined)}
+                      className="block w-full text-center text-xs text-slate-500 hover:underline"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <FormBanner message={paymentError} variant="error" />
         </div>
       )}
     </div>

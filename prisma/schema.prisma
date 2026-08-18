@@ -824,20 +824,29 @@ model RepairOrder {
   /// re-renderizar (e re-subir pro blob) a cada clique em "Enviar por WhatsApp".
   receiptPdfUrl String?
 
+  /// Preenchido só quando esta OS nasceu como acionamento de garantia de uma
+  /// OS já entregue — nunca reabre a original (que fica travada depois de
+  /// `DELIVERED`, ver `updateRepairOrderStatus`), sempre um registro novo,
+  /// com seu próprio número, vinculado por aqui. Histórico financeiro da
+  /// original nunca é tocado.
+  warrantyOriginalId String?
+
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  createdBy    User                 @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
-  seller       User                 @relation("RepairOrderSeller", fields: [sellerId], references: [id])
-  deliveredBy  User?                @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
-  items        RepairOrderItem[]
-  photos       RepairOrderPhoto[]
-  events       RepairOrderEvent[]
-  payments     RepairOrderPayment[]
-  fiadoEntries FiadoEntry[]
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer         Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy        User                 @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
+  seller           User                 @relation("RepairOrderSeller", fields: [sellerId], references: [id])
+  deliveredBy      User?                @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
+  warrantyOriginal RepairOrder?         @relation("RepairOrderWarrantyChain", fields: [warrantyOriginalId], references: [id], onDelete: SetNull)
+  warrantyClaims   RepairOrder[]        @relation("RepairOrderWarrantyChain")
+  items            RepairOrderItem[]
+  photos           RepairOrderPhoto[]
+  events           RepairOrderEvent[]
+  payments         RepairOrderPayment[]
+  fiadoEntries     FiadoEntry[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -1182,6 +1191,9 @@ enum EmployeeLedgerType {
   /// partir do Ponto × `User.hourlyRate` no momento do registro (ver
   /// `hourly-payment-service.ts`), nunca digitado livremente.
   HOURLY_PAYMENT
+  /// Lançamento livre (vale-transporte, comissão avulsa, etc.) — valor e
+  /// descrição digitados pelo Admin/Gerente, descrição obrigatória.
+  OTHER
 }
 
 /// PAID é estado final, igual `FiadoStatus` — nunca some da lista, só muda o status.
@@ -1195,16 +1207,21 @@ enum EmployeeLedgerStatus {
 /// Admin e Gerente) — separado do Fiado de propósito, que é sobre crédito a
 /// cliente externo, não controle interno da equipe.
 model EmployeeLedgerEntry {
-  id          String               @id @default(cuid())
-  tenantId    String
-  userId      String
-  type        EmployeeLedgerType
-  amount      Decimal              @db.Decimal(12, 2)
-  description String?
-  status      EmployeeLedgerStatus @default(PENDING)
-  settledAt   DateTime?
-  createdById String
-  createdAt   DateTime             @default(now())
+  id            String               @id @default(cuid())
+  tenantId      String
+  userId        String
+  type          EmployeeLedgerType
+  amount        Decimal              @db.Decimal(12, 2)
+  description   String?
+  status        EmployeeLedgerStatus @default(PENDING)
+  settledAt     DateTime?
+  /// Selfie tirada pelo próprio colaborador ao confirmar o recebimento no
+  /// Ponto — "assinatura" do pagamento. Nula quando o Admin/Gerente marcou
+  /// como pago manualmente (ver `settleEmployeeLedgerEntry`), sem passar
+  /// pela confirmação do colaborador.
+  paidSelfieUrl String?
+  createdById   String
+  createdAt     DateTime             @default(now())
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User   @relation("EmployeeLedgerUser", fields: [userId], references: [id])

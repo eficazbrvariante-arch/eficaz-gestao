@@ -57,6 +57,7 @@ export type EmployeeLedgerSummaryRow = {
   advancePending: number;
   purchasePending: number;
   hourlyPending: number;
+  otherPending: number;
   totalPending: number;
 };
 
@@ -75,15 +76,66 @@ export async function getEmployeeLedgerSummary(tenantId: string): Promise<Employ
       advancePending: 0,
       purchasePending: 0,
       hourlyPending: 0,
+      otherPending: 0,
       totalPending: 0,
     };
     const amount = Number(entry.amount);
     if (entry.type === "ADVANCE") current.advancePending = round2(current.advancePending + amount);
     else if (entry.type === "PURCHASE") current.purchasePending = round2(current.purchasePending + amount);
-    else current.hourlyPending = round2(current.hourlyPending + amount);
-    current.totalPending = round2(current.advancePending + current.purchasePending + current.hourlyPending);
+    else if (entry.type === "HOURLY_PAYMENT") current.hourlyPending = round2(current.hourlyPending + amount);
+    else current.otherPending = round2(current.otherPending + amount);
+    current.totalPending = round2(
+      current.advancePending + current.purchasePending + current.hourlyPending + current.otherPending
+    );
     byUser.set(entry.userId, current);
   }
 
   return [...byUser.values()].sort((a, b) => b.totalPending - a.totalPending);
+}
+
+export type PendingLedgerEntry = {
+  id: string;
+  type: CreateEmployeeLedgerEntryInput["type"];
+  amount: number;
+  description: string | null;
+  createdAt: Date;
+};
+
+/** Lançamentos pendentes de um colaborador — usado na confirmação por selfie no Ponto. */
+export async function listPendingLedgerEntriesForEmployee(
+  tenantId: string,
+  userId: string
+): Promise<PendingLedgerEntry[]> {
+  const entries = await prisma.employeeLedgerEntry.findMany({
+    where: { tenantId, userId, status: "PENDING" },
+    select: { id: true, type: true, amount: true, description: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return entries.map((entry) => ({ ...entry, amount: Number(entry.amount) }));
+}
+
+/**
+ * Confirmação do próprio colaborador de que recebeu o pagamento, com selfie
+ * como "assinatura" — só quita um lançamento que pertence a ele mesmo,
+ * diferente de `settleEmployeeLedgerEntry` (ação administrativa, sem foto).
+ */
+export async function confirmEmployeeLedgerEntryBySelfie(
+  tenantId: string,
+  userId: string,
+  entryId: string,
+  selfieUrl: string
+): Promise<EmployeeLedgerResult> {
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id: entryId, tenantId, userId },
+    select: { id: true, status: true },
+  });
+  if (!entry) return { ok: false, error: "Lançamento não encontrado." };
+  if (entry.status === "PAID") return { ok: true, id: entry.id };
+
+  await prisma.employeeLedgerEntry.update({
+    where: { id: entry.id },
+    data: { status: "PAID", settledAt: new Date(), paidSelfieUrl: selfieUrl },
+  });
+
+  return { ok: true, id: entry.id };
 }
