@@ -6,6 +6,7 @@ import { canManageConvenios } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
 import { formatBRL } from "@/lib/format";
 import { parseConvenioRules } from "@/lib/validations/convenio";
+import { inviteUrl } from "@/modules/convenios/invite-url";
 import { MembrosTabela, type ConvenioMemberRow } from "./membros-tabela";
 import { InviteLinkPanel, type ActiveInvite } from "./invite-link-panel";
 import { ProdutosDescontoPicker, type ConvenioDiscountRow } from "./produtos-desconto-picker";
@@ -56,6 +57,9 @@ export default async function ConvenioDetalhePage({
         id: activeInviteRow.id,
         createdAt: activeInviteRow.createdAt,
         createdByName: activeInviteRow.createdBy.name,
+        // Convites gerados antes da coluna `token` existir ficam sem link
+        // reexibível — precisam ser regenerados uma vez.
+        url: activeInviteRow.token ? inviteUrl(convenio.slug, activeInviteRow.token) : null,
       }
     : null;
 

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canManageConvenios } from "@/lib/permissions";
 import { generateResetToken } from "@/lib/tokens";
+import { inviteUrl } from "@/modules/convenios/invite-url";
 import { generateUniqueConvenioShortCode } from "@/modules/convenios/convenio-redemption-service";
 import {
   convenioMemberSchema,
@@ -172,11 +173,6 @@ export async function updateConvenioMemberStatusAction(
   return { success: "Status do colaborador atualizado." };
 }
 
-function inviteUrl(slug: string, rawToken: string) {
-  const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  return `${origin}/convenio/${slug}/${rawToken}`;
-}
-
 /** URL da "carteirinha" — status do cadastro e, quando ativo, o QR Code (ver `/c/[token]`). */
 function credentialUrl(rawToken: string) {
   const origin = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
@@ -186,11 +182,10 @@ function credentialUrl(rawToken: string) {
 /**
  * Sempre gera um link novo, revogando qualquer outro ainda ativo — só um
  * convite "vivo" por vez (o mesmo espírito de "compartilhar um link só no
- * grupo da empresa"). Não dá pra "reaproveitar e mostrar de novo" um convite
- * já existente: só o hash do token fica salvo (ver `ConvenioInvite.tokenHash`,
- * mesmo padrão de `User.resetToken`), então a URL completa só existe aqui,
- * no instante em que é gerada — se o Admin perder o link, o jeito é gerar
- * outro (e o antigo já para de funcionar).
+ * grupo da empresa"). O token também fica salvo em texto puro
+ * (`ConvenioInvite.token`) só para a tela poder reexibir o link ativo depois
+ * — quem valida o cadastro em `/convenio/[slug]/[token]` continua sendo o
+ * hash (`tokenHash`).
  */
 export async function getOrCreateConvenioInviteAction(convenioId: string) {
   const auth = await requireConvenioManager();
@@ -209,7 +204,13 @@ export async function getOrCreateConvenioInviteAction(convenioId: string) {
       data: { revokedAt: new Date() },
     });
     return tx.convenioInvite.create({
-      data: { tenantId: user.tenantId, convenioId, tokenHash: hashedToken, createdById: user.id },
+      data: {
+        tenantId: user.tenantId,
+        convenioId,
+        tokenHash: hashedToken,
+        token: rawToken,
+        createdById: user.id,
+      },
     });
   });
 

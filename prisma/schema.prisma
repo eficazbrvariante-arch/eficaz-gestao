@@ -1302,6 +1302,10 @@ model ConvenioInvite {
   tenantId    String
   convenioId  String
   tokenHash   String    @unique
+  /// Token em texto puro, só pra exibir o link de volta na tela (o hash acima
+  /// segue sendo o que valida o cadastro em `/convenio/[slug]/[token]`).
+  /// Nulo em convites gerados antes desta coluna existir.
+  token       String?
   expiresAt   DateTime?
   createdById String
   revokedAt   DateTime?
