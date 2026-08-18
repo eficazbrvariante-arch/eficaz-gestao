@@ -6,7 +6,7 @@ import {
 } from "@/modules/attendance/attendance-service";
 import {
   ATTENDANCE_TYPE_LABELS,
-  computeWorkedMinutes,
+  computeWorkedMinutesForDay,
   formatWorkedMinutes,
 } from "@/modules/attendance/attendance-rules";
 import { resolvePeriod } from "../../relatorios/period";
@@ -31,11 +31,12 @@ export default async function PontoHistoricoPage({
     dayGroups.set(key, list);
   }
 
+  const todayKey = todayISO();
   const days = [...dayGroups.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      return { date, entries: sorted, worked: computeWorkedMinutes(sorted) };
+      return { date, entries: sorted, worked: computeWorkedMinutesForDay(sorted, date === todayKey) };
     });
 
   return (
@@ -60,8 +61,14 @@ export default async function PontoHistoricoPage({
                   {formatISODate(day.date)}
                 </span>
                 <span className="text-sm text-slate-600">
-                  {formatWorkedMinutes(day.worked.workedMinutes)}
-                  {day.worked.open && " (em andamento)"}
+                  {day.worked.incomplete ? (
+                    <span className="text-red-600">Falta bater saída — corrigir no Ponto</span>
+                  ) : (
+                    <>
+                      {formatWorkedMinutes(day.worked.workedMinutes)}
+                      {day.worked.open && " (em andamento)"}
+                    </>
+                  )}
                 </span>
               </div>
               <ul className="divide-y divide-slate-100">

@@ -31,6 +31,7 @@ export type AuditAction =
   | "device.reject"
   | "device.revoke"
   | "attendance.correct"
+  | "attendance.add_missing"
   | "attendance.selfie_waived"
   | "repair.payment_received"
   | "repair.delivered"
@@ -59,6 +60,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "device.reject": "Dispositivo recusado",
   "device.revoke": "Dispositivo revogado",
   "attendance.correct": "Marcação de ponto corrigida",
+  "attendance.add_missing": "Marcação de ponto faltante lançada",
   "attendance.selfie_waived": "Marcação de ponto registrada sem selfie",
   "repair.payment_received": "Pagamento recebido em OS de assistência técnica",
   "repair.delivered": "OS de assistência técnica entregue",

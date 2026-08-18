@@ -93,6 +93,33 @@ export function computeWorkedMinutes(
   return { workedMinutes: Math.round(ms / 60000), open };
 }
 
+export type DayWorkedMinutesResult = WorkedMinutesResult & {
+  /** Dia PASSADO sem "saída" batida — marcação esquecida, não turno em
+   *  andamento (isso só é normal quando o dia é hoje). `workedMinutes` vem
+   *  zerado quando `true`, nunca extrapolado até agora. */
+  incomplete: boolean;
+};
+
+/**
+ * Como `computeWorkedMinutes`, mas só deixa extrapolar até `now` quando o
+ * dia sendo calculado é hoje — extrapolar um dia passado sem saída batida
+ * inventa um total absurdo (ex.: um esquecimento de 5 dias virando "122h
+ * trabalhadas" naquele único dia). Em qualquer outro dia, "aberto" vira
+ * `incomplete: true` e o total fica zerado, pra nunca somar um valor
+ * calculado sobre marcação furada. Usado tanto no painel de Ponto quanto na
+ * calculadora de pagamento por horas — precisa dar o mesmo resultado nos
+ * dois lugares.
+ */
+export function computeWorkedMinutesForDay(
+  entries: { type: AttendanceEntryType; occurredAt: Date }[],
+  isToday: boolean,
+  now: Date = new Date()
+): DayWorkedMinutesResult {
+  const result = computeWorkedMinutes(entries, now);
+  const incomplete = result.open && !isToday;
+  return { ...result, workedMinutes: incomplete ? 0 : result.workedMinutes, incomplete };
+}
+
 /** Formato curto para exibição: "8h 30min", "45min" ou "6h". */
 export function formatWorkedMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);

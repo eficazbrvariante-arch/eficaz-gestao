@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { todayRange } from "@/lib/format";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
+  addMissingAttendanceEntry,
   correctAttendanceEntry,
   getNextExpectedForToday,
   listEffectiveEntries,
@@ -16,8 +17,10 @@ import {
 } from "@/modules/attendance/attendance-service";
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
 import {
+  addMissingAttendanceEntrySchema,
   correctAttendanceEntrySchema,
   punchAttendanceSchema,
+  type AddMissingAttendanceEntryInput,
   type CorrectAttendanceEntryInput,
   type PunchAttendanceInput,
 } from "@/lib/validations/attendance";
@@ -146,6 +149,41 @@ export async function correctAttendanceEntryAction(input: CorrectAttendanceEntry
 
   revalidatePath("/ponto/painel");
   revalidatePath(`/ponto/colaborador/${result.userId}`);
+
+  return { ok: true as const };
+}
+
+export async function addMissingAttendanceEntryAction(input: AddMissingAttendanceEntryInput) {
+  const user = await requireUser();
+  if (!canCorrectAttendance(user.role)) {
+    return { error: "Seu perfil não tem permissão para lançar marcações de ponto." };
+  }
+
+  const parsed = addMissingAttendanceEntrySchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const employee = await requireActiveTenantEmployee(user.tenantId, parsed.data.userId);
+  if (!employee) {
+    return { error: "Selecione um colaborador válido." };
+  }
+
+  const result = await addMissingAttendanceEntry(user.tenantId, user.id, parsed.data);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name,
+    action: "attendance.add_missing",
+    entity: "AttendanceEntry",
+    entityId: result.entryId,
+    description: `${user.name} lançou uma marcação faltante de ponto para ${employee.name}. Motivo: ${parsed.data.reason}`,
+  });
+
+  revalidatePath("/ponto/painel");
+  revalidatePath(`/ponto/colaborador/${parsed.data.userId}`);
 
   return { ok: true as const };
 }

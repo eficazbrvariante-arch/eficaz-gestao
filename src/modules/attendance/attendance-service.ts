@@ -242,3 +242,66 @@ export async function correctAttendanceEntry(
 
   return { ok: true, userId: entry.userId };
 }
+
+export type AddMissingAttendanceEntryInput = {
+  userId: string;
+  type: AttendanceEntryType;
+  occurredAt: Date;
+  reason: string;
+};
+
+export type AddMissingAttendanceEntryResult =
+  | { ok: true; entryId: string }
+  | { ok: false; error: string };
+
+/**
+ * Marcação esquecida (ex.: colaborador saiu sem bater "Saída"), lançada
+ * diretamente pelo administrador — ao contrário de `correctAttendanceEntry`,
+ * cria uma `AttendanceEntry` nova em vez de corrigir uma existente, porque
+ * aqui não existe marcação nenhuma pra apontar como origem. Fica marcada como
+ * `selfieWaived` (mesmo tratamento visual de "sem selfie" já usado pra
+ * dispensa) com o motivo do lançamento manual.
+ */
+export async function addMissingAttendanceEntry(
+  tenantId: string,
+  addedById: string,
+  input: AddMissingAttendanceEntryInput
+): Promise<AddMissingAttendanceEntryResult> {
+  if (!input.reason.trim()) {
+    return { ok: false, error: "Informe o motivo da marcação adicionada." };
+  }
+
+  const employee = await prisma.user.findFirst({
+    where: { id: input.userId, tenantId },
+    select: { id: true },
+  });
+  if (!employee) return { ok: false, error: "Colaborador não encontrado." };
+
+  const dayStart = new Date(input.occurredAt);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  const sameDayEntries = await prisma.attendanceEntry.findMany({
+    where: { tenantId, userId: input.userId, occurredAt: { gte: dayStart, lt: dayEnd } },
+    select: { type: true },
+  });
+  if (sameDayEntries.some((entry) => entry.type === input.type)) {
+    return { ok: false, error: "Esse dia já tem uma marcação desse tipo." };
+  }
+
+  const entry = await prisma.attendanceEntry.create({
+    data: {
+      tenantId,
+      userId: input.userId,
+      type: input.type,
+      occurredAt: input.occurredAt,
+      selfieWaived: true,
+      selfieWaivedById: addedById,
+      selfieWaivedReason: input.reason.trim(),
+    },
+    select: { id: true },
+  });
+
+  return { ok: true, entryId: entry.id };
+}

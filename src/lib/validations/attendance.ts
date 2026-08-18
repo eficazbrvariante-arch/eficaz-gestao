@@ -18,3 +18,12 @@ export const correctAttendanceEntrySchema = z.object({
 });
 export type CorrectAttendanceEntryInput = z.infer<typeof correctAttendanceEntrySchema>;
 export type CorrectAttendanceEntryFormValues = z.input<typeof correctAttendanceEntrySchema>;
+
+export const addMissingAttendanceEntrySchema = z.object({
+  userId: z.string().trim().min(1),
+  type: attendanceEntryTypeEnum,
+  occurredAt: z.coerce.date(),
+  reason: z.string().trim().min(3, "Descreva o motivo da marcação adicionada"),
+});
+export type AddMissingAttendanceEntryInput = z.infer<typeof addMissingAttendanceEntrySchema>;
+export type AddMissingAttendanceEntryFormValues = z.input<typeof addMissingAttendanceEntrySchema>;

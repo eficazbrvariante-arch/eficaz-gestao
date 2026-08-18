@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatISODate, periodRange, todayISO } from "@/lib/format";
-import { computeWorkedMinutes } from "@/modules/attendance/attendance-rules";
+import { computeWorkedMinutesForDay } from "@/modules/attendance/attendance-rules";
 import { listEffectiveEntries, type EffectiveAttendanceEntry } from "@/modules/attendance/attendance-service";
 
 function round2(value: number) {
@@ -39,14 +39,8 @@ export function sumWorkedMinutesByDay(
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      const { workedMinutes, open } = computeWorkedMinutes(sorted, now);
-      // `computeWorkedMinutes` conta até `now` quando falta "saída" — certo
-      // pra hoje (turno em andamento), errado pra um dia passado (aí é
-      // marcação esquecida): sem isso, um "esqueci de bater saída" há 5 dias
-      // virava "122h trabalhadas" nesse dia, um valor absurdo somado ao
-      // pagamento. Fica zerado e marcado como incompleto até corrigir no Ponto.
-      const incomplete = open && date !== todayKey;
-      return { date, workedMinutes: incomplete ? 0 : workedMinutes, incomplete };
+      const { workedMinutes, incomplete } = computeWorkedMinutesForDay(sorted, date === todayKey, now);
+      return { date, workedMinutes, incomplete };
     });
 }
 

@@ -10,7 +10,7 @@ import {
 import {
   computeBreakBalance,
   computeDailyBalanceMinutes,
-  computeWorkedMinutes,
+  computeWorkedMinutesForDay,
   parseAttendanceSettings,
 } from "@/modules/attendance/attendance-rules";
 import { resolvePeriod } from "../../../relatorios/period";
@@ -54,11 +54,12 @@ export default async function EmployeeAttendancePage({
     dayGroups.set(key, list);
   }
 
+  const todayKey = todayISO();
   const days = [...dayGroups.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      const worked = computeWorkedMinutes(sorted);
+      const worked = computeWorkedMinutesForDay(sorted, date === todayKey);
       return {
         date,
         entries: sorted,
@@ -77,7 +78,11 @@ export default async function EmployeeAttendancePage({
 
       <PeriodPicker period={period} />
 
-      <EmployeeAttendanceList days={days} canCorrect={canCorrectAttendance(user.role)} />
+      <EmployeeAttendanceList
+        userId={employee.id}
+        days={days}
+        canCorrect={canCorrectAttendance(user.role)}
+      />
     </div>
   );
 }

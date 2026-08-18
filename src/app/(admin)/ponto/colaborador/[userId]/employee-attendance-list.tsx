@@ -6,9 +6,11 @@ import {
   ATTENDANCE_TYPE_LABELS,
   formatBalanceMinutes,
   formatWorkedMinutes,
+  getNextExpectedAttendanceType,
   type BreakBalance,
 } from "@/modules/attendance/attendance-rules";
 import { AttendanceCorrectionForm } from "./attendance-correction-form";
+import { AddMissingEntryForm } from "./add-missing-entry-form";
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
 
 /** Verde quando ficou a mais (crédito), vermelho quando ficou a menos (débito) — nunca cinza neutro pra saldo diferente de zero. */
@@ -20,7 +22,7 @@ function BalanceBadge({ minutes }: { minutes: number }) {
 
 type DayGroup = {
   date: string;
-  worked: { workedMinutes: number; open: boolean };
+  worked: { workedMinutes: number; open: boolean; incomplete: boolean };
   /** Saldo do dia (trabalhado - jornada esperada) — positivo é crédito, negativo é débito. */
   balanceMinutes: number;
   /** `null` quando o dia ainda não tem os dois marcos do intervalo. */
@@ -36,13 +38,16 @@ type DayGroup = {
 };
 
 export function EmployeeAttendanceList({
+  userId,
   days,
   canCorrect,
 }: {
+  userId: string;
   days: DayGroup[];
   canCorrect: boolean;
 }) {
   const [editingId, setEditingId] = useState<string>();
+  const [addingDate, setAddingDate] = useState<string>();
 
   if (days.length === 0) {
     return (
@@ -54,16 +59,24 @@ export function EmployeeAttendanceList({
 
   return (
     <div className="space-y-4">
-      {days.map((day) => (
+      {days.map((day) => {
+        const suggestedType = getNextExpectedAttendanceType(day.entries);
+        return (
         <div key={day.date} className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <span className="text-sm font-semibold text-slate-900">{formatISODate(day.date)}</span>
-            <span className="flex items-center gap-2 text-sm text-slate-600">
-              {formatWorkedMinutes(day.worked.workedMinutes)}
-              {day.worked.open && " (em andamento)"}
-              <span className="text-slate-300">·</span>
-              <BalanceBadge minutes={day.balanceMinutes} />
-            </span>
+            {day.worked.incomplete ? (
+              <span className="text-sm font-medium text-red-600">
+                Falta bater saída — corrigir no Ponto
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-sm text-slate-600">
+                {formatWorkedMinutes(day.worked.workedMinutes)}
+                {day.worked.open && " (em andamento)"}
+                <span className="text-slate-300">·</span>
+                <BalanceBadge minutes={day.balanceMinutes} />
+              </span>
+            )}
           </div>
           <ul className="divide-y divide-slate-100">
             {day.entries.map((entry) => (
@@ -119,8 +132,29 @@ export function EmployeeAttendanceList({
               </li>
             ))}
           </ul>
+          {canCorrect && suggestedType && (
+            <div className="border-t border-slate-100 px-4 py-2">
+              {addingDate === day.date ? (
+                <AddMissingEntryForm
+                  userId={userId}
+                  date={day.date}
+                  suggestedType={suggestedType}
+                  onDone={() => setAddingDate(undefined)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAddingDate(day.date)}
+                  className="text-xs font-medium text-amber-700 hover:underline"
+                >
+                  + Adicionar marcação faltando ({ATTENDANCE_TYPE_LABELS[suggestedType]})
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
