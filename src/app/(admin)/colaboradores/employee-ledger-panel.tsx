@@ -345,7 +345,6 @@ export function EmployeeLedgerPanel({
                 </div>
                 <Link
                   href={`/colaboradores/${row.userId}/comissao`}
-                  target="_blank"
                   className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-emerald-700 hover:underline"
                 >
                   <span>Comissão de venda</span>
@@ -353,7 +352,6 @@ export function EmployeeLedgerPanel({
                 </Link>
                 <Link
                   href={`/colaboradores/${row.userId}/horas`}
-                  target="_blank"
                   className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-slate-700 hover:underline"
                 >
                   <span>Pagamento por horas</span>
