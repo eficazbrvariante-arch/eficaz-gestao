@@ -194,6 +194,39 @@ function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
   };
 }
 
+/**
+ * Gera um código interno sequencial (`INT-000001`, `INT-000002`, ...) para
+ * produtos sem código de barras do fabricante — dá ao lojista algo pra
+ * imprimir/etiquetar e escanear depois pelo `BarcodeScannerField`, mesmo sem
+ * EAN real. Sempre confirma unicidade contra o banco antes de devolver, pra
+ * cobrir a corrida rara de dois cadastros gerando ao mesmo tempo.
+ */
+export async function generateInternalCodeAction() {
+  const auth = await requireProductManager();
+  if ("error" in auth) return { error: auth.error };
+  const { user } = auth;
+
+  const existingCodes = await prisma.product.findMany({
+    where: { tenantId: user.tenantId, internalCode: { startsWith: "INT-" } },
+    select: { internalCode: true },
+  });
+  const maxSequence = existingCodes.reduce((max, product) => {
+    const match = product.internalCode?.match(/^INT-(\d+)$/);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  let sequence = maxSequence + 1;
+  let code = `INT-${String(sequence).padStart(6, "0")}`;
+  while (
+    await prisma.product.findFirst({ where: { tenantId: user.tenantId, internalCode: code } })
+  ) {
+    sequence += 1;
+    code = `INT-${String(sequence).padStart(6, "0")}`;
+  }
+
+  return { code };
+}
+
 export async function createProductAction(input: ProductInput) {
   const auth = await requireProductManager();
   if ("error" in auth) return { error: auth.error };

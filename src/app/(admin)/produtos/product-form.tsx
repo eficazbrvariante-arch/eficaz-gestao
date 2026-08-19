@@ -8,7 +8,7 @@ import {
   type ProductInput,
   type ProductFormValues,
 } from "@/lib/validations/catalog";
-import { createProductAction, updateProductAction } from "./actions";
+import { createProductAction, generateInternalCodeAction, updateProductAction } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
+import { BarcodeScannerField } from "@/components/ui/barcode-scanner-field";
 
 type Option = { id: string; name: string };
 
@@ -42,6 +43,7 @@ export function ProductForm({
 }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   const {
     register,
@@ -68,6 +70,21 @@ export function ProductForm({
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "variants" });
+
+  async function handleGenerateInternalCode() {
+    setIsGeneratingCode(true);
+    setServerError(undefined);
+    try {
+      const result = await generateInternalCodeAction();
+      if ("error" in result) {
+        setServerError(result.error);
+        return;
+      }
+      setValue("internalCode", result.code, { shouldDirty: true, shouldValidate: true });
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  }
 
   const onSubmit = (data: ProductInput) => {
     setServerError(undefined);
@@ -98,12 +115,35 @@ export function ProductForm({
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="internalCode">Código interno</Label>
-          <Input id="internalCode" {...register("internalCode")} />
+          <div className="flex gap-2">
+            <Input id="internalCode" {...register("internalCode")} />
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth={false}
+              disabled={isGeneratingCode}
+              onClick={handleGenerateInternalCode}
+              className="shrink-0 px-3"
+            >
+              {isGeneratingCode ? "Gerando..." : "Gerar"}
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Produto sem código de barras do fabricante? Gere um código interno pra etiquetar e
+            escanear depois.
+          </p>
           <FieldError message={errors.internalCode?.message} />
         </div>
         <div>
           <Label htmlFor="barcode">Código de barras / EAN</Label>
-          <Input id="barcode" {...register("barcode")} />
+          <div className="flex gap-2">
+            <Input id="barcode" {...register("barcode")} />
+            <BarcodeScannerField
+              onScanned={(value) =>
+                setValue("barcode", value, { shouldDirty: true, shouldValidate: true })
+              }
+            />
+          </div>
           <FieldError message={errors.barcode?.message} />
         </div>
       </div>
