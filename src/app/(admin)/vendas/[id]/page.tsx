@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { formatBRL, formatDateTime } from "@/lib/format";
+import { formatBRL, formatDateTime, nameInitials } from "@/lib/format";
 import { canCancelSale, canViewAllSales } from "@/lib/permissions";
 import { storeDisplayHost, storeOrigin } from "@/modules/catalog/tenant-resolver";
 import { SaleActions } from "./sale-controls";
@@ -125,7 +125,7 @@ export default async function ComprovantePage({
           </div>
           <div className="flex justify-between">
             <span>Vendedor</span>
-            <span>{sale.seller.name}</span>
+            <span>{nameInitials(sale.seller.name)}</span>
           </div>
         </div>
 

@@ -84,6 +84,16 @@ export function formatISODate(iso: string) {
   return `${day}/${month}/${year}`;
 }
 
+/** Iniciais do nome (primeiro + segundo nome), em maiúsculas: "João da Silva" → "JS". */
+export function nameInitials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 /** Valor para um `<input type="datetime-local">`, no fuso da loja: `YYYY-MM-DDTHH:mm`. */
 export function toDateTimeLocalValue(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
