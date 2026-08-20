@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
+import { BarcodeDetector, type BarcodeFormat } from "barcode-detector/ponyfill";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FormBanner } from "@/components/ui/form-banner";
 
-const FORMATS = [
+const FORMATS: BarcodeFormat[] = [
   "ean_13",
   "ean_8",
   "upc_a",
@@ -18,10 +19,13 @@ const FORMATS = [
 
 /**
  * Botão "Escanear" que abre a câmera (traseira, quando existir) e lê código
- * de barras/QR ao vivo via `BarcodeDetector` nativo — sem lib extra. Só
- * Chrome/Edge (desktop e Android) suportam a API hoje; em navegadores sem
- * suporte (Firefox, Safari) o botão mostra aviso e o usuário digita o
- * código manualmente, como já fazia antes de existir esse componente.
+ * de barras/QR ao vivo. Usa `barcode-detector` (decodifica via WebAssembly,
+ * pacote `zxing-wasm`) em vez do `BarcodeDetector` nativo do navegador — o
+ * nativo só existe no Chrome/Edge com engine Blink (desktop e Android); no
+ * iPhone, todo navegador (inclusive "Chrome") roda sobre o WebKit da Apple e
+ * não tem a API, então ficava sempre no aviso de "não suportado". Com o
+ * polyfill, funciona igual em qualquer navegador — só depende da câmera
+ * (`getUserMedia`), que aí sim é praticamente universal.
  */
 export function BarcodeScannerField({
   onScanned,
@@ -72,10 +76,10 @@ export function BarcodeScannerField({
   // direto durante a fase síncrona do efeito que a invoca (ver mesmo padrão
   // em `selfie-capture-field.tsx`).
   const start = useCallback(() => {
-    if (!window.BarcodeDetector) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       return Promise.resolve().then(() => setStatus("unsupported"));
     }
-    detectorRef.current = new window.BarcodeDetector({ formats: FORMATS });
+    detectorRef.current = new BarcodeDetector({ formats: FORMATS });
     return navigator.mediaDevices
       .getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
       .then((stream) => {
@@ -136,7 +140,7 @@ export function BarcodeScannerField({
 
         {status === "unsupported" && (
           <FormBanner
-            message="Seu navegador não suporta leitura automática de código de barras. Use Chrome (desktop ou Android) ou digite o código manualmente."
+            message="Este dispositivo não tem câmera disponível para o navegador. Digite o código manualmente."
             variant="error"
           />
         )}
