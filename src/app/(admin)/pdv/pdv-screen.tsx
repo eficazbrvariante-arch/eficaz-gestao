@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormBanner } from "@/components/ui/form-banner";
+import { BarcodeScannerField } from "@/components/ui/barcode-scanner-field";
 import { MixedPaymentPanel, type PaymentPanelSlot } from "@/components/payments/mixed-payment-panel";
 import {
   PAYMENT_SLOTS,
@@ -347,8 +348,7 @@ export function PdvScreen({
     searchRef.current?.focus();
   }
 
-  function runSearch() {
-    const query = term.trim();
+  function runSearch(query = term.trim()) {
     if (!query) return;
     setSearching(true);
     startTransition(async () => {
@@ -368,6 +368,11 @@ export function PdvScreen({
         setSuggestionsOpen(true);
       }
     });
+  }
+
+  function handleScanned(value: string) {
+    setTerm(value);
+    runSearch(value);
   }
 
   function changeQuantity(key: string, quantity: number) {
@@ -629,13 +634,14 @@ export function PdvScreen({
             />
             <Button
               type="button"
-              onClick={runSearch}
+              onClick={() => runSearch()}
               variant="secondary"
               fullWidth={false}
               className="shrink-0 px-4"
             >
               {searching ? "Buscando..." : "Buscar"}
             </Button>
+            <BarcodeScannerField onScanned={handleScanned} />
           </div>
 
           {/* Sugestões em tempo real: atualiza a cada tecla digitada (busca parcial
