@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
+import { Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormBanner } from "@/components/ui/form-banner";
 
@@ -51,6 +52,8 @@ export function SelfieCaptureField({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   const [waiveReason, setWaiveReason] = useState("");
+  const [fixing, setFixing] = useState(false);
+  const [fixMessage, setFixMessage] = useState<string>();
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -79,6 +82,88 @@ export function SelfieCaptureField({
     startCamera();
     return stopCamera;
   }, [startCamera, stopCamera]);
+
+  /**
+   * "Corrigir câmera": em vez de só tentar de novo, primeiro diagnostica o
+   * que está impedindo o acesso (permissão bloqueada, nenhuma câmera no
+   * aparelho, câmera ocupada por outro app) e mostra uma mensagem específica
+   * pra quem está na loja resolver sozinho — sem precisar pedir ajuda.
+   * Página nenhuma consegue reverter uma permissão negada pelo navegador via
+   * código (é decisão do usuário/SO), então nesse caso a "correção" é
+   * instrução clara de onde tocar.
+   */
+  async function fixCamera() {
+    setFixing(true);
+    setFixMessage(undefined);
+    setError(undefined);
+    stopCamera();
+
+    try {
+      if (navigator.permissions?.query) {
+        try {
+          const status = await navigator.permissions.query({
+            name: "camera" as PermissionName,
+          });
+          if (status.state === "denied") {
+            setFixMessage(
+              "A câmera está bloqueada nas permissões do navegador. Toque no ícone de cadeado/informações ao lado do endereço do site, permita a câmera e toque em \"Corrigir câmera\" de novo."
+            );
+            return;
+          }
+        } catch {
+          // Navegador sem suporte à Permissions API pra câmera (ex.: Firefox/Safari) — segue pra tentar getUserMedia direto.
+        }
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setFixMessage("Este navegador não suporta acesso à câmera.");
+        return;
+      }
+
+      if (navigator.mediaDevices.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (!devices.some((d) => d.kind === "videoinput")) {
+          setFixMessage("Nenhuma câmera encontrada neste aparelho.");
+          return;
+        }
+      }
+
+      try {
+        // Primeiro tenta a frontal (padrão de selfie); alguns aparelhos (ex.:
+        // webcam de PC) não respeitam `facingMode`, daí o retry sem restrição.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+        streamRef.current = stream;
+        setMode("live");
+        return;
+      } catch {
+        // segue pro retry abaixo
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      streamRef.current = stream;
+      setMode("live");
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError") {
+        setFixMessage(
+          "O navegador negou o acesso à câmera. Toque no ícone de cadeado/informações ao lado do endereço do site, permita a câmera e toque em \"Corrigir câmera\" de novo."
+        );
+      } else if (name === "NotReadableError") {
+        setFixMessage(
+          "A câmera está sendo usada por outro programa ou aba. Feche o que estiver usando a câmera e toque em \"Corrigir câmera\" de novo."
+        );
+      } else {
+        setFixMessage(
+          "Não foi possível acessar a câmera. Tente de novo ou use o botão de tirar/selecionar foto abaixo."
+        );
+      }
+    } finally {
+      setFixing(false);
+    }
+  }
 
   // O <video> só existe no DOM quando mode === "live" (ver JSX abaixo), então
   // o srcObject precisa ser anexado aqui, depois que ele monta — setá-lo
@@ -234,16 +319,11 @@ export function SelfieCaptureField({
           <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
             Tirar/selecionar foto
           </Button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode("starting");
-              startCamera();
-            }}
-            className="block w-full text-center text-xs text-slate-500 hover:underline"
-          >
-            Tentar câmera novamente
-          </button>
+          <Button type="button" onClick={fixCamera} disabled={disabled || fixing} className="gap-1.5">
+            <Wrench className="size-4" />
+            {fixing ? "Verificando câmera..." : "Corrigir câmera"}
+          </Button>
+          <FormBanner message={fixMessage} variant="error" />
           {canWaive && (
             <button
               type="button"
