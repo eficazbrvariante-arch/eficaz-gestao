@@ -1,5 +1,314 @@
 # Relatórios de sessão
 
+## 2026-08-19 — Produtos: leitor de câmera/QR e código interno; cupom de venda com iniciais do vendedor
+
+Pedido do usuário, sem apontar de início qual tela ("preciso, no cadastro,
+de uma câmera ou leitor de QR") — esclarecido por pergunta: cadastro de
+Produtos, pra preencher o campo "Código de barras / EAN".
+
+**1. Leitor de câmera/QR no cadastro de produtos.** Novo componente
+`BarcodeScannerField` (`src/components/ui/barcode-scanner-field.tsx`): botão
+"Escanear" ao lado do campo de código de barras abre a câmera traseira
+(quando existir) num modal e lê o código ao vivo, preenchendo o campo sem
+digitar. Primeira versão usou o `BarcodeDetector` nativo do navegador — sem
+lib extra, mesmo padrão de fallback gracioso já usado em
+`selfie-capture-field.tsx`. **Bug reportado pelo usuário** (com print):
+no Chrome do iPhone aparecia sempre "navegador não suportado". Causa: no
+iOS, todo navegador — inclusive o "Chrome" — roda sobre o motor WebKit da
+Apple (política da App Store), e o WebKit não implementa a API nativa de
+leitura de código de barras; só Chrome/Edge com engine Blink (desktop e
+Android) têm. Corrigido trocando a API nativa pelo pacote `barcode-detector`
+(decodifica via WebAssembly, `zxing-wasm`), que funciona igual em qualquer
+navegador — só depende da câmera (`getUserMedia`), aí sim praticamente
+universal. Removido o arquivo de tipos ambientes que só existia pra suprir
+o `window.BarcodeDetector` nativo.
+
+**2. Gerar código interno automaticamente.** Pedido complementar, no meio
+da mesma tarefa: opção pra gerar um código interno pra produtos sem EAN do
+fabricante, pra etiquetar e escanear depois. Nova action
+`generateInternalCodeAction` em `produtos/actions.ts` gera código
+sequencial único por tenant (`INT-000001`, `INT-000002`, ...), com botão
+"Gerar" ao lado do campo.
+
+**3. Cupom de venda: vendedor por iniciais, não nome completo.** Terceiro
+pedido, também mid-turn: no cupom impresso/emitido pro cliente
+(`vendas/[id]/page.tsx`), o campo "Vendedor" mostrava o nome completo —
+trocado pra iniciais (ex.: "JS"), pra não expor o nome completo do
+funcionário no comprovante que fica com o cliente. A função de iniciais já
+existia (só local, em `seller-picker-modal.tsx`, pro seletor de vendedor do
+PDV) — extraída pra `lib/format.ts` (`nameInitials`) e reaproveitada nos
+dois lugares. O seletor do PDV continua mostrando o nome completo (tela
+interna do operador, não o cupom do cliente).
+
+**Testado:** `lint`, `typecheck` e `build:app` limpos em cada etapa (sem
+warnings novos além dos pré-existentes de `react-hooks/incompatible-library`
+já presentes no projeto, não relacionados). `check:deploy` OK depois de
+cada push. Usuário testou ao vivo o leitor no Chrome do iPhone depois do
+deploy da correção do WASM e confirmou que ficou funcionando. Commits:
+`d79cdaf` (leitor + código interno), `d71405d` (iniciais no cupom),
+`38b7a2e` (troca pra polyfill WASM, corrigindo o bug do iPhone) — só esses
+arquivos entraram nos commits; as demais alterações já pendentes no
+repositório antes desta sessão (garantia/assistência técnica, scripts de
+QA, docs de auditoria) ficaram de fora, por não fazerem parte deste
+pedido.
+
+## 2026-08-18 — Colaboradores: confirmação de pagamento por selfie e lançamento livre
+
+Ideia trazida pelo usuário a partir de um pagamento real (Sofia Freelance,
+R$142,20 de horas): hoje só o Admin/Gerente marca um lançamento como
+"pago" em Colaboradores, sem nenhum registro de que o colaborador de fato
+recebeu. Duas perguntas de escopo antes de implementar (ambas com a opção
+recomendada escolhida): manter o botão manual "Marcar como pago" como
+alternativa (não substituir por selfie obrigatória), e incluir também um
+tipo de lançamento livre pra valores avulsos (vale-transporte, comissão
+relâmpago) — as duas confirmadas.
+
+**Confirmação por selfie:** o colaborador entra no Ponto (mesmo picker
+"selecione quem está batendo o ponto", único login compartilhado), e se
+tiver algum lançamento pendente aparece "Pagamentos pendentes" com um botão
+"Confirmar recebimento" que abre a mesma captura de selfie ao vivo já usada
+pra bater ponto (`SelfieCaptureField`, sem opção de dispensar — aqui a foto
+é o propósito, não uma formalidade). `EmployeeLedgerEntry` ganhou
+`paidSelfieUrl` (nulo quando foi o Admin quem marcou manualmente); a lista
+de lançamentos em Colaboradores mostra "ver selfie" só nesses casos.
+
+**Lançamento livre:** novo tipo `OTHER` ("Outro (lançamento livre)") no
+enum `EmployeeLedgerType`, com descrição obrigatória (antes só existia
+Adiantamento, Compra de mercadoria e Pagamento por horas). Resumo por
+colaborador (`getEmployeeLedgerSummary`) ganhou o bucket `otherPending`
+separado — sem isso, cairia por engano no total de "Pagamento por hora".
+
+**Testado:** `lint`, `typecheck`, os 110 testes automatizados e `npm run
+build` completo (migration: novo valor de enum + coluna nova, ambos sem
+risco de perda de dado) sem erros nem warnings novos. Ponta a ponta em
+`dev-local` com admin e colaborador descartáveis (`qatmp_ledger_*`,
+apagados depois): lançamento "Outro" criado pelo Admin apareceu certo no
+card e na tabela; "Marcar como pago" manual continua funcionando sem
+selfie; confirmação por selfie no Ponto (fallback de arquivo, sem câmera
+real disponível no ambiente de teste) quitou o lançamento e a tabela
+passou a mostrar "Pago · ver selfie" só nesse. Commit `eb6f771`, deploy
+manual via `vercel --prod` (auto-deploy via push não disparou a tempo de
+novo) e `check:deploy` OK.
+
+**Confirmação ponta a ponta em produção real** (a pedido do usuário, feito
+depois do teste em `dev-local` acima): logada como Admin real no navegador
+do usuário, criei um lançamento "Outro" de R$0,01 pra ela mesma ("Teste QA
+- ignorar, sem valor real"), confirmei com selfie pelo Ponto e vi "Pago ·
+ver selfie" aparecer certo em Colaboradores. Depois de rodar
+`npm run typecheck`, o usuário mesmo apagou o lançamento de teste em
+produção via SQL preparado por mim (SELECT de conferência + DELETE por
+`description`, rodado por ele no console do Neon — nunca acesso direto
+deste agente ao banco de produção); confirmei visualmente depois que sumiu
+e que o total pendente voltou a R$603,80.
+
+**Observação separada, mesmo dia:** "Comissão de venda" e "Pagamento por
+horas" em Colaboradores abriam em aba nova sem necessidade (o layout do
+painel já mantém o menu lateral fixo fora das páginas — `(admin)/layout.tsx`
+— navegação normal só troca o quadro central). Removido `target="_blank"`
+dos dois (commit `8fcd2da`) e, numa varredura seguinte, do terceiro link
+que tinha ficado de fora ("Selecionar produtos comissionados", commit
+`0da7ac2`). Deliberadamente **não** mexi nos outros `target="_blank"` do
+projeto (WhatsApp/Instagram, impressão de comprovante/cupom no PDV e na OS,
+visualização de selfie/foto de comprovante, "Cadastre aqui" cliente durante
+uma venda) — mudar esses pra mesma aba faria perder o carrinho/venda em
+andamento ou navegar pra fora do sistema. Ambos os commits com
+`lint`/`typecheck`/110 testes limpos, deploy via `vercel --prod` e
+`check:deploy` OK.
+
+## 2026-08-17 — Bug de numeração de pedido, busca do PDV, resgate da Proteção Eficaz no PDV e extrapolação de dia incompleto no Ponto
+
+**1. Produção — "Comprar pelo WhatsApp" falhando com erro de número
+duplicado.** Logs de `check:deploy` mostravam `Unique constraint failed on
+(tenantId, number)` toda vez que um pedido novo era criado.
+`scripts/reset-vendas-pedidos.mts` zerava `orderSequence` junto com
+`saleSequence`, mas `Order` é cancelado (nunca apagado) — o contador voltava
+pra 0 e colidia com o número de um pedido cancelado que ainda existe na
+tabela. Corrigido o script (só `saleSequence` é zerado, com comentário
+explicando por quê) e resincronizado o contador de produção via `UPDATE
+tenants SET "orderSequence" = MAX(number)` — SQL passado pro usuário rodar
+direto no console do Neon (nunca conexão direta deste agente com produção).
+Confirmado com um pedido real de teste (`#21`). Commit `da519b2`.
+
+**2. Busca de produto no PDV incompleta.** Dois problemas relatados: (a)
+limite fixo de 15 resultados sem nenhum aviso, escondendo produtos (ex.:
+249 produtos batem "Película 3D"); (b) busca por frase única (`contains`)
+não achava "13 pró" numa capinha chamada "Capa MAGNETIC - IP - 13 PRO"
+(ordem/prefixo diferente). Corrigido: `take` subiu para 30 + contagem total
+exibida ("Mostrando X de Y — digite mais pra refinar"), e a busca virou
+AND por palavra (cada palavra do termo tem que aparecer em nome/código/
+código de barras, em qualquer ordem). Testado em `dev-local` e, só a busca
+(sem tocar carrinho/finalizar), direto no PDV real de produção.
+
+**3. Resgate da Proteção Eficaz sem jeito de acionar no PDV.** O fluxo de
+aprovação (cliente registra a nota, Admin aprova) já existia, mas não havia
+nenhum jeito de aplicar o desconto na hora de vender a película de troca.
+Adicionado modal "Validar troca — Proteção Eficaz" no PDV (mesmo padrão do
+QR de Convênio): vendedor digita o número da venda original, sistema
+confirma cliente/validade e zera o preço da película (exige exatamente 1
+película no carrinho). Efeito colateral necessário: passou a ser possível
+fechar uma venda de R$0,00 (regra de "precisa de pagamento" saiu do schema
+Zod e virou checagem em `sale-service.ts`, condicionada a `total > 0`).
+
+**4. Ponto — histórico "Maiza" com valores impossíveis (ex.: "122h
+43min").** Causa raiz: `computeWorkedMinutes` extrapola até "agora" quando
+falta bater a saída — certo pra hoje (turno em andamento), errado pra um
+dia passado (marcação simplesmente esquecida) porque soma dias inteiros de
+diferença como se fossem horas trabalhadas naquele único dia. Corrigido
+primeiro isolado em `hourly-payment-service.ts` (commit `ea12bfa`, com
+`hasIncompleteDays` bloqueando o registro de pagamento até corrigir),
+depois generalizado num helper compartilhado `computeWorkedMinutesForDay`
+em `attendance-rules.ts` e aplicado também em `/ponto/colaborador/[id]` e
+`/ponto/historico`, que tinham o mesmo bug e ainda não tinham sido
+corrigidos. Dia passado sem saída agora mostra "Falta bater saída —
+corrigir no Ponto" em vez de um total inventado.
+
+Pedido do usuário nessa mesma leva: além de corrigir uma marcação existente
+(já dava pra fazer), dar um jeito de **adicionar** a marcação que nunca foi
+batida, já sugerindo qual é a esperada. Adicionado botão "+ Adicionar
+marcação faltando (<tipo sugerido>)" em cada dia incompleto do Ponto do
+colaborador — sugestão calculada pelo ciclo Entrada → Intervalo → Retorno →
+Saída (mesma lógica que já decidia a próxima marcação do dia atual), com
+data/hora e motivo obrigatório. Cria uma `AttendanceEntry` nova (marcada
+como sem selfie, com o motivo do lançamento manual) — diferente de
+"Corrigir", que exige uma marcação existente pra apontar como origem.
+Commit `de90fed`.
+
+**Testado:** `lint`, `typecheck`, os 110 testes automatizados e `npm run
+build:app` sem erros nem warnings novos. Reproduzido o bug e validado a
+correção + a marcação adicionada ponta a ponta com usuário e admin
+descartáveis (`qatmp_*`) criados e apagados em `dev-local`, incluindo
+conferência de que o painel de Horas em Colaboradores (mesmo helper
+compartilhado) recalculou certo depois do lançamento. Deploy do item 4
+publicado e validado com `check:deploy` (todas as checagens OK).
+
+**Correção urgente logo após o deploy do item 4:** usuário reportou em
+produção que adicionar a marcação faltante do dia 15 dava "Esse dia já tem
+uma marcação desse tipo" mesmo com o tipo certo. Causa: a checagem de
+duplicata em `addMissingAttendanceEntry` calculava início/fim do dia com
+`Date.setHours(0,0,0,0)`, que usa o fuso do **servidor** — em produção
+(Vercel, UTC) isso desloca a janela e passou a incluir marcações do dia
+seguinte no fuso da loja (America/Sao_Paulo); o "Saída/fim de expediente"
+do dia 16 (20:05) caiu dentro da janela calculada pro dia 15 e foi
+confundido com um conflito. Nunca reproduziu em `dev-local` porque esta
+máquina já roda em `America/Sao_Paulo`. Corrigido trocando pro mesmo helper
+com fuso fixo -03:00 (`todayISO`/`periodRange`) já usado no resto do módulo
+de Ponto — confirmado matematicamente simulando o relógio do servidor em
+UTC antes de subir. Commit `4832c5a`, deploy manual via `vercel --prod`
+(o deploy automático via push não disparou a tempo) e `check:deploy` OK.
+
+**Ainda pendente, pausado (não commitado):** "Acionar garantia" em
+Assistência Técnica — nova OS vinculada à original quando um aparelho
+entregue volta com defeito coberto. Schema já migrado em `dev-local`
+(`RepairOrder.warrantyOriginalId`), serviço/validação/UI escritos mas ainda
+sem `typecheck`/teste finais depois da última edição — interrompido pelo
+bug do Ponto. Retomar só se o usuário confirmar que ainda quer.
+
+## 2026-08-16 — Proteção Eficaz e correção da impressão automática do PDV
+
+**Proteção Eficaz (novo módulo):** no PDV, ao vender capinha + película
+juntas, o vendedor marca se o cliente aceitou o desconto da película ou
+abriu mão dele em troca da Proteção Eficaz — garantia de trocar a
+película em até 30 dias **da data da venda** (não da aprovação). Sai
+marcado no cupom. O cliente cadastra a nota em `/conta` no site (número
+da venda + foto da nota física + aceite dos termos, uso único por
+nota); o cadastro fica pendente até o Admin aprovar manualmente,
+comparando a foto com o rascunho da venda no sistema (itens, preço,
+vendedor, se realmente tinha capinha+película, se o vendedor marcou no
+PDV) — mesmo padrão de aprovação já usado em Convênios. Aprovar calcula
+o prazo de 30 dias a partir da venda; "Marcar como trocado" trava o
+registro contra reuso. Só vale pra vendas com capinha + qualquer
+película do catálogo (não só as duas elegíveis ao desconto de
+segurança do Vendedor).
+
+- `prisma/schema.prisma`: `Sale.protecaoEficazOptedIn`, modelo novo
+  `ProtecaoEficaz` (status PENDING/APPROVED/REJECTED, prazo, campos de
+  troca).
+- `src/modules/protecao-eficaz/` (novo): toda a lógica de
+  submissão/aprovação/rejeição/troca e o cálculo do prazo.
+- `src/app/(admin)/pdv/pdv-screen.tsx`: caixinha de opção quando o
+  carrinho é elegível; `src/app/(admin)/vendas/[id]/page.tsx`: aviso no
+  cupom.
+- `src/app/loja/[subdomain]/conta/`: seção de cadastro/status pro
+  cliente; upload da foto numa rota nova **dentro** de
+  `/loja/[subdomain]/api/...` (não em `/api/...` solto) — descoberto
+  durante o teste que a sessão do cliente é restrita a esse prefixo
+  quando a loja é acessada sem subdomínio próprio, então uma rota fora
+  dele nunca recebia o cookie.
+- `src/app/(admin)/protecao-eficaz/` (novo): fila de aprovação do
+  Admin, com o rascunho da venda lado a lado com a foto do cliente.
+
+**Corrigido de quebra:** impressão automática do cupom no PDV parada de
+funcionar (reportado pelo lojista). O disparo dependia do próprio
+documento do iframe oculto se auto-imprimir ao montar — trocado para o
+pai chamar `iframe.contentWindow.print()` só depois do `onLoad`,
+padrão mais confiável entre navegadores. Removido `AutoPrint` (ficou
+sem uso). **Não testado o diálogo de impressão em si** (ambiente de
+teste não permite) — pendente de confirmação do lojista no uso real.
+
+**Testado:** `lint`, `typecheck`, `test` (104 passando) e `build`
+(schema mudou) limpos. Fluxo completo verificado manualmente no
+navegador com usuários descartáveis em `dev-local`: venda no PDV com a
+opção marcada → cupom com o aviso → cadastro do cliente no site →
+upload da foto → fila do Admin → aprovar (prazo calculado certo, 16/08
++ 30 dias = 15/09) → marcar como trocado → status refletido pro
+cliente. Dados de teste revertidos (venda, estoque, caixa, cadastro de
+proteção, usuários) antes do commit.
+
+## 2026-08-14/16 — Convênios (código curto, login/vitrine online), saldo do Ponto, correção de upload e ajustes em Colaboradores
+
+Sessão longa com vários pedidos encadeados. Resumo por tema:
+
+**Convênios — código curto de validação no PDV:** trocado o link/QR longo
+por um código numérico curto (`ConvenioMember.shortCode`, 6 dígitos,
+gerado aleatoriamente, único por tenant) pra facilitar a conferência no
+caixa.
+
+**Convênios — login e vitrine online com desconto real:** o convênio
+passou de "só informativo" pra dar acesso de fato à loja online. No
+cadastro do convênio (link único que o colaborador acessa), agora é
+obrigatório criar usuário/senha de loja — vínculo direto
+`Customer.convenioMemberId` criado na mesma transação do cadastro
+(evita o risco de account-takeover que existiria comparando por
+CPF/telefone). Além do desconto fixo por nota já existente, o lojista
+agora escolhe produtos específicos com desconto fixo em R$ (ex.: R$5
+por produto, independente do valor da nota) que aparecem numa vitrine
+no painel do cliente (`/loja/[subdomain]/conta`) — desconto aplicado de
+verdade no checkout (`resolveEffectiveUnitPrice`, nunca acumula com
+Oferta Relâmpago, vale o menor preço). Seleção de produtos no admin
+(`/convenios/[id]`) usa o mesmo padrão de busca+lista dos "Produtos
+comissionados" de Colaboradores.
+
+**Bug real reportado por usuário — upload travando no cadastro de
+convênio:** colaborador da Havan não conseguiu enviar o comprovante
+(ficava carregando pra sempre, sem erro). Causa: nenhuma checagem de
+tamanho no navegador antes do upload, e limite do servidor muito baixo
+(5MB convênio / 3MB ponto) pra foto de celular real. Corrigido com
+checagem client-side antes de chamar `upload()` (mensagem clara de
+"foto muito grande") e limites do servidor aumentados (10MB
+convênio, GIF liberado nos dois).
+
+**Ponto — saldo do dia (extra/negativo):** cálculo de saldo do
+intervalo (`computeBreakBalance`) e do dia (`computeDailyBalanceMinutes`
+= trabalhado − jornada esperada, 8h por padrão, configurável em
+`Tenant.attendanceSettings`) exibido em verde (crédito) ou vermelho
+(débito) no painel do colaborador em `/ponto/colaborador/[userId]`.
+
+**Colaboradores — Produtos comissionados (2 ajustes):** unificado o
+antigo campo de busca inline + link separado "ver produtos" numa única
+página (`/colaboradores/produtos-comissionados`); depois, como o link
+pra essa página ficou escondido no meio de um parágrafo e o lojista não
+achava, virou um botão preto de destaque ao lado de "Remover comissão
+de todos".
+
+**Testado:** `lint`, `typecheck`, `test` (99 passando) e `build`/`build:app`
+limpos a cada etapa. Fluxo de convênio (cadastro, login, desconto no
+checkout) e o botão de produtos comissionados verificados manualmente no
+navegador, logado como usuário de teste descartável (criado e apagado
+via SQL direto na branch `dev-local`, nunca em produção). PDV testado
+de forma geral depois das mudanças do dia, sem regressão encontrada.
+Cada mudança foi commitada, enviada (`push`) e verificada em produção
+com `check:deploy` separadamente. Sem pendências.
+
 ## 2026-08-14 — Comissão de venda no painel de Colaboradores
 
 Continuação do pedido de Colaboradores: plano de comissão pra Vendedor e
@@ -227,6 +536,153 @@ rodando (`npm run dev`) para o usuário conferir a tela `/caixa` na prática.
 **Nada commitado nem enviado a produção** — migration só aplicada no
 `dev-local`; vai para produção no próximo deploy normal
 (`npm run build`, que roda `prisma migrate deploy`).
+
+## 2026-08-12 — Mesclar cadastros de cliente duplicados
+
+**Pergunta do usuário:** hipoteticamente, um cliente "João" é cadastrado
+manualmente no PDV e, sem saber, se cadastra de novo sozinho pelo catálogo
+online — como fica isso? Investigação confirmou: `Customer` não tem
+nenhuma constraint de unicidade por telefone/e-mail/documento, e o código
+já tem uma decisão deliberada de não vincular automaticamente por esses
+dados (comentário em `order-service.ts`: vínculo automático por telefone
+abriria brecha de account takeover de um cadastro antigo). Resultado: dois
+registros `Customer` sem nenhum vínculo, cada um com seu próprio saldo de
+crédito, histórico de compras e (no máximo um dos dois) login.
+
+**O que mudou:**
+- `src/lib/permissions.ts`: `canMergeCustomers` (só ADMIN — ação
+  irreversível).
+- `src/modules/customers/customer-service.ts` (`mergeCustomers`):
+  transação que reatribui pro cadastro "mantido" tudo que pertencia ao
+  "absorvido" — `Sale`, `Order`, `FiadoEntry`, `CustomerCreditMovement`,
+  `RepairOrder`, `WhatsAppContact`, `CustomerSession` (sessão de login
+  ativa continua válida, agora autenticando como o cadastro mantido) e
+  `ProductReview` (pulando a do absorvido quando os dois já avaliaram o
+  mesmo produto — violaria `@@unique([tenantId, productId, customerId])`).
+  Soma `creditBalance`/`totalSpent`, mantém a data de última compra mais
+  recente, e transfere `username`/`passwordHash` quando só um dos dois tem
+  login. Bloqueia (erro claro) se os dois já tiverem login próprio — exige
+  resolução manual antes. Apaga o cadastro absorvido ao final.
+- `src/app/(admin)/clientes/actions.ts`: `mergeCustomersAction` (permissão
+  + log de auditoria) e `getCustomerMergeCandidateAction` (resumo do
+  candidato antes de confirmar).
+- `src/app/(admin)/clientes/merge-customer-panel.tsx` (novo) +
+  `[id]/page.tsx`: seção "Mesclar cadastro duplicado" na ficha do cliente,
+  visível só pra Administrador — busca o duplicado, mostra resumo
+  (documento, telefone, contagem de vendas/pedidos/fiado, crédito, login)
+  e confirma.
+- `src/modules/audit/audit-service.ts`: nova ação `customer.merge`.
+
+**Sem mudança de schema** — só reaproveita relações já existentes.
+
+**Testado:** `lint`, `typecheck`, `test` (82 passando) e `build` completo,
+sem erros, antes do deploy. Ninguém testou o fluxo real ainda (mesclar
+dois cadastros de verdade e conferir se tudo foi transferido certo).
+
+**Commitado e em produção** (commit `d6ed8dc`). Deploy confirmado via
+`npm run check:deploy`: Ready na Vercel, páginas públicas e
+`comprar-whatsapp` respondendo certo, sem erros recentes nos logs.
+**Pendência: validar o fluxo de mesclagem na prática.**
+
+## 2026-08-12 — Troca de item por defeito, sem cancelar a venda inteira
+
+**Pedido do usuário:** na tela da venda (menu "Troca" → busca o cupom → `/vendas/[id]`),
+só existia "Cancelar venda" (tudo ou nada). Pedido: um jeito de registrar
+que um item específico veio com defeito — com foto do produto e descrição
+do motivo (ambos obrigatórios) — sem cancelar a nota inteira. Inicialmente
+cogitei reaproveitar o módulo de Assistência Técnica, mas o usuário
+esclareceu que não tem relação nenhuma com conserto de celular — é um
+registro de controle de trocas, separado.
+
+**O que mudou:**
+- Schema (aditivo, não mexe em `Sale`/`SaleItem` existentes): tabelas novas
+  `SaleItemDefect` (item, quantidade, motivo, crédito gerado, quem
+  registrou) e `SaleItemDefectPhoto` (mesmo padrão já usado em
+  `RepairOrderPhoto`, tabela separada em vez de array nativo). Migration
+  `20260812195923_add_sale_item_defect_tracking`, 100% aditiva.
+- `src/app/(admin)/vendas/[id]/sale-controls.tsx`: botão **"Produto com
+  defeito"** ao lado de "Cancelar venda" (mesma regra de permissão,
+  `canCancelSale`), abrindo um painel — item (se a venda tiver mais de
+  um), quantidade, cliente (recebe o crédito), motivo e foto — reaproveita
+  só o componente `MultiImageUploadField` da Assistência Técnica, não o
+  módulo inteiro.
+- `src/modules/sales/sale-service.ts` (`reportSaleItemDefect`): valida que
+  a quantidade reportada não passa do que sobrou daquele item (soma dos
+  registros anteriores), exige cliente vinculado ou selecionado (mesma
+  regra do cancelamento), gera crédito de loja só do valor daquele item e
+  **não** devolve ao estoque vendável (produto defeituoso não pode ser
+  revendido — ajuste manual se for o caso). Total/subtotal da venda ficam
+  intactos, mesmo princípio do cancelamento total hoje; o comprovante só
+  ganha uma marca "Trocado por defeito" no item.
+- `src/modules/audit/audit-service.ts`: nova ação `sale.item_defect` no
+  log de auditoria.
+
+**Testado:** `lint`, `typecheck`, `test` (82 passando) e `build` completo
+(roda `prisma migrate deploy`) sem erros, todos antes do deploy. Sem
+acesso a um ambiente de preview de verdade (a Vercel deste projeto não tem
+banco de Preview separado — `DATABASE_URL` de Preview aponta pro mesmo
+banco de produção — e o link de preview veio protegido por login da
+Vercel, que o usuário não tem no celular), então a decisão foi mesclar
+direto na `main` e validar em produção. **Ninguém testou o fluxo real
+ainda** (registrar uma troca de verdade, conferir o crédito gerado e a
+marca no comprovante).
+
+**Commitado e em produção** (branch `feat/troca-item-defeito` mesclada e
+apagada, commit de merge `819bf1d`). Deploy confirmado via
+`npm run check:deploy`: Ready na Vercel, páginas públicas e
+`comprar-whatsapp` respondendo certo, sem erros recentes nos logs.
+**Pendência: validar o fluxo de troca por defeito na prática** assim que
+alguém puder testar.
+
+## 2026-08-12 — Retomada: grade de pagamento sempre visível no PDV (sem modal)
+
+**Contexto:** sessão anterior foi interrompida no meio de uma refatoração —
+o working tree ficou com `src/app/(admin)/pdv/pdv-screen.tsx` quebrado (build
+não compilava): o topo do arquivo já tinha trocado o estado `payments`
+(linhas de pagamento + modal) por `amounts` (um valor por método, sempre
+visível), mas o resto do arquivo (cálculos de troco/parcelas, `finalizeSale`,
+JSX da seção "Formas de pagamento", reset pós-venda) ainda usava o modelo
+antigo. Pedido do usuário: "retoma o comando anterior".
+
+**O que mudou:** terminei a migração de forma consistente com a intenção já
+registrada no comentário do próprio código (pedido explícito do usuário:
+reduzir atrito, sem precisar abrir modal pra escolher método antes de
+digitar o valor).
+- `src/app/(admin)/pdv/pdv-screen.tsx`: `paid`/`cashPortion`/
+  `storeCreditPortion`/`fiadoPortion` agora derivam de `amounts` +
+  `PAYMENT_SLOTS`; nova `setPaymentAmount(key, valor)` substitui
+  `openPaymentModal`/`confirmPayment`/`removePaymentLine`; `finalizeSale`
+  monta o payload `payments` a partir dos slots com valor > 0; reset
+  pós-venda usa `setAmounts(EMPTY_PAYMENTS)`; remover cliente agora move os
+  valores de Crédito de loja/Fiado de volta pra Dinheiro (mesmo espírito do
+  comportamento antigo, adaptado pro novo modelo); seção "Formas de
+  pagamento" virou uma grade com um campo de valor por método (Dinheiro,
+  Crédito, Débito, Chave PIX, Pix Maquininha, Mercado Pago, Crédito de loja,
+  Fiado), cada um desabilitado com `title` explicando o motivo quando não
+  há vendedor selecionado ou o cliente não é elegível (crédito de loja sem
+  saldo, fiado sem `canFiado`/cliente).
+- Removido `src/app/(admin)/pdv/payment-method-modal.tsx` (modal antigo,
+  sem mais nenhuma referência no código — confirmado por busca no repo).
+
+**Testado:** `npm run lint` (0 erros, só os 7 warnings pré-existentes de
+`react-hook-form`/React Compiler em arquivos não relacionados),
+`npm run typecheck` (limpo), `npm run build:app` (build completo sem erros)
+e `npm run test` (82 testes passando, nenhuma quebra). Teste visual no
+navegador foi iniciado (subi `npm run dev`, abri `/pdv`), mas parei na tela
+de login — entrar com senha está fora do que eu posso fazer sozinho. O
+usuário confirmou que o problema relatado em produção (travar depois de
+selecionar a primeira forma de pagamento, impossível combinar duas ou mais
+na mesma venda) é o mesmo que esta mudança resolve, e autorizou deploy sem
+teste visual por não ter acesso ao local do PDV no momento — não deu pra
+validar a interação real na tela antes de ir pro ar.
+
+**Commitado e em produção** (commit `3c0dddb`, `pdv-screen.tsx` modificado,
+`payment-method-modal.tsx` removido). Deploy confirmado via
+`npm run check:deploy`: status Ready na Vercel, painel/loja/produto/
+categoria/`comprar-whatsapp` todos respondendo certo, sem erros recentes
+nos logs. **Pendência: teste visual real do fluxo de split de pagamento
+ainda não foi feito por ninguém** — validar assim que alguém tiver acesso
+ao PDV. `.codex/` continua não rastreado, sem relação com esta sessão.
 
 ## 2026-08-12 — PDV volta sozinho pra nova venda ao finalizar
 
@@ -505,3 +961,141 @@ gerar crédito de loja indevido a um cliente real. Cancelar manualmente se
 quiser remover, ou deixar como está (não afeta produção).
 
 **Nada foi commitado** — mudanças ficaram no working tree, aguardando revisão do usuário.
+
+## 2026-08-14 — Convênios Corporativos (Fase 1), WhatsApp da OS e histórico de caixa por Vendedor
+
+Últimas três mudanças da sessão de hoje (que também cobriu, antes destas,
+uma rodada grande em comissão de venda — opt-in por produto, trava de
+desconto pra Gerente, e as telas de gestão em Colaboradores — já
+commitadas e no ar em commits anteriores).
+
+**1. Convênios Corporativos — Fase 1 (modelagem + cadastro manual).**
+Novo módulo pra parcerias com empresas externas, com a Havan como piloto,
+desenhado desde o início pra caber qualquer convênio (não uma regra fixa
+da Havan no código). Antes de implementar, apresentei uma análise técnica
+completa (riscos de fraude, LGPD, arquitetura) como artifact, e o usuário
+respondeu 5 decisões: aprovação só por Admin/Gerente da EficazBr;
+desconto do convênio não reduz a comissão do vendedor (exige campo
+`Sale.convenioDiscount` separado do desconto normal, a implementar na
+Fase 3 — ainda não existe); comprovante obrigatório; limite de 1 uso/dia
+resetando à meia-noite; leitor de código de barras físico já lê QR Code.
+Migration `20260814173022_add_convenios_corporativos` (tabelas `Convenio`
+e `ConvenioMember`, 100% novas, CPF duplicado travado no banco via
+`@@unique([convenioId, document])`). Painel em `/convenios` (lista,
+cadastro, edição) e `/convenios/[id]` (detalhe + colaboradores com
+aprovar/suspender/bloquear/cancelar, sempre com motivo registrado).
+Link público, selfie por câmera ao vivo e QR Code ficam pras Fases 2 e 3,
+sem mudar este modelo. Commit `eb36e12`.
+
+**2. OS: comprovante não abria direto no WhatsApp do cliente.** O botão
+"Compartilhar comprovante" usava a Web Share API do navegador quando
+disponível — no Windows (Edge/Chrome) ela existe, mas não sabe pra qual
+contato mandar, então só abria o painel genérico de compartilhamento do
+sistema em vez da conversa do cliente (usuário mandou vídeo confirmando).
+Removido o caminho da Web Share API; agora sempre usa o link direto
+`wa.me/[telefone]?text=...`, que já funcionava certo como "reserva" antes
+da Web Share API existir. Botão renomeado pra "Enviar comprovante no
+WhatsApp". Commit `b03b91f`.
+
+**3. Histórico de caixa/vendas — Vendedor só vê o próprio caixa aberto.**
+Pedido do usuário: Vendedor só deveria acessar o histórico de vendas do
+caixa que ele mesmo abriu, e só enquanto estiver aberto (some ao fechar).
+Investigação encontrou `/caixa/historico` **sem nenhuma checagem de
+permissão** — qualquer papel via o histórico completo de todos os
+caixas, de todo mundo, incluindo fechados. Corrigido: Admin/Gerente
+continuam vendo tudo; Vendedor só vê o próprio caixa aberto (filtro
+`openedById` + `status: "OPEN"`). Na sequência, percebi que isso sozinho
+não dava ao Vendedor nenhum jeito de ver a lista de vendas em si (só a
+contagem) — `/vendas` era redirecionada pra busca por número pra quem
+não fosse Admin/Gerente. Estendido: `/vendas` agora aceita Vendedor,
+mostrando só as vendas do caixa aberto dele (mesma regra de
+abrir→fechar); adicionei atalho "Vendas" no cabeçalho do PDV e no menu
+lateral pra esse papel, que antes não existiam. Por fim, a pedido do
+usuário, cada linha de `/caixa/historico` ganhou um link "Ver vendas"
+pra Admin/Gerente entrarem na lista de vendas de qualquer caixa
+específico (aberto ou fechado), com uma faixa de contexto (quem
+abriu/fechou, quando) e um jeito de voltar pra lista geral. Commits
+`a0aefd4` e `79932b2`.
+
+**Testado em todas as três:** `lint`, `typecheck` e `npm run build:app`
+sem erros nem warnings novos (Convênios usou `npm run build` completo,
+por envolver migration). Nenhuma foi testada no navegador contra dados
+reais — validação só estática, sem login disponível pra simular os
+papéis Admin/Gerente/Vendedor lado a lado.
+
+**Tudo commitado**, aguardando `git push` (não subido ainda no momento
+deste relatório).
+
+## 2026-08-15 — Convênios Corporativos Fase 3 (QR + PDV) + correções pontuais
+
+**Contexto:** sessão seguiu direto da anterior. Antes desta Fase 3, ainda
+dentro da mesma leva: correção do erro de "número do cupom" fora do lugar no
+impresso térmico (`Venda`/valor separados por `flex justify-between` viravam
+duas linhas soltas no papel — trocado por um span só, número logo depois da
+palavra), correção de "nenhum caixa aberto" indevido pro Vendedor
+(`/vendas` e `/caixa/historico` estavam filtrando pelo caixa que o próprio
+usuário abriu — corrigido pra considerar qualquer caixa aberto no momento,
+já que o caixa é físico e passa de vendedor pra vendedor no mesmo turno), e
+a regra de desconto de película por quantidade de capinha (1 capinha =
+desconto em 1 película, não em quantas películas o carrinho tiver — nova
+função `allocateSellerDiscountBudget`, aplicada no PDV e revalidada em
+`sale-service.ts`). Commits `cceed47`, `965a92a`, `e4b3dbe`.
+
+**Fase 3 propriamente dita — credencial digital (QR) + validação no PDV:**
+
+- Schema: `ConvenioMember.credentialTokenHash` (hash SHA-256, gerado na
+  criação do cadastro — manual e autoatendimento — e estável entre
+  suspensão/reativação, pra não invalidar o QR já salvo); tabela nova
+  `ConvenioRedemption` (uso do benefício numa venda, com reversão registrada
+  sem apagar histórico); `Sale.convenioDiscount` (separado de `discount` de
+  propósito — nunca reduz a comissão, calculada em `SaleItem.total`, que o
+  convênio nunca toca). Migration escrita à mão
+  (`20260815041032_add_convenio_redemption_and_credential`) porque
+  `prisma migrate dev` pede confirmação interativa pra coluna nova
+  obrigatória+única — confirmei antes que a tabela `convenio_members`
+  estava vazia no `dev-local`, então sem risco de conflito.
+- Página pública nova `/c/[token]` — "carteirinha" do colaborador: mostra
+  status (pendente/suspenso/bloqueado/expirado) ou, se ativo, o QR Code
+  (gerado com o pacote `qrcode`, já usado no comprovante de OS). Mesmo link
+  é mostrado uma única vez ao colaborador logo após o cadastro (manual ou
+  autoatendimento) — só o hash fica salvo, então perder o link exige gerar
+  outro cadastro, mesmo princípio já usado no link de convite.
+- PDV: botão "Escanear QR do convênio" (`convenio-modal.tsx`) — valida o
+  código lido pelo leitor físico (mesmo campo já usado pra código de
+  barras, reconhecendo o padrão `/c/[token]`) ou digitado à mão, mostra
+  foto + nome do colaborador pro vendedor confirmar visualmente antes de
+  aplicar (mitigação de "QR provado posse, não identidade", já registrada
+  no plano do módulo), injeta uma linha de benefício travada no carrinho.
+- `sale-service.ts`: revalida tudo de novo no momento de fechar a venda
+  (status, convênio ativo, validade, limite de uso do período) — nunca
+  confia só na checagem prévia do PDV, já que o tempo entre escanear e
+  pagar pode mudar o status. Cria o `ConvenioRedemption` na mesma transação
+  da venda. `cancelSale` reverte o registro (sem apagar) quando a venda é
+  cancelada, pra não continuar contando no limite de uso nem no dashboard
+  futuro do convênio.
+- Comprovante (`/vendas/[id]`) ganhou a linha "Benefício Convênio [nome] —
+  [colaborador]" quando aplicado.
+
+**Correções de texto/observação durante a Fase 3:**
+- Página pública do cadastro (`/convenio/[slug]/[token]`) estava dizendo só
+  "R$5,00 de desconto nas suas compras", sem deixar claro que é por dia —
+  corrigido pra descrever a frequência em linguagem natural a partir da
+  regra do convênio (ex.: "uma vez por dia").
+- Usuário pediu pra acrescentar "sorteio semanal" e "prêmio mensal pro 1º
+  lugar do ranking" nessa mesma página. Recusei implementar sem
+  confirmação: sorteio/campanha vinculado a compra é atividade regulada no
+  Brasil (Lei 5.768/71, autorização prévia via SECAP), exatamente o risco
+  já sinalizado no plano do módulo (seção de Campanhas, marcada como fase
+  futura condicionada a essa autorização). Perguntei explicitamente antes
+  de mexer; usuário confirmou seguir só com o ajuste "por dia" por agora,
+  sem a parte de sorteio/ranking.
+
+**Testado:** `lint`, `typecheck`, os 82 testes automatizados (Vitest) e
+`npm run build` completo (com migration) sem erros nem warnings novos.
+Migration aplicada em `dev-local` (`ep-fragrant-frog-ac9yf3aa`), nunca em
+produção diretamente — vai pra produção no próximo deploy normal via
+`prisma migrate deploy` dentro do `npm run build`. Não testado no navegador
+contra dados reais (sem login disponível pra simular o fluxo completo:
+cadastro → aprovação → escanear QR no PDV → fechar venda). Vale o usuário
+testar esse fluxo ponta a ponta antes de anunciar o benefício pra Havan de
+verdade.
