@@ -1,5 +1,46 @@
 # Relatórios de sessão
 
+## 2026-08-20 — Botão "Corrigir câmera" no Ponto e leitor de código de barras também na busca de Produtos
+
+Continuação da sessão anterior (leitor de câmera/QR criado em 2026-08-19).
+
+**1. Bug real reportado com print: câmera do Ponto não abria no PC/PDV da
+loja.** Investigação por perguntas (o que aparece na tela, em qual
+aparelho) até o usuário confirmar: a câmera funciona normalmente nesse PC,
+só não abre dentro do app — sintoma clássico de permissão bloqueada só
+pro site no navegador (comum quando alguém clicou "Bloquear" na primeira
+vez que o Chrome pediu acesso). Resolvido manualmente pelo usuário
+liberando a permissão do site nas configurações do Chrome; confirmado
+"Deu certo".
+
+**2. Botão "Corrigir câmera" com diagnóstico automático.** Pedido do
+usuário antes de saber a causa do bug acima: em vez de precisar pedir pra
+mim resolver toda vez, um botão que já tenta corrigir sozinho. Adicionado
+em `selfie-capture-field.tsx` (usado no Ponto, Convênios e Proteção
+Eficaz): ao ser clicado, checa a permissão de câmera via Permissions API
+(quando o navegador suporta), verifica se existe alguma câmera no
+aparelho, e tenta abrir de novo (frontal primeiro, sem restrição depois,
+cobrindo webcam de PC). Quando o problema é algo que o código consegue
+resolver, a câmera já abre ao vivo na hora; quando é bloqueio explícito
+do navegador ou nenhuma câmera encontrada — coisa que nenhum site
+consegue reverter via código, só o usuário —, mostra a mensagem exata do
+que fazer (ex.: "toque no ícone de cadeado ao lado do endereço e permita
+a câmera"). Deploy publicado antes da confirmação do usuário nesse PC;
+teria detectado o caso dele ("permissão bloqueada") caso ele tivesse
+testado o botão em vez de resolver direto nas configurações do Chrome.
+
+**3. Leitor de câmera/QR também na busca de Produtos.** Pedido de
+seguimento: o mesmo botão "Escanear" do cadastro (2026-08-19), agora
+também ao lado do campo de busca na listagem de Produtos
+(`produtos-filtros.tsx`) — escaneia o código de barras e já filtra a
+lista (`onScanned` chama `updateParams({ q: valor })` direto, sem esperar
+o debounce normal da digitação).
+
+**Testado:** `lint`, `typecheck` e `build:app` limpos em cada etapa
+(mesmos warnings pré-existentes de sempre, não relacionados).
+`check:deploy` OK depois de cada push. Commits: `dcf0592` (botão
+"Corrigir câmera"), `0990fcb` (escanear na busca de Produtos).
+
 ## 2026-08-19 — Produtos: leitor de câmera/QR e código interno; cupom de venda com iniciais do vendedor
 
 Pedido do usuário, sem apontar de início qual tela ("preciso, no cadastro,
