@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { Select } from "@/components/ui/select";
+import { BarcodeScannerField } from "@/components/ui/barcode-scanner-field";
 
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -58,6 +59,12 @@ export function ProdutosFiltros({
     updateParams({ q: null });
   }
 
+  function handleScanned(value: string) {
+    setTerm(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    updateParams({ q: value || null });
+  }
+
   const category = searchParams.get("category") ?? "";
   const brand = searchParams.get("brand") ?? "";
   const status = searchParams.get("status") ?? "all";
@@ -68,27 +75,30 @@ export function ProdutosFiltros({
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center">
-      <div className="relative min-w-0 flex-1 sm:max-w-sm">
-        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          value={term}
-          onChange={(event) => handleSearchChange(event.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          placeholder="Buscar por nome, código, SKU, código de barras ou marca"
-          aria-label="Buscar produtos"
-          className="w-full rounded-md border border-slate-300 py-2 pr-8 pl-9 text-sm text-gray-800 focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
-        />
-        {term && (
-          <button
-            type="button"
-            onClick={clearSearch}
-            aria-label="Limpar busca"
-            className="absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+      <div className="flex min-w-0 flex-1 gap-2 sm:max-w-md">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={term}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Buscar por nome, código, SKU, código de barras ou marca"
+            aria-label="Buscar produtos"
+            className="w-full rounded-md border border-slate-300 py-2 pr-8 pl-9 text-sm text-gray-800 focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+          />
+          {term && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label="Limpar busca"
+              className="absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <BarcodeScannerField onScanned={handleScanned} />
       </div>
 
       <Select
