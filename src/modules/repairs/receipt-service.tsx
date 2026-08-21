@@ -134,10 +134,15 @@ export async function ensureRepairOrderReceiptUrl(
     return { ok: false, error: "Não foi possível gerar o PDF do comprovante." };
   }
 
+  // Caminho fixo por OS (sem sufixo aleatório, pra manter o mesmo link
+  // sempre) — `allowOverwrite` evita "blob already exists" quando duas
+  // requisições concorrentes chegam aqui antes do banco salvar
+  // `receiptPdfUrl` (ex.: cliente clica duas vezes no link do WhatsApp).
   const blob = await put(`comprovantes/${order.tenantId}/${order.id}.pdf`, buffer, {
     access: "public",
     contentType: "application/pdf",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 
   await prisma.repairOrder.update({
