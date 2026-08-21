@@ -4,7 +4,9 @@ import { requireTenant } from "@/lib/session";
 import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
 import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
+import { getCommissionRanking } from "@/modules/employees/commission-service";
 import { formatBRL, formatDateTime } from "@/lib/format";
+import { CommissionRankingTicker } from "@/components/admin/commission-ranking-ticker";
 import { PdvScreen } from "./pdv-screen";
 
 // Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
@@ -51,9 +53,10 @@ export default async function PdvPage() {
     );
   }
 
-  const [summary, birthdayAlerts] = await Promise.all([
+  const [summary, birthdayAlerts, commissionRanking] = await Promise.all([
     getCashSummary(user.tenantId, register.id),
     getBirthdayAlerts(user.tenantId),
+    getCommissionRanking(user.tenantId),
   ]);
 
   return (
@@ -86,6 +89,8 @@ export default async function PdvPage() {
           </Link>
         </div>
       </div>
+
+      <CommissionRankingTicker rows={commissionRanking} />
 
       {birthdayAlerts.length > 0 && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
