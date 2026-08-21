@@ -4,10 +4,14 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import { recordAudit } from "@/modules/audit/audit-service";
 import {
   createEmployeeLedgerEntry,
+  deleteEmployeeLedgerEntry,
   settleEmployeeLedgerEntry,
 } from "@/modules/employees/employee-ledger-service";
+import { EMPLOYEE_LEDGER_TYPE_LABELS } from "@/lib/validations/employee-ledger";
+import { formatBRL } from "@/lib/format";
 import { setDefaultCommissionPercent } from "@/modules/employees/commission-service";
 import { setHourlyRate, registerHourlyPayment } from "@/modules/employees/hourly-payment-service";
 import {
@@ -63,6 +67,29 @@ export async function settleEmployeeLedgerEntryAction(id: string) {
 
   revalidatePath("/colaboradores");
   return { success: "Lançamento quitado." };
+}
+
+export async function deleteEmployeeLedgerEntryAction(id: string) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para excluir lançamentos de colaboradores." };
+  }
+
+  const result = await deleteEmployeeLedgerEntry(user.tenantId, id);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "employee_ledger.delete",
+    entity: "EmployeeLedgerEntry",
+    entityId: id,
+    description: `Excluiu lançamento de ${result.userName} — ${EMPLOYEE_LEDGER_TYPE_LABELS[result.type as keyof typeof EMPLOYEE_LEDGER_TYPE_LABELS]} de ${formatBRL(result.amount)}.`,
+  });
+
+  revalidatePath("/colaboradores");
+  return { success: "Lançamento excluído." };
 }
 
 export async function setDefaultCommissionPercentAction(percent: number) {

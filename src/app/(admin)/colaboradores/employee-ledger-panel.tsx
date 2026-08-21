@@ -17,6 +17,7 @@ import {
 } from "@/lib/validations/employee-ledger";
 import {
   createEmployeeLedgerEntryAction,
+  deleteEmployeeLedgerEntryAction,
   listEmployeesAction,
   setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
@@ -78,6 +79,7 @@ export function EmployeeLedgerPanel({
   const [confirmAllCommission, setConfirmAllCommission] = useState<"enable" | "disable" | null>(
     null
   );
+  const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<EmployeeLedgerEntryRow | null>(null);
   // Contagem local (ajustada de forma otimista a cada marcar/desmarcar) —
   // resincroniza com o valor vindo do servidor quando ele muda, sem passar
   // por um efeito: setState durante a renderização evita um re-render extra
@@ -127,6 +129,21 @@ export function EmployeeLedgerPanel({
     startTransition(async () => {
       const result = await settleEmployeeLedgerEntryAction(id);
       if (result?.error) setFeedback({ type: "error", message: result.error });
+    });
+  }
+
+  function handleDelete() {
+    if (!confirmDeleteEntry) return;
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await deleteEmployeeLedgerEntryAction(confirmDeleteEntry.id);
+      setConfirmDeleteEntry(null);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setFeedback({ type: "success", message: "Lançamento excluído." });
+      router.refresh();
     });
   }
 
@@ -404,7 +421,7 @@ export function EmployeeLedgerPanel({
                       </a>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     {entry.status === "PENDING" && (
                       <button
                         type="button"
@@ -415,6 +432,14 @@ export function EmployeeLedgerPanel({
                         Marcar como pago
                       </button>
                     )}
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setConfirmDeleteEntry(entry)}
+                      className="ml-3 text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      Excluir
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -455,6 +480,27 @@ export function EmployeeLedgerPanel({
               onClick={handleSetAllProductsCommission}
             >
               Confirmar
+            </Button>
+          </>
+        }
+      />
+
+      <Dialog
+        open={confirmDeleteEntry !== null}
+        onClose={() => setConfirmDeleteEntry(null)}
+        title="Excluir lançamento"
+        description={
+          confirmDeleteEntry
+            ? `Remove o lançamento de ${EMPLOYEE_LEDGER_TYPE_LABELS[confirmDeleteEntry.type]} de ${confirmDeleteEntry.userName} — ${formatBRL(confirmDeleteEntry.amount)}. Não dá pra desfazer.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="secondary" fullWidth={false} onClick={() => setConfirmDeleteEntry(null)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" fullWidth={false} disabled={isPending} onClick={handleDelete}>
+              Excluir
             </Button>
           </>
         }

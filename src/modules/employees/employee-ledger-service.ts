@@ -51,6 +51,31 @@ export async function settleEmployeeLedgerEntry(
   return { ok: true, id: entry.id };
 }
 
+export type DeleteEmployeeLedgerEntryResult =
+  | { ok: true; userName: string; type: string; amount: number }
+  | { ok: false; error: string };
+
+/**
+ * Exclui um lançamento lançado errado — diferente de `settleEmployeeLedgerEntry`
+ * (que só muda o status), remove o registro por completo. Sem restrição por
+ * status: um lançamento marcado como pago por engano também precisa poder
+ * ser apagado.
+ */
+export async function deleteEmployeeLedgerEntry(
+  tenantId: string,
+  id: string
+): Promise<DeleteEmployeeLedgerEntryResult> {
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id, tenantId },
+    select: { id: true, type: true, amount: true, user: { select: { name: true } } },
+  });
+  if (!entry) return { ok: false, error: "Lançamento não encontrado." };
+
+  await prisma.employeeLedgerEntry.delete({ where: { id: entry.id } });
+
+  return { ok: true, userName: entry.user.name, type: entry.type, amount: Number(entry.amount) };
+}
+
 export type EmployeeLedgerSummaryRow = {
   userId: string;
   userName: string;
