@@ -24,6 +24,7 @@ export default async function ColaboradorEstoquePage() {
         id: true,
         name: true,
         stockQty: true,
+        barcode: true,
         images: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
       },
       orderBy: [{ images: { _count: "asc" } }, { name: "asc" }],
@@ -48,6 +49,7 @@ export default async function ColaboradorEstoquePage() {
           id: product.id,
           name: product.name,
           stockQty: product.stockQty,
+          barcode: product.barcode,
           imageUrl: product.images[0]?.url ?? null,
         }))}
       />

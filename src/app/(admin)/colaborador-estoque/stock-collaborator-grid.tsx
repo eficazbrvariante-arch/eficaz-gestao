@@ -2,12 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { ImageUploadField } from "@/components/ui/image-upload-field";
+import { BarcodeScannerField } from "@/components/ui/barcode-scanner-field";
 import { confirmStockCheckAction } from "./actions";
 
 type Product = {
   id: string;
   name: string;
   stockQty: number;
+  barcode: string | null;
   imageUrl: string | null;
 };
 
@@ -25,7 +27,9 @@ export function StockCollaboratorGrid({ products: initialProducts }: { products:
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(term));
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(term) || p.barcode?.toLowerCase().includes(term)
+    );
   }, [search, products]);
 
   function confirm(product: Product) {
@@ -60,13 +64,16 @@ export function StockCollaboratorGrid({ products: initialProducts }: { products:
 
   return (
     <div>
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Buscar produto pelo nome..."
-        className="mb-4 w-full max-w-md rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-      />
+      <div className="mb-4 flex max-w-md gap-2">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar produto pelo nome..."
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        />
+        <BarcodeScannerField onScanned={(value) => setSearch(value)} />
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {filtered.map((product) => {
