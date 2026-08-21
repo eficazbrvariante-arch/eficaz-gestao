@@ -19,6 +19,7 @@ import {
 } from "@/modules/products/import-service";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
 import { recordPriceSnapshotIfChanged } from "@/modules/products/price-history";
+import { applyStockMovement } from "@/modules/products/stock-movement-service";
 import { checkLimit } from "@/lib/plans";
 import { canEditCommission, canManageProducts } from "@/lib/permissions";
 
@@ -225,6 +226,48 @@ export async function generateInternalCodeAction() {
   }
 
   return { code };
+}
+
+/**
+ * Ajuste rápido de estoque direto na listagem de Produtos — mesma lógica de
+ * `/estoque/novo` (`applyStockMovement`), mas sem navegar pra lá: fica na
+ * própria tela, só atualizando a linha do produto. `IN` soma à quantidade
+ * atual (reposição); `ADJUST` define o valor absoluto (correção de
+ * contagem, inclusive pra zerar estoque negativo).
+ */
+export async function quickAdjustStockAction(input: {
+  productId: string;
+  type: "IN" | "ADJUST";
+  quantity: number;
+}) {
+  const auth = await requireProductManager();
+  if ("error" in auth) return { error: auth.error };
+  const { user } = auth;
+
+  if (!Number.isInteger(input.quantity) || input.quantity < 0) {
+    return { error: "Informe uma quantidade inteira válida." };
+  }
+  if (input.type === "IN" && input.quantity <= 0) {
+    return { error: "Informe uma quantidade maior que zero." };
+  }
+
+  const result = await applyStockMovement(
+    { tenantId: user.tenantId, userId: user.id, userName: user.name ?? user.email ?? "Usuário" },
+    {
+      productId: input.productId,
+      type: input.type,
+      quantity: input.quantity,
+      reason:
+        input.type === "IN"
+          ? "Entrada rápida (listagem de Produtos)"
+          : "Ajuste rápido (listagem de Produtos)",
+    }
+  );
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/produtos");
+  revalidatePath("/estoque");
+  return { success: "Estoque atualizado.", stockQty: result.stockQty };
 }
 
 export async function createProductAction(input: ProductInput) {

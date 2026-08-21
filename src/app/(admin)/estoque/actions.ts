@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { canResetStockCheckQueue } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { recordAudit } from "@/modules/audit/audit-service";
+import { applyStockMovement } from "@/modules/products/stock-movement-service";
 import { stockMovementSchema, type StockMovementInput } from "@/lib/validations/catalog";
 
 export async function createStockMovementAction(input: StockMovementInput) {
@@ -13,53 +14,11 @@ export async function createStockMovementAction(input: StockMovementInput) {
   const parsed = stockMovementSchema.safeParse(input);
   if (!parsed.success) return { error: "Dados inválidos." };
 
-  const product = await prisma.product.findFirst({
-    where: { id: parsed.data.productId, tenantId: user.tenantId },
-  });
-  if (!product) return { error: "Produto não encontrado." };
-
-  let delta = 0;
-  if (parsed.data.type === "IN") {
-    delta = parsed.data.quantity;
-  } else if (parsed.data.type === "OUT") {
-    if (parsed.data.quantity > product.stockQty) {
-      return { error: "Quantidade maior que o estoque disponível." };
-    }
-    delta = -parsed.data.quantity;
-  } else {
-    delta = parsed.data.quantity - product.stockQty;
-  }
-
-  await prisma.$transaction([
-    prisma.product.update({
-      where: { id: product.id },
-      data: { stockQty: { increment: delta } },
-    }),
-    prisma.stockMovement.create({
-      data: {
-        tenantId: user.tenantId,
-        productId: product.id,
-        type: parsed.data.type,
-        quantity: delta,
-        reason: parsed.data.reason || null,
-        userId: user.id,
-      },
-    }),
-  ]);
-
-  // Só ajustes manuais entram no log: entradas e saídas de rotina já ficam
-  // registradas no histórico de movimentações do estoque.
-  if (parsed.data.type === "ADJUST") {
-    await recordAudit({
-      tenantId: user.tenantId,
-      userId: user.id,
-      userName: user.name ?? user.email ?? "Usuário",
-      action: "stock.adjust",
-      entity: "Product",
-      entityId: product.id,
-      description: `Ajustou "${product.name}" de ${product.stockQty} para ${parsed.data.quantity} unidade(s). Motivo: ${parsed.data.reason || "não informado"}`,
-    });
-  }
+  const result = await applyStockMovement(
+    { tenantId: user.tenantId, userId: user.id, userName: user.name ?? user.email ?? "Usuário" },
+    parsed.data
+  );
+  if (!result.ok) return { error: result.error };
 
   revalidatePath("/estoque");
   revalidatePath("/produtos");

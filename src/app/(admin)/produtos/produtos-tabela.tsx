@@ -7,12 +7,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronsUpDown,
   Copy,
   ExternalLink,
   ImageOff,
   MoreHorizontal,
   Pencil,
+  Plus,
   Power,
   PowerOff,
   Trash2,
@@ -34,6 +36,7 @@ import {
   bulkUpdateProductsAction,
   deleteProductAction,
   duplicateProductAction,
+  quickAdjustStockAction,
   toggleProductActiveAction,
 } from "./actions";
 
@@ -66,6 +69,99 @@ function StockBadge({ product }: { product: ProductListItem }) {
     return <Badge variant="warning">Estoque baixo</Badge>;
   }
   return <Badge variant="success">Em estoque</Badge>;
+}
+
+/**
+ * Duas caixinhas de ajuste rápido de estoque, direto na listagem — sem
+ * precisar abrir o produto pra mexer numa quantidade. "+" soma à quantidade
+ * atual (reposição); "=" define o valor absoluto informado (correção de
+ * contagem, inclusive pra zerar estoque negativo).
+ */
+function StockQuickEdit({
+  product,
+  isPending,
+  runAction,
+}: {
+  product: ProductListItem;
+  isPending: boolean;
+  runAction: (action: () => Promise<ActionResult>, fallbackSuccess: string, onDone?: () => void) => void;
+}) {
+  const [addValue, setAddValue] = useState("");
+  const [setValue, setSetValueInput] = useState("");
+
+  function handleAdd() {
+    const quantity = Math.round(Number(addValue));
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    runAction(
+      () => quickAdjustStockAction({ productId: product.id, type: "IN", quantity }),
+      "Estoque atualizado.",
+      () => setAddValue("")
+    );
+  }
+
+  function handleSet() {
+    if (setValue === "") return;
+    const quantity = Math.round(Number(setValue));
+    if (!Number.isFinite(quantity) || quantity < 0) return;
+    runAction(
+      () => quickAdjustStockAction({ productId: product.id, type: "ADJUST", quantity }),
+      "Estoque ajustado.",
+      () => setSetValueInput("")
+    );
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-0.5">
+        <input
+          type="number"
+          min={1}
+          step={1}
+          placeholder="Qtd."
+          value={addValue}
+          onChange={(e) => setAddValue(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          disabled={isPending}
+          title="Adicionar ao estoque atual"
+          aria-label={`Adicionar ao estoque de ${product.name}`}
+          className="h-7 w-14 rounded border border-slate-300 px-1 text-center text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={isPending || !addValue}
+          onClick={handleAdd}
+          title="Adicionar ao estoque atual"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex items-center gap-0.5">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          placeholder="Def."
+          value={setValue}
+          onChange={(e) => setSetValueInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSet()}
+          disabled={isPending}
+          title="Definir quantidade exata (correção de estoque)"
+          aria-label={`Definir estoque exato de ${product.name}`}
+          className="h-7 w-14 rounded border border-slate-300 px-1 text-center text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={isPending || setValue === ""}
+          onClick={handleSet}
+          title="Definir quantidade exata (correção de estoque)"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Check className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function SortHeader({
@@ -308,6 +404,7 @@ export function ProdutosTabela({
                   <td className="px-2 py-3">
                     <div className="text-gray-800">{product.stockQty}</div>
                     <StockBadge product={product} />
+                    <StockQuickEdit product={product} isPending={isPending} runAction={runAction} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -406,6 +503,7 @@ export function ProdutosTabela({
                     <span>Estoque: {product.stockQty}</span>
                     <StockBadge product={product} />
                   </div>
+                  <StockQuickEdit product={product} isPending={isPending} runAction={runAction} />
                 </div>
                 <DropdownMenu trigger={<MoreHorizontal className="h-4 w-4" />}>
                   <Link href={`/produtos/${product.id}`} className={dropdownItemClassName()}>
