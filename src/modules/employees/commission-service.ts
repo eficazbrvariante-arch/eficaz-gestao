@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { periodRange, todayISO } from "@/lib/format";
 import { isCapinhaCategory, isPeliculaCategory } from "@/lib/seller-discount-rules";
 
 function round2(value: number) {
@@ -43,7 +44,8 @@ function kitDiscountCommissionForItems(items: CommissionItemForKit[]): number {
  */
 async function getProtecaoEficazCommissionByUsers(
   tenantId: string,
-  userIds: string[]
+  userIds: string[],
+  range?: { start: Date; end: Date }
 ): Promise<Map<string, number>> {
   const totals = new Map<string, number>();
   if (userIds.length === 0) return totals;
@@ -60,6 +62,7 @@ async function getProtecaoEficazCommissionByUsers(
       status: "COMPLETED",
       sellerId: { in: userIds },
       number: { in: approved.map((p) => p.saleNumber) },
+      ...(range ? { createdAt: { gte: range.start, lt: range.end } } : {}),
     },
     select: { number: true, sellerId: true },
   });
@@ -106,10 +109,16 @@ function itemCommission(
   return (itemTotal * percent) / 100;
 }
 
-/** Comissão acumulada (todas as vendas concluídas) por vendedor — pra mostrar no card do colaborador. */
+/**
+ * Comissão por vendedor — todas as vendas concluídas, ou só as de um
+ * período (`range`) quando informado. Usada tanto pro total acumulado
+ * (card do colaborador, sem `range`) quanto pro Ranking de Comissão (com
+ * `range` do dia).
+ */
 export async function getCommissionTotalsByUsers(
   tenantId: string,
-  userIds: string[]
+  userIds: string[],
+  range?: { start: Date; end: Date }
 ): Promise<Map<string, number>> {
   const totals = new Map<string, number>();
   if (userIds.length === 0) return totals;
@@ -121,7 +130,14 @@ export async function getCommissionTotalsByUsers(
   const defaultPercent = Number(tenant.defaultCommissionPercent);
 
   const items = await prisma.saleItem.findMany({
-    where: { sale: { tenantId, sellerId: { in: userIds }, status: "COMPLETED" } },
+    where: {
+      sale: {
+        tenantId,
+        sellerId: { in: userIds },
+        status: "COMPLETED",
+        ...(range ? { createdAt: { gte: range.start, lt: range.end } } : {}),
+      },
+    },
     select: {
       total: true,
       quantity: true,
@@ -158,7 +174,7 @@ export async function getCommissionTotalsByUsers(
     }
   }
 
-  const protecaoTotals = await getProtecaoEficazCommissionByUsers(tenantId, userIds);
+  const protecaoTotals = await getProtecaoEficazCommissionByUsers(tenantId, userIds, range);
   for (const [sellerId, amount] of protecaoTotals) {
     totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + amount));
   }
@@ -268,6 +284,9 @@ export type CommissionRankingRow = {
  * vendido) — não é a alíquota configurada (essa é igual pro catálogo todo,
  * só variando por produto), e sim o resultado prático de cada um pelo mix de
  * produtos que vendeu. Só entram vendedores com pelo menos uma venda concluída.
+ *
+ * Escopo: só as vendas de hoje (não acumulado desde sempre) — o ranking é um
+ * placar do dia, rola pro dia seguinte junto com a data.
  */
 export async function getCommissionRanking(tenantId: string): Promise<CommissionRankingRow[]> {
   const sellers = await prisma.user.findMany({
@@ -277,11 +296,19 @@ export async function getCommissionRanking(tenantId: string): Promise<Commission
   if (sellers.length === 0) return [];
   const userIds = sellers.map((s) => s.id);
 
+  const today = todayISO();
+  const { start, end } = periodRange(today, today);
+
   const [commissionTotals, salesTotals] = await Promise.all([
-    getCommissionTotalsByUsers(tenantId, userIds),
+    getCommissionTotalsByUsers(tenantId, userIds, { start, end }),
     prisma.sale.groupBy({
       by: ["sellerId"],
-      where: { tenantId, sellerId: { in: userIds }, status: "COMPLETED" },
+      where: {
+        tenantId,
+        sellerId: { in: userIds },
+        status: "COMPLETED",
+        createdAt: { gte: start, lt: end },
+      },
       _sum: { total: true },
     }),
   ]);

@@ -19,8 +19,8 @@ export default async function RankingComissaoPage() {
     <div>
       <h1 className="mb-1 text-xl font-semibold text-slate-900">Ranking de Comissão</h1>
       <p className="mb-6 text-sm text-slate-500">
-        Comissão efetiva de cada vendedor — quanto do que vendeu virou comissão, do maior pro
-        menor.
+        Comissão efetiva de cada vendedor hoje — quanto do que vendeu virou comissão, do maior
+        pro menor. Zera todo dia.
       </p>
 
       <RankingComissaoMatrix rows={ranking} />

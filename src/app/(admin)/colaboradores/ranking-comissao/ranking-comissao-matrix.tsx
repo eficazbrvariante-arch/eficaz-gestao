@@ -7,8 +7,8 @@ export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
-        Nenhum vendedor com venda concluída no período — o ranking aparece assim que a primeira
-        venda for fechada.
+        Nenhum vendedor com venda concluída hoje ainda — o ranking aparece assim que a primeira
+        venda do dia for fechada.
       </div>
     );
   }
@@ -31,7 +31,7 @@ export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }
 
       <div className="relative">
         <p className="mb-6 font-mono text-xs tracking-widest text-[#39ff88]/70">
-          &gt; ranking_comissao --ordenar=desc
+          &gt; ranking_comissao --hoje --ordenar=desc
         </p>
 
         <ul className="flex flex-col gap-5">
