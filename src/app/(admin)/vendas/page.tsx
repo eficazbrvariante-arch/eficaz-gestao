@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { formatBRL, formatDateTime } from "@/lib/format";
+import { formatBRL, formatDateTime, formatISODate, periodRange, todayISO } from "@/lib/format";
 import { canCancelSale, canSell, canViewAllSales } from "@/lib/permissions";
+import { PeriodPicker } from "../relatorios/report-nav";
 
 const STATUS_FILTERS = [
   { label: "Todas", value: "" },
@@ -11,12 +12,22 @@ const STATUS_FILTERS = [
   { label: "Canceladas", value: "CANCELLED" },
 ] as const;
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Diferente do padrão dos Relatórios (mês atual) — Vendas começa só no dia de hoje. */
+function resolveSalesPeriod(searchParams: { de?: string; ate?: string }) {
+  const today = todayISO();
+  const from = ISO_DATE.test(searchParams.de ?? "") ? searchParams.de! : today;
+  const to = ISO_DATE.test(searchParams.ate ?? "") ? searchParams.ate! : today;
+  return from > to ? { from: to, to: from } : { from, to };
+}
+
 export default async function VendasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; cashRegisterId?: string }>;
+  searchParams: Promise<{ status?: string; cashRegisterId?: string; de?: string; ate?: string }>;
 }) {
-  const { status, cashRegisterId } = await searchParams;
+  const { status, cashRegisterId, de, ate } = await searchParams;
   const user = await requireUser();
 
   const seeAll = canViewAllSales(user.role);
@@ -58,12 +69,20 @@ export default async function VendasPage({
     filterCashRegisterId = cashRegisterId;
   }
 
+  // Só filtra por data na navegação geral — quem entra num caixa específico
+  // (Admin/Gerente vindo do Histórico de caixas) quer ver tudo daquele caixa,
+  // não só o dia de hoje.
+  const isSpecificRegisterView = seeAll && Boolean(cashRegisterId);
+  const period = resolveSalesPeriod({ de, ate });
+  const { start, end } = periodRange(period.from, period.to);
+
   const [sales, viewedRegister] = await Promise.all([
     prisma.sale.findMany({
       where: {
         tenantId: user.tenantId,
         ...(filterCashRegisterId ? { cashRegisterId: filterCashRegisterId } : {}),
         ...(status === "COMPLETED" || status === "CANCELLED" ? { status } : {}),
+        ...(isSpecificRegisterView ? {} : { createdAt: { gte: start, lt: end } }),
       },
       include: {
         customer: { select: { name: true } },
@@ -88,11 +107,9 @@ export default async function VendasPage({
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Vendas</h1>
           <p className="text-sm text-slate-500">
-            {!seeAll
-              ? "Vendas do caixa aberto — somem daqui quando ele for fechado."
-              : viewedRegister
-                ? "Vendas deste caixa."
-                : "Histórico de vendas realizadas no PDV."}
+            {isSpecificRegisterView
+              ? "Vendas deste caixa."
+              : `${!seeAll ? "Vendas do caixa aberto" : "Histórico de vendas"} · ${formatISODate(period.from)}${period.from !== period.to ? ` a ${formatISODate(period.to)}` : ""}`}
           </p>
         </div>
         <Link
@@ -122,12 +139,20 @@ export default async function VendasPage({
         </div>
       )}
 
+      {!isSpecificRegisterView && (
+        <PeriodPicker period={period} extraParams={{ status }} />
+      )}
+
       <div className="mb-4 flex gap-2">
         {STATUS_FILTERS.map((filter) => {
           const isActive = (status ?? "") === filter.value;
           const query = new URLSearchParams();
           if (filter.value) query.set("status", filter.value);
           if (viewedRegister) query.set("cashRegisterId", viewedRegister.id);
+          if (!isSpecificRegisterView) {
+            query.set("de", period.from);
+            query.set("ate", period.to);
+          }
           const queryString = query.toString();
           return (
             <Link
@@ -211,7 +236,9 @@ export default async function VendasPage({
             {sales.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
-                  Nenhuma venda registrada ainda.
+                  {isSpecificRegisterView
+                    ? "Nenhuma venda registrada ainda."
+                    : "Nenhuma venda encontrada nesse período."}
                 </td>
               </tr>
             )}
