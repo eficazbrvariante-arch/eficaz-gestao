@@ -59,6 +59,7 @@ export function ProductForm({
       showInCatalog: true,
       isFeatured: false,
       commissionEnabled: false,
+      commissionType: "PERCENT",
       stockQty: 0,
       minStock: 0,
       costPrice: 0,
@@ -218,19 +219,61 @@ export function ProductForm({
           )}
           {watch("commissionEnabled") && (
             <div className="mt-3 max-w-xs">
-              <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
-              <Input
-                id="commissionPercent"
-                type="number"
-                step="0.01"
-                placeholder="Usa a comissão geral"
-                disabled={!canEditCommission}
-                {...register("commissionPercent")}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Vazio = usa a comissão geral configurada em Colaboradores.
-              </p>
-              <FieldError message={errors.commissionPercent?.message} />
+              <div className="mb-2 flex items-center gap-4 text-sm text-slate-700">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    value="PERCENT"
+                    disabled={!canEditCommission}
+                    {...register("commissionType")}
+                  />
+                  Porcentagem (%)
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    value="FIXED"
+                    disabled={!canEditCommission}
+                    {...register("commissionType")}
+                  />
+                  Valor fixo (R$)
+                </label>
+              </div>
+
+              {watch("commissionType") === "FIXED" ? (
+                <>
+                  <Label htmlFor="commissionFixedAmount">Comissão por unidade vendida (R$)</Label>
+                  <Input
+                    id="commissionFixedAmount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    disabled={!canEditCommission}
+                    {...register("commissionFixedAmount")}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Pago por unidade vendida deste produto, direto — não depende do preço nem de
+                    desconto.
+                  </p>
+                  <FieldError message={errors.commissionFixedAmount?.message} />
+                </>
+              ) : (
+                <>
+                  <Label htmlFor="commissionPercent">Comissão individual (%)</Label>
+                  <Input
+                    id="commissionPercent"
+                    type="number"
+                    step="0.01"
+                    placeholder="Usa a comissão geral"
+                    disabled={!canEditCommission}
+                    {...register("commissionPercent")}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Vazio = usa a comissão geral configurada em Colaboradores.
+                  </p>
+                  <FieldError message={errors.commissionPercent?.message} />
+                </>
+              )}
             </div>
           )}
         </div>

@@ -447,6 +447,11 @@ model Supplier {
   @@map("suppliers")
 }
 
+enum CommissionType {
+  PERCENT
+  FIXED
+}
+
 model Product {
   id                String    @id @default(cuid())
   tenantId          String
@@ -495,10 +500,18 @@ model Product {
   /// pra todo o catálogo, só pros produtos marcados explicitamente aqui
   /// (seleção em massa disponível na listagem de Produtos).
   commissionEnabled Boolean   @default(false)
-  /// Comissão individual (%), só relevante quando `commissionEnabled` —
-  /// sobrescreve `Tenant.defaultCommissionPercent` quando definida. Nulo =
-  /// usa a comissão geral da empresa.
+  /// Comissão individual (%), só relevante quando `commissionEnabled` e
+  /// `commissionType = PERCENT` — sobrescreve `Tenant.defaultCommissionPercent`
+  /// quando definida. Nulo = usa a comissão geral da empresa.
   commissionPercent Decimal?  @db.Decimal(5, 2)
+  /// Se a comissão deste produto é calculada em % (padrão, ver
+  /// `commissionPercent`) ou em valor fixo por unidade vendida (ver
+  /// `commissionFixedAmount`) — só relevante quando `commissionEnabled`.
+  commissionType    CommissionType @default(PERCENT)
+  /// Comissão fixa em R$ por unidade vendida, só relevante quando
+  /// `commissionEnabled` e `commissionType = FIXED`. Multiplicado pela
+  /// quantidade do item na venda — não depende do preço/desconto praticado.
+  commissionFixedAmount Decimal? @db.Decimal(10, 2)
   /// Quando o Colaborador de Estoque confirmou esse produto no ciclo de
   /// contagem atual. Nulo = ainda pendente (aparece na fila dele). Zerado
   /// em massa quando um novo ciclo de contagem é iniciado.

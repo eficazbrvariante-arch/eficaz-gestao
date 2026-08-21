@@ -1,16 +1,104 @@
 import { prisma } from "@/lib/prisma";
+import { isCapinhaCategory, isPeliculaCategory } from "@/lib/seller-discount-rules";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-/** Comissão não é padrão pra todo o catálogo — só entra no cálculo quem tem `commissionEnabled`. */
+/** Comissão fixa do kit capa + película com desconto do vendedor (ver abaixo), por unidade. */
+const KIT_DISCOUNT_COMMISSION_PER_UNIT = 1;
+/** Comissão fixa por cadastro de Proteção Eficaz aprovado, atribuída ao vendedor da venda original. */
+const PROTECAO_EFICAZ_COMMISSION = 2;
+
+type CommissionItemForKit = {
+  quantity: number;
+  discount: unknown;
+  product: { category: { name: string | null } | null };
+};
+
+/**
+ * Comissão fixa de R$1 por unidade de película 3D vendida com o desconto do
+ * vendedor aplicado (`getSellerDiscountRule`), sempre que a mesma venda
+ * também tem uma capinha — é a condição que libera esse desconto em
+ * primeiro lugar. Independente de `Product.commissionEnabled` — soma por
+ * cima de qualquer comissão normal do produto (hoje capinha/película não
+ * têm comissão por % configurada, então na prática é a única comissão
+ * dessas linhas).
+ */
+function kitDiscountCommissionForItems(items: CommissionItemForKit[]): number {
+  const hasCapinha = items.some((item) => isCapinhaCategory(item.product.category?.name));
+  if (!hasCapinha) return 0;
+
+  const discountedPeliculaUnits = items
+    .filter((item) => isPeliculaCategory(item.product.category?.name) && Number(item.discount) > 0)
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  return discountedPeliculaUnits * KIT_DISCOUNT_COMMISSION_PER_UNIT;
+}
+
+/**
+ * Vendas com cadastro de Proteção Eficaz aprovado, por vendedor da venda
+ * original (`saleNumber` não é FK — casamento por número, já validado
+ * manualmente pelo Admin na aprovação). R$2 por cadastro aprovado.
+ */
+async function getProtecaoEficazCommissionByUsers(
+  tenantId: string,
+  userIds: string[]
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  if (userIds.length === 0) return totals;
+
+  const approved = await prisma.protecaoEficaz.findMany({
+    where: { tenantId, status: "APPROVED" },
+    select: { saleNumber: true },
+  });
+  if (approved.length === 0) return totals;
+
+  const sales = await prisma.sale.findMany({
+    where: {
+      tenantId,
+      status: "COMPLETED",
+      sellerId: { in: userIds },
+      number: { in: approved.map((p) => p.saleNumber) },
+    },
+    select: { number: true, sellerId: true },
+  });
+  const sellerBySaleNumber = new Map(sales.map((s) => [s.number, s.sellerId]));
+
+  for (const record of approved) {
+    const sellerId = sellerBySaleNumber.get(record.saleNumber);
+    if (!sellerId) continue;
+    totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + PROTECAO_EFICAZ_COMMISSION));
+  }
+
+  return totals;
+}
+
+/**
+ * Comissão não é padrão pra todo o catálogo — só entra no cálculo quem tem
+ * `commissionEnabled`. Dois modos, por produto: `PERCENT` (padrão) aplica a
+ * alíquota sobre o total do item; `FIXED` paga um valor fixo em R$ por
+ * unidade vendida, direto — não depende de preço nem desconto praticado.
+ */
 function itemCommission(
   itemTotal: number,
-  product: { commissionEnabled: boolean; commissionPercent: unknown },
+  quantity: number,
+  product: {
+    commissionEnabled: boolean;
+    commissionType: "PERCENT" | "FIXED";
+    commissionPercent: unknown;
+    commissionFixedAmount: unknown;
+  },
   defaultCommissionPercent: number
 ) {
   if (!product.commissionEnabled) return 0;
+  if (product.commissionType === "FIXED") {
+    const fixedAmount =
+      product.commissionFixedAmount !== null && product.commissionFixedAmount !== undefined
+        ? Number(product.commissionFixedAmount)
+        : 0;
+    return fixedAmount * quantity;
+  }
   const percent =
     product.commissionPercent !== null && product.commissionPercent !== undefined
       ? Number(product.commissionPercent)
@@ -36,15 +124,43 @@ export async function getCommissionTotalsByUsers(
     where: { sale: { tenantId, sellerId: { in: userIds }, status: "COMPLETED" } },
     select: {
       total: true,
-      product: { select: { commissionEnabled: true, commissionPercent: true } },
-      sale: { select: { sellerId: true } },
+      quantity: true,
+      discount: true,
+      product: {
+        select: {
+          commissionEnabled: true,
+          commissionType: true,
+          commissionPercent: true,
+          commissionFixedAmount: true,
+          category: { select: { name: true } },
+        },
+      },
+      sale: { select: { id: true, sellerId: true } },
     },
   });
 
   for (const item of items) {
-    const commission = itemCommission(Number(item.total), item.product, defaultPercent);
+    const commission = itemCommission(Number(item.total), item.quantity, item.product, defaultPercent);
     const sellerId = item.sale.sellerId;
     totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + commission));
+  }
+
+  const itemsBySale = new Map<string, { sellerId: string; items: CommissionItemForKit[] }>();
+  for (const item of items) {
+    const entry = itemsBySale.get(item.sale.id) ?? { sellerId: item.sale.sellerId, items: [] };
+    entry.items.push({ quantity: item.quantity, discount: item.discount, product: item.product });
+    itemsBySale.set(item.sale.id, entry);
+  }
+  for (const { sellerId, items: saleItems } of itemsBySale.values()) {
+    const kitCommission = kitDiscountCommissionForItems(saleItems);
+    if (kitCommission > 0) {
+      totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + kitCommission));
+    }
+  }
+
+  const protecaoTotals = await getProtecaoEficazCommissionByUsers(tenantId, userIds);
+  for (const [sellerId, amount] of protecaoTotals) {
+    totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + amount));
   }
 
   return totals;
@@ -81,7 +197,20 @@ export async function getSellerCommissionHistory(
         createdAt: true,
         total: true,
         items: {
-          select: { total: true, product: { select: { commissionEnabled: true, commissionPercent: true } } },
+          select: {
+            total: true,
+            quantity: true,
+            discount: true,
+            product: {
+              select: {
+                commissionEnabled: true,
+                commissionType: true,
+                commissionPercent: true,
+                commissionFixedAmount: true,
+                category: { select: { name: true } },
+              },
+            },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -89,18 +218,30 @@ export async function getSellerCommissionHistory(
   ]);
   const defaultPercent = Number(tenant.defaultCommissionPercent);
 
-  const rows: SellerCommissionSaleRow[] = sales.map((sale) => ({
-    saleId: sale.id,
-    number: sale.number,
-    createdAt: sale.createdAt,
-    total: Number(sale.total),
-    commission: round2(
-      sale.items.reduce(
-        (sum, item) => sum + itemCommission(Number(item.total), item.product, defaultPercent),
-        0
-      )
-    ),
-  }));
+  const approvedProtecaoNumbers = new Set(
+    (
+      await prisma.protecaoEficaz.findMany({
+        where: { tenantId, status: "APPROVED", saleNumber: { in: sales.map((s) => s.number) } },
+        select: { saleNumber: true },
+      })
+    ).map((r) => r.saleNumber)
+  );
+
+  const rows: SellerCommissionSaleRow[] = sales.map((sale) => {
+    const productCommission = sale.items.reduce(
+      (sum, item) => sum + itemCommission(Number(item.total), item.quantity, item.product, defaultPercent),
+      0
+    );
+    const kitCommission = kitDiscountCommissionForItems(sale.items);
+    const protecaoCommission = approvedProtecaoNumbers.has(sale.number) ? PROTECAO_EFICAZ_COMMISSION : 0;
+    return {
+      saleId: sale.id,
+      number: sale.number,
+      createdAt: sale.createdAt,
+      total: Number(sale.total),
+      commission: round2(productCommission + kitCommission + protecaoCommission),
+    };
+  });
 
   return {
     sellerName: seller.name,

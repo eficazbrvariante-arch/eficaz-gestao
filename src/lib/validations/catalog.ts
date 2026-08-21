@@ -55,10 +55,20 @@ export const productSchema = z.object({
   /// Se este produto entra no cálculo de comissão — não é padrão pra todo o
   /// catálogo, só quem for marcado (ver `Product.commissionEnabled`).
   commissionEnabled: z.boolean().default(false),
-  /// Comissão individual (%), só relevante com `commissionEnabled` — em
-  /// branco usa a comissão geral da empresa (`Tenant.defaultCommissionPercent`).
+  /// Se a comissão é calculada em % (padrão) ou em valor fixo por unidade
+  /// vendida — só relevante com `commissionEnabled`.
+  commissionType: z.enum(["PERCENT", "FIXED"]).default("PERCENT"),
+  /// Comissão individual (%), só relevante com `commissionEnabled` e
+  /// `commissionType = "PERCENT"` — em branco usa a comissão geral da
+  /// empresa (`Tenant.defaultCommissionPercent`).
   commissionPercent: z
     .union([z.literal(""), z.coerce.number().min(0).max(100)])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  /// Comissão fixa em R$ por unidade vendida, só relevante com
+  /// `commissionEnabled` e `commissionType = "FIXED"`.
+  commissionFixedAmount: z
+    .union([z.literal(""), z.coerce.number().min(0)])
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v)),
   promoPrice: z

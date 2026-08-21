@@ -183,7 +183,9 @@ function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
     // mexer (ver `canEditCommission`), mesmo que o resto do formulário esteja
     // liberado pra Gerente e Estoquista também (ver `canManageProducts`).
     commissionEnabled: canSetCommission ? data.commissionEnabled : undefined,
+    commissionType: canSetCommission ? data.commissionType : undefined,
     commissionPercent: canSetCommission ? (data.commissionPercent ?? null) : undefined,
+    commissionFixedAmount: canSetCommission ? (data.commissionFixedAmount ?? null) : undefined,
     stockQty: data.stockQty,
     minStock: data.minStock,
     active: data.active,
