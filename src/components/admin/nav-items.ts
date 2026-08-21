@@ -48,6 +48,12 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
     visibleTo: canManageRepairOrders,
   },
+  {
+    label: "Ranking de Comissão",
+    href: "/colaboradores/ranking-comissao",
+    available: true,
+    visibleTo: canManageEmployeeLedger,
+  },
   { label: "Relatórios", href: "/relatorios", available: true, visibleTo: canViewReports },
   { label: "Analytics", href: "/analytics", available: true, visibleTo: canViewReports },
   { label: "Usuários", href: "/usuarios", available: true, visibleTo: canManageSettings },

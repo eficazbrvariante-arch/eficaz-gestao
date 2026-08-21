@@ -112,3 +112,52 @@ export async function getSellerCommissionHistory(
 export async function setDefaultCommissionPercent(tenantId: string, percent: number) {
   await prisma.tenant.update({ where: { id: tenantId }, data: { defaultCommissionPercent: percent } });
 }
+
+export type CommissionRankingRow = {
+  userId: string;
+  userName: string;
+  totalSales: number;
+  totalCommission: number;
+  /** Comissão efetiva: quanto do total vendido virou comissão, em %. */
+  percent: number;
+};
+
+/**
+ * Ranking de vendedores pela comissão efetiva (comissão recebida ÷ total
+ * vendido) — não é a alíquota configurada (essa é igual pro catálogo todo,
+ * só variando por produto), e sim o resultado prático de cada um pelo mix de
+ * produtos que vendeu. Só entram vendedores com pelo menos uma venda concluída.
+ */
+export async function getCommissionRanking(tenantId: string): Promise<CommissionRankingRow[]> {
+  const sellers = await prisma.user.findMany({
+    where: { tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
+    select: { id: true, name: true },
+  });
+  if (sellers.length === 0) return [];
+  const userIds = sellers.map((s) => s.id);
+
+  const [commissionTotals, salesTotals] = await Promise.all([
+    getCommissionTotalsByUsers(tenantId, userIds),
+    prisma.sale.groupBy({
+      by: ["sellerId"],
+      where: { tenantId, sellerId: { in: userIds }, status: "COMPLETED" },
+      _sum: { total: true },
+    }),
+  ]);
+  const salesByUser = new Map(salesTotals.map((row) => [row.sellerId, Number(row._sum.total ?? 0)]));
+
+  return sellers
+    .map((seller) => {
+      const totalSales = salesByUser.get(seller.id) ?? 0;
+      const totalCommission = commissionTotals.get(seller.id) ?? 0;
+      return {
+        userId: seller.id,
+        userName: seller.name,
+        totalSales,
+        totalCommission,
+        percent: totalSales > 0 ? round2((totalCommission / totalSales) * 100) : 0,
+      };
+    })
+    .filter((row) => row.totalSales > 0)
+    .sort((a, b) => b.percent - a.percent);
+}
