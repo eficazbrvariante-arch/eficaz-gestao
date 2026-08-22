@@ -54,31 +54,25 @@ export type SellerDiscountBudgetLine = {
 };
 
 /**
- * Reparte o orçamento de desconto do Vendedor pela quantidade de capinhas na
- * venda — cada unidade de capinha libera o desconto de exatamente uma
- * unidade de película (transparente ou privativa, é o mesmo saldo
- * compartilhado; a distinção de regra é só o preço/teto de cada uma). Uma
- * capinha + duas películas = desconto só numa das duas, nunca nas duas ao
- * mesmo tempo. Repartido na ordem das linhas (primeira a entrar leva o
- * saldo primeiro); usado tanto no PDV (limite ao vivo) quanto no servidor
- * (validação final, ver `sale-service.ts`) — precisa dar o mesmo resultado
- * nos dois lugares.
+ * Libera o desconto de segurança do Vendedor em toda película elegível
+ * (ver `getSellerDiscountRule`) desde que haja pelo menos uma capinha na
+ * venda — não é mais um orçamento compartilhado entre as linhas (não é
+ * "1 capinha = 1 película"): a presença de qualquer capinha, em qualquer
+ * quantidade, libera o teto cheio em TODAS as películas elegíveis da nota,
+ * cada uma até seu próprio `maxDiscountPerUnit`. Usado tanto no PDV (limite
+ * ao vivo) quanto no servidor (validação final, ver `sale-service.ts`) —
+ * precisa dar o mesmo resultado nos dois lugares.
  */
 export function allocateSellerDiscountBudget(
   lines: SellerDiscountBudgetLine[],
   capinhaUnits: number
 ): Map<string, number> {
   const allocation = new Map<string, number>();
-  let remaining = capinhaUnits;
+  if (capinhaUnits <= 0) return allocation;
   for (const line of lines) {
-    if (remaining <= 0) break;
     const rule = getSellerDiscountRule(line.name, line.unitPrice);
     if (!rule) continue;
-    const allocated = Math.min(line.quantity, remaining);
-    if (allocated > 0) {
-      allocation.set(line.key, allocated);
-      remaining -= allocated;
-    }
+    allocation.set(line.key, line.quantity);
   }
   return allocation;
 }

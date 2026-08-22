@@ -191,9 +191,10 @@ export function PdvScreen({
     : 0;
 
   // Desconto de segurança nas películas 3D (ver `seller-discount-rules.ts`):
-  // cada capinha no carrinho libera o desconto de uma película — nunca
-  // "qualquer quantidade de película com uma capinha só". Vale pra Vendedor
-  // e Gerente — só Admin (canDiscountFreely) não passa por essa trava.
+  // basta uma capinha em qualquer quantidade no carrinho pra liberar o teto
+  // cheio em TODAS as películas elegíveis (não é "1 capinha = 1 película").
+  // Vale pra Vendedor e Gerente — só Admin (canDiscountFreely) não passa por
+  // essa trava.
   const capinhaUnits = cart.reduce(
     (sum, line) => sum + (isCapinhaCategory(line.categoryName) ? line.quantity : 0),
     0
@@ -253,10 +254,10 @@ export function PdvScreen({
     return canDiscount ? grossTotal : 0;
   }
 
-  // Se o orçamento de capinhas encolher (capinha removida, quantidade
-  // reduzida, ou mais película entrando no carrinho do que capinha
-  // sustenta), o desconto de película dado por quem não tem desconto livre
-  // (Vendedor ou Gerente) se ajusta ao novo teto — durante a renderização
+  // Se a capinha sair do carrinho (única forma de o teto encolher agora,
+  // já que não é mais rateado por quantidade), o desconto de película dado
+  // por quem não tem desconto livre (Vendedor ou Gerente) se ajusta pra
+  // zero — durante a renderização
   // (não num efeito, mesmo padrão de `selectionItems` em
   // `produtos-tabela.tsx`: evita um reflow extra). A assinatura só muda
   // quando a composição do carrinho muda de verdade — editar o valor de um
@@ -278,7 +279,7 @@ export function PdvScreen({
     if (next.some((line, i) => line.discount !== cart[i].discount)) {
       setCart(next);
       setDiscountNotice(
-        "O desconto de película foi ajustado — cada capinha no carrinho libera o desconto de uma película."
+        "O desconto de película foi ajustado — precisa de uma capinha no carrinho pra liberar."
       );
     }
   }
@@ -800,10 +801,7 @@ export function PdvScreen({
                         !canDiscountFreely && getSellerDiscountRule(line.name, line.unitPrice);
                       if (!canDiscount && !sellerRule) return null;
                       const blockedBySellerRule = Boolean(sellerRule) && cap === 0;
-                      const blockedReason =
-                        capinhaUnits === 0
-                          ? "precisa de capinha no carrinho"
-                          : "capinha já usada em outra película";
+                      const blockedReason = "precisa de capinha no carrinho";
                       return (
                         <div>
                           <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>
@@ -819,7 +817,7 @@ export function PdvScreen({
                               disabled={paid > 0 || blockedBySellerRule}
                               title={
                                 blockedBySellerRule
-                                  ? `${blockedReason} — cada capinha libera o desconto de uma película`
+                                  ? blockedReason
                                   : paid > 0
                                     ? "Zere as formas de pagamento para alterar o desconto"
                                     : `Desconto máximo neste item: ${formatBRL(cap)}`
