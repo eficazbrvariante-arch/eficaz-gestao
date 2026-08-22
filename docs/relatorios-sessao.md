@@ -1522,4 +1522,24 @@ interceptar `window.location.reload` via override não funcionou — o
 navegador não deixa sobrescrever esse método de dentro da página), mas é
 uma linha trivial (`if (cart vazio) recarrega, senão adia`) já coberta por
 `typecheck`/`build`. `lint`, `typecheck`, `build:app` e os 110 testes
-unitários limpos. Commit `3d5a413`, ainda não enviado ao remoto.
+unitários limpos. Commit `3d5a413`, enviado ao remoto a pedido do usuário;
+`check:deploy` OK (único aviso: tentativas de login com senha errada nos
+logs, sem relação com o deploy).
+
+## 2026-08-22 (continuação 5) — Total do caixa some pra Vendedor
+
+Pedido do usuário com print real: o vendedor Gabriel, ao fechar o caixa,
+viu o "Total do caixa" (a mudança de algumas horas antes nesta mesma
+sessão) e comentou o faturamento do dia — exatamente o tipo de exposição
+que a remoção do "Vendas neste caixa" do PDV, mais cedo hoje, já tinha
+evitado. Usuário pediu minha opinião antes de decidir: dei minha
+recomendação (esconder só do Vendedor, mantendo visível pra quem já
+acompanha financeiro — Admin/Gerente) em vez de remover de todo mundo, já
+que o pedido original desta manhã foi justamente "o sistema nunca mostra o
+total". Usuário confirmou essa opção.
+
+`/caixa` agora só mostra o card "Total do caixa" quando `canViewReports`
+(ADMIN/MANAGER) — Vendedor continua vendo os valores por forma de
+pagamento (abertura, dinheiro, débito, crédito, Pix, esperado na gaveta),
+só não vê mais a soma consolidada. `lint`, `typecheck`, `build:app` e os
+110 testes limpos. Commit `3d1eac1`, ainda não enviado ao remoto.
