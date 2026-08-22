@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatBRL } from "@/lib/format";
 import type { CommissionRankingRow } from "@/modules/employees/commission-service";
 
@@ -54,9 +55,12 @@ export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }
                       {String(rank).padStart(2, "0")}
                       {MEDAL_BY_RANK[rank] ? ` ${MEDAL_BY_RANK[rank]}` : ""}
                     </span>
-                    <span className="truncate text-sm font-semibold text-white">
+                    <Link
+                      href={`/colaboradores/${row.userId}/comissao`}
+                      className="truncate text-sm font-semibold text-white underline-offset-2 hover:text-[#39ff88] hover:underline"
+                    >
                       {row.userName}
-                    </span>
+                    </Link>
                   </span>
                   <span
                     className="shrink-0 text-base font-bold text-[#39ff88]"
