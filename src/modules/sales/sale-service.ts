@@ -61,13 +61,13 @@ export async function createSale(
   });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
-  // Desconto restrito do Vendedor (película 3D): basta uma capinha em
-  // qualquer quantidade na venda pra liberar o desconto em TODAS as
-  // películas elegíveis, cada uma até seu próprio teto — checagem em cima
-  // dos itens da venda inteira, não item a item isolado (ver
-  // `allocateSellerDiscountBudget`, mesma lógica usada no PDV pra mostrar o
-  // teto ao vivo — precisa dar o mesmo resultado nos dois lugares, já que
-  // aqui é a validação que vale de verdade).
+  // Desconto restrito do Vendedor (película 3D): cada capinha na venda
+  // libera o desconto de uma película, nunca "qualquer quantidade de
+  // película com uma capinha só" — checagem em cima dos itens da venda
+  // inteira, não item a item isolado (ver `allocateSellerDiscountBudget`,
+  // mesma lógica usada no PDV pra mostrar o teto ao vivo — precisa dar o
+  // mesmo resultado nos dois lugares, já que aqui é a validação que vale de
+  // verdade).
   const capinhaUnits = input.items.reduce((sum, item) => {
     const product = productMap.get(item.productId);
     return sum + (isCapinhaCategory(product?.category?.name) ? item.quantity : 0);
@@ -187,11 +187,9 @@ export async function createSale(
     if (!isProtecaoEficazRedemptionItem && itemDiscount > 0 && !ctx.allowFreeDiscount) {
       // Só ADMIN (allowFreeDiscount) tem desconto livre em qualquer item.
       // Vendedor e Gerente podem aplicar o desconto de segurança nas
-      // películas 3D — basta uma capinha em qualquer quantidade na venda pra
-      // liberar o teto cheio em TODAS as películas elegíveis (não é "1
-      // capinha = 1 película", ver `seller-discount-rules.ts`) — mesmo
-      // Gerente não escapa dessa trava. Fora da película, Vendedor não
-      // desconta nada.
+      // películas 3D — só com uma capinha na venda e até o teto da regra
+      // (ver `seller-discount-rules.ts`) — mesmo Gerente não escapa dessa
+      // trava. Fora da película, Vendedor não desconta nada.
       const rule = getSellerDiscountRule(product.name, unitPrice);
       if (!rule) {
         if (!ctx.allowDiscount) {
@@ -202,7 +200,10 @@ export async function createSale(
         if (allocatedUnits === 0) {
           return {
             ok: false,
-            error: `O desconto em "${product.name}" só é permitido com uma capinha na venda.`,
+            error:
+              capinhaUnits === 0
+                ? `O desconto em "${product.name}" só é permitido com uma capinha na venda.`
+                : `O desconto em "${product.name}" excede a quantidade de capinhas na venda — cada capinha libera o desconto de uma película.`,
           };
         }
         const maxLineDiscount = round2(allocatedUnits * rule.maxDiscountPerUnit);
