@@ -11,5 +11,10 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts"],
+    // Testes de integração (Etapa B da Auditoria Mestra) tocam o banco de
+    // verdade e têm config própria — ver `vitest.config.integration.mts` e
+    // `npm run test:integration`. Excluídos daqui para o `npm test`/CI
+    // continuar 100% unitário, sem depender de `DATABASE_URL`.
+    exclude: ["**/node_modules/**", "src/**/*.integration.test.ts"],
   },
 });
