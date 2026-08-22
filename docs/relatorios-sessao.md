@@ -1483,3 +1483,43 @@ película o resultado é 1 unidade alocada = R$20 de teto) — não haveria
 bug nesse caminho. Próximo passo: pedir ao usuário um print de exatamente
 esse cenário (2 capinhas + 1 película) reproduzindo o problema, em vez de
 adivinhar de novo.
+
+### Resolvido — não era bug, era cache de página desatualizada
+
+O usuário mandou um print (não deu pra abrir o vídeo em .MOV que veio
+antes — sem suporte a vídeo, só imagem/PDF) mostrando 1 capinha + 2
+películas, primeira liberada, segunda bloqueada — exatamente o
+comportamento correto que ele mesmo confirmou. A pista real veio do
+relato em texto: testando de um computador diferente (logado como o
+vendedor Gabriel), a primeira película liberou normalmente; no computador
+físico da loja, nenhuma das duas liberou. Diagnóstico: a aba do PDV na
+loja provavelmente ficou aberta desde antes de um dos vários deploys de
+hoje, rodando JS desatualizado em memória (Next.js não recarrega sozinho
+depois de um deploy). Confirmado pelo próprio usuário como causa provável.
+
+Também descartada, com o código mostrado ao usuário, a hipótese de que a
+ordem dos modelos no nome da película (ex.: "A16/A17/A26" vs a capinha
+"A17") importasse — não existe nenhum campo estruturado de compatibilidade
+no catálogo, e a regra de desconto nunca lê números de modelo, só
+categoria + nome + preço.
+
+## 2026-08-22 (continuação 4) — PDV recarrega sozinho depois de 2min parado
+
+Pedido direto do usuário a partir do diagnóstico acima: evitar que um
+terminal fique rodando código desatualizado depois de um deploy, sem
+depender de alguém lembrar de dar F5. Implementado em `pdv-screen.tsx`:
+`window.location.reload()` automático depois de `PDV_IDLE_RELOAD_MS` (2min)
+sem nenhuma interação (mouse, teclado, toque, scroll) — mas só quando o
+carrinho está vazio; com item no carrinho, a checagem só adia pra daqui a
+pouco, nunca derruba uma venda em andamento.
+
+Testado no dev-local com o intervalo reduzido temporariamente (5s, depois
+30s, restaurado pra 2min antes do commit): confirmado que a página recarrega
+sozinha de verdade (um marcador em `window` setado via console some depois
+do intervalo, com o carrinho vazio) — reproduzido duas vezes. A branch "não
+recarrega com carrinho ocupado" não foi reproduzida ao vivo (a tentativa de
+interceptar `window.location.reload` via override não funcionou — o
+navegador não deixa sobrescrever esse método de dentro da página), mas é
+uma linha trivial (`if (cart vazio) recarrega, senão adia`) já coberta por
+`typecheck`/`build`. `lint`, `typecheck`, `build:app` e os 110 testes
+unitários limpos. Commit `3d5a413`, ainda não enviado ao remoto.
