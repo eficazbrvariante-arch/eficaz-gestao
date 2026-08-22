@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { formatBRL } from "@/lib/format";
 import type { CommissionRankingRow } from "@/modules/employees/commission-service";
+import type { Period } from "@/modules/reports/report-service";
 
 const MEDAL_BY_RANK: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
-export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }) {
+export function RankingComissaoMatrix({
+  rows,
+  period,
+}: {
+  rows: CommissionRankingRow[];
+  period: Period;
+}) {
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
-        Nenhum vendedor com venda concluída hoje ainda — o ranking aparece assim que a primeira
-        venda do dia for fechada.
+        Nenhum vendedor com venda concluída nesse período ainda.
       </div>
     );
   }
@@ -32,7 +38,7 @@ export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }
 
       <div className="relative">
         <p className="mb-6 font-mono text-xs tracking-widest text-[#39ff88]/70">
-          &gt; ranking_comissao --hoje --ordenar=desc
+          &gt; ranking_comissao --de={period.from} --ate={period.to} --ordenar=desc
         </p>
 
         <ul className="flex flex-col gap-5">
@@ -56,7 +62,7 @@ export function RankingComissaoMatrix({ rows }: { rows: CommissionRankingRow[] }
                       {MEDAL_BY_RANK[rank] ? ` ${MEDAL_BY_RANK[rank]}` : ""}
                     </span>
                     <Link
-                      href={`/colaboradores/${row.userId}/comissao`}
+                      href={`/colaboradores/${row.userId}/comissao?de=${period.from}&ate=${period.to}`}
                       className="truncate text-sm font-semibold text-white underline-offset-2 hover:text-[#39ff88] hover:underline"
                     >
                       {row.userName}

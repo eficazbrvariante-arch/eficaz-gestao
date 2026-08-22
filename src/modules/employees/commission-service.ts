@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { periodRange, todayISO } from "@/lib/format";
 import { isCapinhaCategory, isPeliculaCategory } from "@/lib/seller-discount-rules";
 
 function round2(value: number) {
@@ -283,12 +282,13 @@ export type CommissionRankingRow = {
  * Ranking de vendedores pela comissão efetiva (comissão recebida ÷ total
  * vendido) — não é a alíquota configurada (essa é igual pro catálogo todo,
  * só variando por produto), e sim o resultado prático de cada um pelo mix de
- * produtos que vendeu. Só entram vendedores com pelo menos uma venda concluída.
- *
- * Escopo: só as vendas de hoje (não acumulado desde sempre) — o ranking é um
- * placar do dia, rola pro dia seguinte junto com a data.
+ * produtos que vendeu. Só entram vendedores com pelo menos uma venda concluída
+ * no período informado (padrão "hoje" — ver `resolvePeriod` na página).
  */
-export async function getCommissionRanking(tenantId: string): Promise<CommissionRankingRow[]> {
+export async function getCommissionRanking(
+  tenantId: string,
+  range: { start: Date; end: Date }
+): Promise<CommissionRankingRow[]> {
   const sellers = await prisma.user.findMany({
     where: { tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
     select: { id: true, name: true },
@@ -296,8 +296,7 @@ export async function getCommissionRanking(tenantId: string): Promise<Commission
   if (sellers.length === 0) return [];
   const userIds = sellers.map((s) => s.id);
 
-  const today = todayISO();
-  const { start, end } = periodRange(today, today);
+  const { start, end } = range;
 
   const [commissionTotals, salesTotals] = await Promise.all([
     getCommissionTotalsByUsers(tenantId, userIds, { start, end }),

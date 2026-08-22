@@ -8,11 +8,15 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * ou inválido. Garante `from <= to` para o usuário não conseguir inverter
  * as datas e receber um relatório vazio sem explicação.
  */
-export function resolvePeriod(searchParams: { de?: string; ate?: string }): Period {
+export function resolvePeriod(
+  searchParams: { de?: string; ate?: string },
+  /** `defaultFrom` troca o início padrão (mês atual) quando ausente da URL — ex.: um placar diário que deve abrir em "hoje" em vez do mês inteiro. */
+  options?: { defaultFrom?: string }
+): Period {
   const today = todayISO();
   const from = ISO_DATE.test(searchParams.de ?? "")
     ? searchParams.de!
-    : startOfMonthISO(today);
+    : (options?.defaultFrom ?? startOfMonthISO(today));
   const to = ISO_DATE.test(searchParams.ate ?? "") ? searchParams.ate! : today;
 
   return from > to ? { from: to, to: from } : { from, to };

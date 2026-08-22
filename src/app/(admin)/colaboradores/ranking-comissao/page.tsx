@@ -1,9 +1,16 @@
 import { requireUser } from "@/lib/session";
 import { canManageEmployeeLedger } from "@/lib/permissions";
+import { todayISO, periodRange } from "@/lib/format";
 import { getCommissionRanking } from "@/modules/employees/commission-service";
+import { resolvePeriod } from "../../relatorios/period";
+import { PeriodPicker } from "../../relatorios/report-nav";
 import { RankingComissaoMatrix } from "./ranking-comissao-matrix";
 
-export default async function RankingComissaoPage() {
+export default async function RankingComissaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ de?: string; ate?: string }>;
+}) {
   const user = await requireUser();
   if (!canManageEmployeeLedger(user.role)) {
     return (
@@ -13,17 +20,23 @@ export default async function RankingComissaoPage() {
     );
   }
 
-  const ranking = await getCommissionRanking(user.tenantId);
+  // Padrão "hoje" (placar do dia) em vez do mês inteiro — o usuário troca o
+  // período pelo PeriodPicker quando quiser olhar outra janela.
+  const period = resolvePeriod(await searchParams, { defaultFrom: todayISO() });
+  const { start, end } = periodRange(period.from, period.to);
+  const ranking = await getCommissionRanking(user.tenantId, { start, end });
 
   return (
     <div>
       <h1 className="mb-1 text-xl font-semibold text-slate-900">Ranking de Comissão</h1>
       <p className="mb-6 text-sm text-slate-500">
-        Comissão efetiva de cada vendedor hoje — quanto do que vendeu virou comissão, do maior
-        pro menor. Zera todo dia.
+        Comissão efetiva de cada vendedor no período — quanto do que vendeu virou comissão, do
+        maior pro menor.
       </p>
 
-      <RankingComissaoMatrix rows={ranking} />
+      <PeriodPicker period={period} />
+
+      <RankingComissaoMatrix rows={ranking} period={period} />
     </div>
   );
 }
