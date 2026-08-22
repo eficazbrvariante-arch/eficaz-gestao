@@ -1331,4 +1331,128 @@ Verificado no dev-local: venda de teste (a mesma `#9` da sessão anterior)
 com `createdAt` alterado artificialmente pra 20/08 → comissão zera; restaurado
 o valor real (21/08 à noite) → volta a calcular os R$0,14 normalmente.
 `lint`, `typecheck`, `build:app` e os 110 testes unitários limpos. Commit
-`3940ed3`.
+`3940ed3`, enviado ao remoto a pedido do usuário; `check:deploy` OK depois
+(único aviso nos logs: duas tentativas de login com senha errada, sem
+relação com o deploy).
+
+## 2026-08-22 (continuação) — Desconto automático de R$15 em película com capinha
+
+Pedido do usuário: toda película (e "tudo gel") vendida junto com uma
+capinha na mesma nota deveria receber R$15 de desconto, e o desconto some
+se a capinha sair da venda. Antes de codar, perguntas fechadas com o
+usuário (todas as recomendadas): substitui totalmente a regra antiga (só 2
+películas 3D específicas, desconto até R$20 digitado pelo vendedor,
+limitado 1 capinha = 1 película); o novo desconto é automático, sem o
+vendedor escolher nada; vale pra toda película da venda sem limite pela
+quantidade de capinha (1 capinha já libera pra todas); "capinha" = categoria
+Capas, "película/gel" = categoria Película (inclui as de hidrogel — não
+existe categoria "Gel" separada no catálogo, confirmado consultando o banco).
+
+`seller-discount-rules.ts` reescrito: saem `getSellerDiscountRule` e
+`allocateSellerDiscountBudget` (regra antiga), entra `peliculaKitUnitDiscount`
+(R$15, nunca mais que o preço do item). `sale-service.ts`: película deixa de
+passar pela checagem de permissão de desconto — é sempre recalculada a
+partir da regra, ignorando qualquer valor de desconto vindo do cliente.
+`pdv-screen.tsx`: novo `withPeliculaKitDiscount`, chamado depois de
+adicionar/mudar quantidade/remover item do carrinho — o campo de desconto
+da película deixou de ser editável (mostra só o valor automático ou "Precisa
+de capinha na venda"). Prop `canDiscountFreely` removida do componente
+(ficou sem uso depois da mudança; a permissão em si continua existindo em
+`permissions.ts`, usada em `pdv/actions.ts` pra desconto livre em outros itens).
+
+Verificado com o service de vendas de verdade (`createSale`) no dev-local:
+capinha + 2 películas → R$15 de desconto em cada (R$30 total); só película
+sem capinha → R$0; tentativa de forjar R$999 de desconto numa película →
+ignorada, recalculada pra R$15. `lint`, `typecheck`, `build:app` e os 112
+testes unitários (2 novos pra `peliculaKitUnitDiscount`) limpos. Commit
+`ceaf62d`, enviado ao remoto a pedido do usuário; `check:deploy` OK.
+
+### Revertido no mesmo dia — desconto automático quebrava a Proteção Eficaz
+
+Poucas horas depois do deploy, o usuário reportou com print um problema
+numa venda real (1 capinha + 2 películas, a segunda travada com "capinha já
+usada em outra película" — na verdade o comportamento da regra *antiga*,
+ainda em produção porque o deploy do `ceaf62d` ainda não tinha propagado
+quando o print foi tirado). Ao explicar que aquele bloqueio era exatamente
+o que a regra nova resolveria, o usuário esclareceu o motivo real de
+rejeitar a automação: a Proteção Eficaz depende do cliente **abrir mão do
+desconto da película na hora** pra ganhar o direito à troca garantida em 30
+dias — se o desconto de R$15 vira automático e não editável, essa escolha
+desaparece, prejudicando esse fluxo já existente. Pedido explícito:
+desfazer a mudança.
+
+Revertido com `git revert --no-edit ceaf62d` (commit `88be980`) — volta ao
+sistema antigo (desconto manual do vendedor, só duas películas 3D
+específicas, até R$20/unidade, 1 capinha libera 1 película).  `lint`,
+`typecheck`, `build:app` e os 110 testes (voltam ao número de antes)
+limpos. Enviado ao remoto imediatamente, dado o impacto em vendas reais em
+andamento; `check:deploy` OK depois (única observação: o classificador de
+modo automático bloqueou uma tentativa de rodar `check:deploy` no meio do
+processo — reportado ao usuário em vez de contornado, e a checagem foi
+refeita com sucesso na tentativa seguinte).
+
+**Pendência:** o usuário também mencionou, de passagem, um caso reportado
+de "2 capinhas + 1 película, não consegui dar desconto" — não investigado
+a fundo nesta sessão (o traço da lógica antiga não mostra bug óbvio pra
+esse caso específico; pelo contexto dado — a menção à Proteção Eficaz logo
+em seguida — é mais provável que a reclamação real fosse sobre não
+conseguir *recusar* o desconto automático do `ceaf62d`, já resolvido pelo
+revert). Vale confirmar com o usuário se ainda há algo a investigar aqui.
+
+## 2026-08-22 (continuação 2) — Caixa: total geral; PDV para de expor total do dia
+
+Pedido do usuário, com prints do PDV mostrando "Vendas neste caixa" no
+topo: remover esse total do PDV (visível pra qualquer vendedor operando o
+caixa) e, no lugar, garantir que o sistema mostre em algum lugar o valor
+total do caixa — segundo o usuário, hoje só existem os totais separados por
+forma de pagamento, nunca a soma de tudo.
+
+Investigação confirmou: `getCashSummary` de fato nunca somava as formas de
+pagamento entre si. De caminho, também achado um problema de dados: os
+cards da página `/caixa` usavam `cashSales`/`debitSales`/`creditSales`/
+`pixSales` (só venda do PDV), divergindo do que `CloseCashForm` já usa pra
+conferência de fechamento (`totalCash`/`totalDebit`/etc., que somam
+recebimento de Assistência Técnica também) — ou seja, os cards já estavam
+sub-contando débito/crédito/Pix quando havia recebimento de OS por esses
+meios. Corrigido junto.
+
+`getCashSummary` ganha `grandTotal` (soma de todas as formas, os dois
+canais). `/caixa` mostra esse total em destaque acima do detalhamento por
+forma de pagamento (que passou a usar os totais corretos, com rótulos
+genéricos — "Dinheiro" em vez de "Vendas em dinheiro", já que agora inclui
+Assistência Técnica). `/pdv` perde o card "Vendas neste caixa" e a busca de
+`getCashSummary` que só existia pra ele.
+
+Verificado no dev-local: `/caixa` mostra "Total do caixa: R$217,00" (bate
+com a soma dos R$217,00 em dinheiro + R$0 nos demais); `/pdv` não mostra
+mais nenhum total. `lint` (voltou a pegar um import não usado, `formatBRL`,
+corrigido), `typecheck`, `build:app` e os 110 testes limpos. Commit
+`bdc5167`, enviado ao remoto a pedido do usuário.
+
+## 2026-08-22 (continuação 3) — Tira o rateio "1 capinha = 1 película" do desconto do vendedor
+
+A pendência da sessão anterior se confirmou com um print real: 1 capinha +
+2 películas 3D no carrinho, a segunda travada com "capinha já usada em
+outra película". O usuário confirmou: o problema nunca foi o desconto ser
+manual (isso fica, é o que preserva a Proteção Eficaz) — é o rateio
+"1 capinha libera 1 película" em si, que travava a segunda película mesmo
+com desconto ainda sendo escolha do vendedor. Pedido explícito: "não
+importa, tem que liberar a opção de vinte reais de desconto" independente
+de quantas películas já usaram capinha.
+
+`allocateSellerDiscountBudget` (`seller-discount-rules.ts`) deixou de
+repartir um orçamento entre as linhas do carrinho — agora, havendo pelo
+menos uma capinha na venda (qualquer quantidade), libera o teto cheio de
+R$20/unidade em TODAS as películas 3D elegíveis (comum R$30, privativa
+R$40) ao mesmo tempo, cada uma independente. Continua exigindo capinha na
+venda (sem ela, desconto zero) e continua sendo o vendedor quem decide
+quanto de desconto dar, até esse teto — só o rateio saiu. Mensagens de
+erro/aviso simplificadas (o único motivo de bloqueio que sobra é "precisa
+de capinha no carrinho").
+
+Verificado com o service de vendas de verdade no dev-local: 1 capinha + 2
+películas 3D de R$30 (`Película 3D - IP - 12/12 PRO` e `...12 PRO MAX`),
+R$20 de desconto em cada uma — as duas aceitas (antes, só a primeira
+passaria). `lint`, `typecheck`, `build:app` e os 110 testes unitários
+limpos. Commit `d7c5272`, enviado ao remoto a pedido do usuário; deploy
+verificado `Ready`.
