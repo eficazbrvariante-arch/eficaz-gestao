@@ -46,8 +46,23 @@ export async function createRepairOrder(
     return { ok: false, error: "O desconto não pode ser maior que o total dos serviços." };
   }
 
+  // Garantia: revalidado aqui de novo (nunca confia só no formulário) — só
+  // vincula a uma OS que existe neste tenant e já foi entregue. Nunca reabre
+  // a original, só referencia — o financeiro dela fica intocado.
+  let warrantyOriginal: { id: string; number: number } | null = null;
+  if (input.warrantyOriginalId) {
+    const original = await prisma.repairOrder.findFirst({
+      where: { id: input.warrantyOriginalId, tenantId: ctx.tenantId, status: "DELIVERED" },
+      select: { id: true, number: true },
+    });
+    if (!original) {
+      return { ok: false, error: "OS original da garantia não encontrada ou ainda não entregue." };
+    }
+    warrantyOriginal = original;
+  }
+
   try {
-    const created = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Incremento atômico garante numeração única mesmo com OS abertas ao mesmo tempo.
       const tenant = await tx.tenant.update({
         where: { id: ctx.tenantId },
@@ -55,7 +70,7 @@ export async function createRepairOrder(
         select: { repairOrderSequence: true },
       });
 
-      return tx.repairOrder.create({
+      const created = await tx.repairOrder.create({
         data: {
           tenantId: ctx.tenantId,
           number: tenant.repairOrderSequence,
@@ -74,6 +89,7 @@ export async function createRepairOrder(
           discount: input.discount,
           costPrice: options.canSetCost ? (input.costPrice ?? null) : null,
           createdById: ctx.userId,
+          warrantyOriginalId: warrantyOriginal?.id ?? null,
           items: {
             create: input.items.map((item) => ({
               description: item.description,
@@ -84,13 +100,30 @@ export async function createRepairOrder(
           photos: {
             create: input.photoUrls.map((url, index) => ({ url, order: index })),
           },
-          events: { create: { message: "Ordem de serviço criada" } },
+          events: {
+            create: {
+              message: warrantyOriginal
+                ? `Ordem de serviço criada — garantia da OS #${warrantyOriginal.number}`
+                : "Ordem de serviço criada",
+            },
+          },
         },
         select: { id: true, number: true },
       });
+
+      if (warrantyOriginal) {
+        await tx.repairOrderEvent.create({
+          data: {
+            repairOrderId: warrantyOriginal.id,
+            message: `Garantia acionada — nova OS #${created.number}`,
+          },
+        });
+      }
+
+      return created;
     });
 
-    return { ok: true, id: created.id, number: created.number };
+    return { ok: true, id: result.id, number: result.number };
   } catch {
     return { ok: false, error: "Não foi possível criar a ordem de serviço. Tente novamente." };
   }

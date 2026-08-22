@@ -45,6 +45,11 @@ export default async function OrdemServicoPage({
         select: { id: true, message: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       },
+      warrantyOriginal: { select: { id: true, number: true } },
+      warrantyClaims: {
+        select: { id: true, number: true, status: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!order) notFound();
@@ -117,6 +122,8 @@ export default async function OrdemServicoPage({
       message: event.message,
       createdAt: formatDateTime(event.createdAt),
     })),
+    warrantyOriginal: order.warrantyOriginal,
+    warrantyClaims: order.warrantyClaims,
   };
 
   return (

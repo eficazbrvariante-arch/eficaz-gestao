@@ -111,7 +111,14 @@ export type RepairOrderMeta = {
   updatedAt: string;
   pickedUpAt: string | null;
   events: HistoryEvent[];
+  /** Preenchido quando esta OS em si nasceu como garantia de outra. */
+  warrantyOriginal: { id: string; number: number } | null;
+  /** OS de garantia abertas a partir desta — só populado quando `status === "DELIVERED"`. */
+  warrantyClaims: { id: string; number: number; status: RepairOrderStatusValue }[];
 };
+
+/** Só existe ao abrir a tela de criação a partir de "Acionar garantia" numa OS já entregue. */
+export type WarrantyOriginalInfo = { id: string; number: number; deliveredAt: string | null };
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -130,6 +137,7 @@ export function RepairOrderWorkspace({
   financials,
   canFiado,
   canGrantCourtesy,
+  warrantyOriginal,
 }: {
   defaults: RepairOrderDefaults;
   meta?: RepairOrderMeta;
@@ -143,6 +151,8 @@ export function RepairOrderWorkspace({
   canFiado: boolean;
   /** Só ADMIN — dispensar saldo pendente sem cobrança. */
   canGrantCourtesy: boolean;
+  /** Só na criação, vindo de "Acionar garantia" numa OS já entregue. */
+  warrantyOriginal?: WarrantyOriginalInfo;
 }) {
   const router = useRouter();
   const isEditing = Boolean(meta);
@@ -374,6 +384,7 @@ export function RepairOrderWorkspace({
         quantity: line.quantity,
       })),
       photoUrls,
+      warrantyOriginalId: warrantyOriginal?.id ?? "",
     };
   }
 
@@ -521,6 +532,51 @@ export function RepairOrderWorkspace({
         <FormBanner message={error} variant="error" />
         <FormBanner message={success} variant="success" />
       </div>
+
+      {warrantyOriginal && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
+          🛡 Garantia da OS #{String(warrantyOriginal.number).padStart(6, "0")}
+          {warrantyOriginal.deliveredAt && ` — entregue em ${warrantyOriginal.deliveredAt}`}. Os
+          dados do aparelho já vieram preenchidos e os serviços entraram sem cobrança — ajuste o
+          valor se for cobrar algo fora da garantia.
+        </div>
+      )}
+
+      {isEditing && meta?.warrantyOriginal && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
+          🛡 Esta OS é garantia da{" "}
+          <Link
+            href={`/assistencia-tecnica/${meta.warrantyOriginal.id}`}
+            className="font-medium underline"
+          >
+            OS #{String(meta.warrantyOriginal.number).padStart(6, "0")}
+          </Link>
+          .
+        </div>
+      )}
+
+      {isEditing && meta && meta.warrantyClaims.length > 0 && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm print:hidden">
+          <p className="mb-2 font-semibold text-slate-900">Garantias acionadas nesta OS</p>
+          <ul className="space-y-1">
+            {meta.warrantyClaims.map((claim) => (
+              <li key={claim.id}>
+                <Link href={`/assistencia-tecnica/${claim.id}`} className="text-slate-700 hover:underline">
+                  OS #{String(claim.number).padStart(6, "0")}
+                </Link>{" "}
+                <span
+                  className={clsx(
+                    "ml-1 inline-block rounded px-2 py-0.5 text-xs font-medium",
+                    REPAIR_ORDER_STATUS_BADGE_CLASSES[claim.status]
+                  )}
+                >
+                  {REPAIR_ORDER_STATUS_LABELS[claim.status]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Cliente */}
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -866,6 +922,16 @@ export function RepairOrderWorkspace({
                 >
                   {REPAIR_ORDER_STATUS_LABELS[status]}
                 </span>
+
+                {status === "DELIVERED" && (
+                  <Link
+                    href={`/assistencia-tecnica/novo/garantia/${meta.id}`}
+                    target="_blank"
+                    className="mt-3 block w-full rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-center text-sm font-medium text-amber-800 hover:bg-amber-100"
+                  >
+                    🛡 Acionar garantia
+                  </Link>
+                )}
 
                 <div className="mt-4 space-y-1 border-t border-slate-100 pt-3 text-sm text-slate-600">
                   <Label htmlFor="estimatedAt">Data prevista de entrega</Label>

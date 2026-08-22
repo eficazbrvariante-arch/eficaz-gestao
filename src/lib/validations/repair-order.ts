@@ -65,6 +65,9 @@ export const repairOrderSchema = z.object({
   costPrice: z.coerce.number().min(0, "O preço de custo não pode ser negativo").nullable().optional(),
   items: z.array(repairOrderItemSchema),
   photoUrls: z.array(z.string()),
+  /** Preenchido só ao criar uma OS de garantia (a partir de uma OS já
+   *  entregue) — revalidado no servidor, nunca confia só no que veio daqui. */
+  warrantyOriginalId: z.string().trim().optional().or(z.literal("")),
 });
 export type RepairOrderInput = z.infer<typeof repairOrderSchema>;
 
