@@ -5,6 +5,23 @@ function round2(value: number) {
 }
 
 /**
+ * A alíquota única de 2% (e suas exceções por produto) só passou a valer a
+ * partir desta data — pedido explícito do usuário pra não retroagir: venda
+ * anterior a isso nunca gera comissão, mesmo que o período pedido comece
+ * antes. Não existe "história" de comissão/ranking anterior a este dia.
+ */
+const COMMISSION_POLICY_EFFECTIVE_AT = new Date("2026-08-21T00:00:00-03:00");
+
+/** `createdAt` efetivo pra consultas de comissão — nunca abre antes da data acima, mesmo sem `range` (total acumulado). */
+function effectiveCreatedAtFilter(range?: { start: Date; end: Date }) {
+  const gte =
+    range && range.start.getTime() > COMMISSION_POLICY_EFFECTIVE_AT.getTime()
+      ? range.start
+      : COMMISSION_POLICY_EFFECTIVE_AT;
+  return range ? { gte, lt: range.end } : { gte };
+}
+
+/**
  * Comissão de um item — todo o catálogo entra por padrão, na alíquota geral
  * (`Tenant.defaultCommissionPercent`). `commissionPercent`/`commissionType`
  * no produto são só uma exceção opcional: se o Admin configurar um
@@ -34,7 +51,9 @@ function itemCommission(
  * Comissão por vendedor — todas as vendas concluídas, ou só as de um
  * período (`range`) quando informado. Usada tanto pro total acumulado
  * (card do colaborador, sem `range`) quanto pro Ranking de Comissão (com
- * `range` do dia).
+ * `range` do dia). Nunca considera venda anterior a
+ * `COMMISSION_POLICY_EFFECTIVE_AT`, mesmo pedindo o total acumulado desde
+ * sempre.
  */
 export async function getCommissionTotalsByUsers(
   tenantId: string,
@@ -56,7 +75,7 @@ export async function getCommissionTotalsByUsers(
         tenantId,
         sellerId: { in: userIds },
         status: "COMPLETED",
-        ...(range ? { createdAt: { gte: range.start, lt: range.end } } : {}),
+        createdAt: effectiveCreatedAtFilter(range),
       },
     },
     select: {
@@ -120,10 +139,15 @@ export async function getSellerCommissionHistory(
   const defaultPercent = Number(tenant.defaultCommissionPercent);
 
   const rows: SellerCommissionSaleRow[] = sales.map((sale) => {
-    const commission = sale.items.reduce(
-      (sum, item) => sum + itemCommission(Number(item.total), item.quantity, item.product, defaultPercent),
-      0
-    );
+    // Venda continua listada (é histórico de verdade, útil pra comparar) —
+    // só não gera comissão se for anterior à alíquota única entrar em vigor.
+    const commission =
+      sale.createdAt < COMMISSION_POLICY_EFFECTIVE_AT
+        ? 0
+        : sale.items.reduce(
+            (sum, item) => sum + itemCommission(Number(item.total), item.quantity, item.product, defaultPercent),
+            0
+          );
     return {
       saleId: sale.id,
       number: sale.number,
@@ -158,8 +182,11 @@ export type CommissionRankingRow = {
  * vendido). Com a alíquota geral valendo pra todo o catálogo, o percentual
  * de cada vendedor tende a ficar igual à alíquota configurada — só varia se
  * o mix de produtos vendidos incluir algum item com percentual/valor fixo
- * personalizado (exceção configurada no cadastro do produto). Só entram
- * vendedores com pelo menos uma venda concluída no período informado
+ * personalizado (exceção configurada no cadastro do produto). Tanto o total
+ * vendido quanto a comissão nunca contam venda anterior a
+ * `COMMISSION_POLICY_EFFECTIVE_AT` — o ranking não tem história antes disso,
+ * mesmo que o período pedido comece antes. Só entram vendedores com pelo
+ * menos uma venda concluída (dentro dessa janela) no período informado
  * (padrão "hoje" — ver `resolvePeriod` na página).
  */
 export async function getCommissionRanking(
@@ -183,7 +210,7 @@ export async function getCommissionRanking(
         tenantId,
         sellerId: { in: userIds },
         status: "COMPLETED",
-        createdAt: { gte: start, lt: end },
+        createdAt: effectiveCreatedAtFilter({ start, end }),
       },
       _sum: { total: true },
     }),
