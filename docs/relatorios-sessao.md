@@ -1140,3 +1140,72 @@ contra dados reais (sem login disponível pra simular o fluxo completo:
 cadastro → aprovação → escanear QR no PDV → fechar venda). Vale o usuário
 testar esse fluxo ponta a ponta antes de anunciar o benefício pra Havan de
 verdade.
+
+## 2026-08-21 — Ajuste rápido de estoque na listagem de Produtos + Ranking de Comissão (tema Matrix)
+
+**1. Continuidade do ajuste rápido de estoque direto na listagem de Produtos**
+(implementado numa sessão anterior, ainda não commitado). Duas caixinhas por
+linha — "+" soma à quantidade atual (reposição), "Def." define o valor
+absoluto (correção de contagem, inclusive pra zerar estoque negativo) —
+usando `applyStockMovement`, extraído como serviço compartilhado entre o
+formulário dedicado (`/estoque/novo`) e o atalho inline, pra não duplicar a
+lógica de transação + `StockMovement` + auditoria. Testado ao vivo no
+navegador (subindo o dev server e logando manualmente, já que não insiro
+senha em campo nenhum): "+" e "Def." atualizam a linha sem reload, com toast
+de confirmação. `lint`, `typecheck` e `build:app` sem erros/warnings novos.
+Commit `00a12bf`.
+
+**2. Novo Ranking de Comissão, tema Matrix.** Pedido do usuário: um gráfico
+no menu, logo abaixo de "Assistência Técnica", mostrando os vendedores
+ranqueados pela comissão. Página nova em `/colaboradores/ranking-comissao`
+(Admin/Gerente, mesma permissão de `/colaboradores`). A métrica não é a
+alíquota configurada (essa é igual pro catálogo todo, só varia por produto)
+e sim a **comissão efetiva** de cada vendedor — comissão recebida ÷ total
+vendido, em % — que reflete o mix de produtos que cada um vendeu. Nova
+função `getCommissionRanking` em `commission-service.ts`. Visual: fundo
+preto, textura sutil de grade, fonte monoespaçada, medalhas 🥇🥈🥉 pro
+top 3, nome em branco, porcentagem em verde com glow, barra em gradiente
+verde proporcional ao valor, e os valores em R$ sempre visíveis (não só no
+hover). Banco `dev-local` não tem nenhuma venda concluída registrada, então
+o estado vazio foi o que testei dentro do app de verdade; o visual da lista
+populada foi conferido à parte, numa página HTML estática isolada (fora do
+repo, com dados fictícios), sem tocar no banco. `lint`, `typecheck` e
+`build:app` sem erros/warnings novos. Commit `bcbbc8d`.
+
+**3. Push e verificação pós-deploy.** A pedido do usuário, os dois commits
+foram enviados (`git push origin main`); deploy na Vercel acompanhado até
+`Ready` e `npm run check:deploy` rodado — home do painel, home da loja,
+página de produto, filtro por categoria, rota `comprar-whatsapp` (redirect,
+não 500) e logs de erro recentes, tudo OK.
+
+**Nota:** o restante do work-in-progress que já estava no working tree antes
+desta sessão (garantia em Assistência Técnica, painel de horas de
+Colaboradores, validações de `employee-ledger`/`repair-order`, scripts de
+QA multitenant, `docs/auditoria-*`/`plano-correcao.md`/`marketplace-readiness.md`,
+migration de garantia) não foi tocado nem commitado — não fazia parte do
+pedido desta sessão.
+
+## 2026-08-21 (continuação) — Retomada do WIP: garantia em OS, passagem no pagamento por horas, e commit de tudo que estava pendente
+
+Pedido do usuário para continuar o trabalho que já estava pronto no working
+tree (não fazia parte da sessão anterior, registrada acima) e, em seguida,
+commitar.
+
+**1. Verificação do que já estava implementado.** As duas features de
+código já estavam completas (garantia encadeada em OS entregues, com
+migration `20260817150000_add_repair_order_warranty_chain`; passagem
+opcional somada ao pagamento por horas dos Colaboradores) — faltava só
+validar. Rodado `lint` (0 erros, só os 9 warnings pré-existentes de sempre),
+`typecheck` (limpo), `npm run build` completo (com `prisma migrate deploy`,
+por envolver schema/migration) e `npm test` (110 testes, todos passando).
+Nenhum código foi alterado nesta etapa, só verificado.
+
+**2. Commits.** A pedido do usuário, tudo que estava pendente no working
+tree foi organizado em commits separados por assunto: garantia em OS,
+passagem no pagamento por horas, suíte de integração de QA multi-tenant
+(Etapa B da auditoria, com os scripts de seed/cleanup e os testes contra o
+banco `dev-local`), e os documentos de auditoria/plano de correção (Etapa A,
+diagnóstico estático, sem alteração de código). Não commitado: `.codex/`
+(config de hooks de outra ferramenta, não relacionada a este código —
+deixado de fora até confirmar com o usuário se deve entrar no repositório).
+Nada foi enviado ao remoto (`git push`) nesta etapa.
