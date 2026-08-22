@@ -59,6 +59,16 @@ export const cancelSaleSchema = z.object({
 export type CancelSaleInput = z.infer<typeof cancelSaleSchema>;
 export type CancelSaleFormValues = z.input<typeof cancelSaleSchema>;
 
+export const editSaleItemSchema = z.object({
+  itemId: z.string().trim().min(1),
+  unitPrice: z.coerce.number().min(0, "Preço não pode ser negativo"),
+  discount: z.coerce.number().min(0, "Desconto não pode ser negativo").default(0),
+});
+export const editSaleSchema = z.object({
+  edits: z.array(editSaleItemSchema).min(1, "Corrija ao menos um item"),
+});
+export type EditSaleInput = z.infer<typeof editSaleSchema>;
+
 export const findSaleByNumberSchema = z.object({
   number: z.coerce.number().int().positive("Informe um número de cupom válido"),
 });

@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime, nameInitials } from "@/lib/format";
-import { canCancelSale, canViewAllSales } from "@/lib/permissions";
+import { canCancelSale, canEditSale, canViewAllSales } from "@/lib/permissions";
 import { storeDisplayHost, storeOrigin } from "@/modules/catalog/tenant-resolver";
 import { SaleActions } from "./sale-controls";
 
@@ -36,6 +36,8 @@ export default async function ComprovantePage({
         customer: true,
         seller: { select: { name: true } },
         cancelledBy: { select: { name: true } },
+        editedBy: { select: { name: true } },
+        cashRegister: { select: { status: true } },
         convenioRedemption: {
           include: { member: { select: { name: true } }, convenio: { select: { name: true } } },
         },
@@ -56,11 +58,20 @@ export default async function ComprovantePage({
   });
 
   const isCancelled = sale.status === "CANCELLED";
+  const canEdit = canEditSale(user.role) && !isCancelled && sale.cashRegister.status === "OPEN";
 
   const defectItems = sale.items.map((item) => ({
     id: item.id,
     nameSnapshot: item.nameSnapshot,
     remaining: item.quantity - item.defects.reduce((sum, d) => sum + d.quantity, 0),
+  }));
+
+  const editableItems = sale.items.map((item) => ({
+    id: item.id,
+    nameSnapshot: item.nameSnapshot,
+    quantity: item.quantity,
+    unitPrice: Number(item.unitPrice),
+    discount: Number(item.discount),
   }));
 
   return (
@@ -71,10 +82,12 @@ export default async function ComprovantePage({
           saleTotal={Number(sale.total)}
           existingCustomer={sale.customer ? { id: sale.customer.id, name: sale.customer.name } : null}
           canCancel={canCancelSale(user.role)}
+          canEdit={canEdit}
           canViewAllSales={canViewAllSales(user.role)}
           isCancelled={isCancelled}
           openCancelForm={cancelar === "1"}
           items={isCancelled ? [] : defectItems}
+          editableItems={editableItems}
         />
       </div>
 
@@ -110,6 +123,14 @@ export default async function ComprovantePage({
             <p className="mt-1 text-xs text-red-600">
               {sale.cancelledBy?.name}
               {sale.cancelledAt ? ` · ${formatDateTime(sale.cancelledAt)}` : ""}
+            </p>
+          </div>
+        )}
+
+        {sale.editedAt && (
+          <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-2 text-center">
+            <p className="text-xs font-medium text-amber-800">
+              Nota editada por {sale.editedBy?.name} em {formatDateTime(sale.editedAt)}
             </p>
           </div>
         )}

@@ -59,6 +59,16 @@ export function canCancelSale(role: UserRole) {
 }
 
 /**
+ * Corrigir preço/desconto de um item de uma venda já concluída (sem trocar
+ * produto, sem mudar o total cobrado). Só ADMIN — diferente de cancelar
+ * (que Vendedor/Gerente também fazem), editar reescreve um fato já
+ * registrado, então fica restrito a quem responde pela empresa.
+ */
+export function canEditSale(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Ver a listagem geral de vendas (histórico completo, qualquer data).
  * Vendedor não tem esse acesso — pra achar uma venda antiga (ex.: pra
  * trocar um produto) ele usa a busca por número do cupom em /vendas/buscar.

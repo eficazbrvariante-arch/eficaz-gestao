@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 
 export type AuditAction =
   | "sale.cancel"
+  | "sale.edit"
   | "sale.item_defect"
   | "customer.merge"
   | "order.status_change"
@@ -41,6 +42,7 @@ export type AuditAction =
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
+  "sale.edit": "Preço/desconto de item corrigido em venda concluída",
   "sale.item_defect": "Troca por defeito registrada",
   "customer.merge": "Cadastros de cliente mesclados",
   "order.status_change": "Status de pedido alterado",

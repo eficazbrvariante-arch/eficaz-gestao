@@ -221,6 +221,7 @@ model User {
   registersClosed              CashRegister[]           @relation("CashRegisterClosedBy")
   salesMade                    Sale[]                   @relation("SaleSeller")
   salesCancelled               Sale[]                   @relation("SaleCancelledBy")
+  salesEdited                  Sale[]                   @relation("SaleEditedBy")
   salesAssisted                Sale[]                   @relation("SaleAssistantSeller")
   saleItemDefectsReported      SaleItemDefect[]
   auditLogs                    AuditLog[]
@@ -1045,6 +1046,12 @@ model Sale {
   cancelledAt           DateTime?
   cancelledById         String?
   cancelReason          String?
+  /// Preenchido quando um ADMIN corrige preço/desconto de um item já
+  /// vendido (ver `editSaleItems`) — só a última edição fica aqui; o
+  /// detalhe completo de cada correção (valor antigo → novo) vai pro log
+  /// central de auditoria (`AuditLog`, ação `sale.edit`).
+  editedAt              DateTime?
+  editedById            String?
 
   tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister       CashRegister             @relation(fields: [cashRegisterId], references: [id])
@@ -1052,6 +1059,7 @@ model Sale {
   seller             User                     @relation("SaleSeller", fields: [sellerId], references: [id])
   assistantSeller    User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
   cancelledBy        User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+  editedBy           User?                    @relation("SaleEditedBy", fields: [editedById], references: [id])
   items              SaleItem[]
   payments           Payment[]
   stockMovements     StockMovement[]

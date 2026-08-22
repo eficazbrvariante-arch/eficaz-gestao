@@ -10,7 +10,7 @@ import {
   type CancelSaleInput,
   type CancelSaleFormValues,
 } from "@/lib/validations/sale";
-import { cancelSaleAction, reportSaleItemDefectAction } from "../actions";
+import { cancelSaleAction, editSaleAction, reportSaleItemDefectAction } from "../actions";
 import { searchCustomersAction } from "../../clientes/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,21 @@ export type SaleItemDefectOption = {
   remaining: number;
 };
 
+export type EditableSaleItem = {
+  id: string;
+  nameSnapshot: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+};
+
+/** Tolerância pra comparar o total corrigido com o original (ruído de ponto flutuante). */
+const CENT = 0.005;
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 export function PrintButton() {
   return (
     <button
@@ -47,26 +62,78 @@ export function SaleActions({
   saleTotal,
   existingCustomer,
   canCancel,
+  canEdit,
   canViewAllSales,
   isCancelled,
   openCancelForm = false,
   items,
+  editableItems,
 }: {
   saleId: string;
   saleTotal: number;
   /** Cliente já vinculado à venda, se houver — recebe o crédito automaticamente. */
   existingCustomer: { id: string; name: string } | null;
   canCancel: boolean;
+  /** Só ADMIN, venda não cancelada e caixa ainda aberto — ver `canEditSale`. */
+  canEdit: boolean;
   canViewAllSales: boolean;
   isCancelled: boolean;
   /** Abre o formulário de cancelamento já expandido (link direto da lista de vendas). */
   openCancelForm?: boolean;
   /** Itens da venda elegíveis para troca por defeito — só quem ainda tem quantidade sobrando aparece. */
   items: SaleItemDefectOption[];
+  /** Itens da venda pra corrigir preço/desconto — sem produto/quantidade, isso não muda. */
+  editableItems: EditableSaleItem[];
 }) {
   const [showCancel, setShowCancel] = useState(openCancelForm && canCancel && !isCancelled);
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
+
+  const [showEdit, setShowEdit] = useState(false);
+  const [editValues, setEditValues] = useState<{ unitPrice: string; discount: string }[]>(() =>
+    editableItems.map((item) => ({ unitPrice: String(item.unitPrice), discount: String(item.discount) }))
+  );
+  const [editError, setEditError] = useState<string>();
+  const [isEditing, startEditTransition] = useTransition();
+
+  const editedTotal = round2(
+    editableItems.reduce((sum, item, index) => {
+      const unitPrice = Number(editValues[index]?.unitPrice) || 0;
+      const discount = Number(editValues[index]?.discount) || 0;
+      return sum + round2(unitPrice * item.quantity - discount);
+    }, 0)
+  );
+  const editedTotalMatches = Math.abs(editedTotal - saleTotal) <= CENT;
+
+  function openEdit() {
+    setEditValues(
+      editableItems.map((item) => ({ unitPrice: String(item.unitPrice), discount: String(item.discount) }))
+    );
+    setEditError(undefined);
+    setShowEdit(true);
+  }
+
+  function submitEdit() {
+    setEditError(undefined);
+    if (!editedTotalMatches) {
+      setEditError("O total corrigido precisa ficar igual ao total original da venda.");
+      return;
+    }
+    startEditTransition(async () => {
+      const result = await editSaleAction(saleId, {
+        edits: editableItems.map((item, index) => ({
+          itemId: item.id,
+          unitPrice: Number(editValues[index]?.unitPrice) || 0,
+          discount: Number(editValues[index]?.discount) || 0,
+        })),
+      });
+      if (result?.error) {
+        setEditError(result.error);
+        return;
+      }
+      setShowEdit(false);
+    });
+  }
 
   const [creditCustomer, setCreditCustomer] = useState<CustomerOption | null>(null);
   const [customerTerm, setCustomerTerm] = useState("");
@@ -192,6 +259,15 @@ export function SaleActions({
             Buscar outra venda
           </Link>
         )}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => (showEdit ? setShowEdit(false) : openEdit())}
+            className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50"
+          >
+            Editar venda
+          </button>
+        )}
         {canCancel && !isCancelled && (
           <button
             type="button"
@@ -211,6 +287,82 @@ export function SaleActions({
           </button>
         )}
       </div>
+
+      {showEdit && (
+        <div className="mt-4 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="mb-3 text-sm text-amber-900">
+            Corrija preço unitário e/ou desconto dos itens já vendidos — o produto e a quantidade
+            não mudam. O total precisa continuar {formatBRL(saleTotal)}; a correção fica registrada
+            no histórico com seu nome.
+          </p>
+          <FormBanner message={editError} variant="error" />
+
+          <div className="mb-3 space-y-3">
+            {editableItems.map((item, index) => (
+              <div key={item.id} className="rounded-md border border-amber-200 bg-white p-3">
+                <p className="mb-2 text-sm font-medium text-slate-900">
+                  {item.nameSnapshot} <span className="text-xs text-slate-400">× {item.quantity}</span>
+                </p>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <Label htmlFor={`edit-price-${item.id}`}>Preço unitário</Label>
+                    <Input
+                      id={`edit-price-${item.id}`}
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={editValues[index]?.unitPrice ?? ""}
+                      onChange={(e) =>
+                        setEditValues((prev) =>
+                          prev.map((v, i) => (i === index ? { ...v, unitPrice: e.target.value } : v))
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label htmlFor={`edit-discount-${item.id}`}>Desconto</Label>
+                    <Input
+                      id={`edit-discount-${item.id}`}
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={editValues[index]?.discount ?? ""}
+                      onChange={(e) =>
+                        setEditValues((prev) =>
+                          prev.map((v, i) => (i === index ? { ...v, discount: e.target.value } : v))
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className={
+              editedTotalMatches
+                ? "mb-3 flex justify-between rounded-md bg-white px-3 py-2 text-sm font-medium text-emerald-700"
+                : "mb-3 flex justify-between rounded-md bg-white px-3 py-2 text-sm font-medium text-red-700"
+            }
+          >
+            <span>Total corrigido</span>
+            <span>
+              {formatBRL(editedTotal)} {editedTotalMatches ? "" : `(original: ${formatBRL(saleTotal)})`}
+            </span>
+          </div>
+
+          <Button
+            type="button"
+            disabled={isEditing || !editedTotalMatches}
+            fullWidth={false}
+            onClick={submitEdit}
+            className="bg-amber-600 px-4 hover:bg-amber-700"
+          >
+            {isEditing ? "Salvando..." : "Salvar correção"}
+          </Button>
+        </div>
+      )}
 
       {showCancel && (
         <form

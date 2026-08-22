@@ -621,6 +621,121 @@ export async function cancelSale(
   }
 }
 
+export type EditSaleItemInput = { itemId: string; unitPrice: number; discount: number };
+export type EditSaleItemChange = {
+  nameSnapshot: string;
+  before: { unitPrice: number; discount: number };
+  after: { unitPrice: number; discount: number };
+};
+export type EditSaleResult =
+  | { ok: true; changes: EditSaleItemChange[] }
+  | { ok: false; error: string };
+
+/**
+ * Corrige preço unitário e/ou desconto de itens já vendidos — nunca troca
+ * produto, quantidade, nem adiciona/remove linha. O total da venda (o que o
+ * cliente já pagou) precisa continuar exatamente igual: a correção só
+ * redistribui valor entre itens (ex.: um item estava caro demais, outro
+ * barato demais), nunca gera saldo a cobrar ou a devolver — isso é troca ou
+ * cancelamento, não edição. Bloqueada se o caixa da venda já fechou, pra não
+ * mudar um relatório de caixa que já foi conferido.
+ */
+export async function editSaleItems(
+  tenantId: string,
+  saleId: string,
+  userId: string,
+  edits: EditSaleItemInput[]
+): Promise<EditSaleResult> {
+  const sale = await prisma.sale.findFirst({
+    where: { id: saleId, tenantId },
+    include: { items: true, cashRegister: { select: { status: true } } },
+  });
+  if (!sale) return { ok: false, error: "Venda não encontrada." };
+  if (sale.status === "CANCELLED") {
+    return { ok: false, error: "Venda cancelada não pode ser editada." };
+  }
+  if (sale.cashRegister.status !== "OPEN") {
+    return { ok: false, error: "O caixa desta venda já foi fechado — não é possível editar." };
+  }
+
+  const editByItemId = new Map(edits.map((e) => [e.itemId, e]));
+  const changes: { itemId: string; nameSnapshot: string; before: { unitPrice: number; discount: number }; unitPrice: number; discount: number; total: number }[] = [];
+
+  let newSubtotal = 0;
+  let newDiscount = 0;
+
+  for (const item of sale.items) {
+    const edit = editByItemId.get(item.id);
+    const unitPrice = edit ? round2(edit.unitPrice) : Number(item.unitPrice);
+    const itemDiscount = edit ? round2(edit.discount) : Number(item.discount);
+    if (unitPrice < 0 || itemDiscount < 0) {
+      return { ok: false, error: "Valores não podem ser negativos." };
+    }
+    const grossTotal = round2(unitPrice * item.quantity);
+    if (itemDiscount > grossTotal + CENT) {
+      return {
+        ok: false,
+        error: `O desconto de "${item.nameSnapshot}" não pode ser maior que o valor do item.`,
+      };
+    }
+    const total = round2(grossTotal - itemDiscount);
+    newSubtotal = round2(newSubtotal + grossTotal);
+    newDiscount = round2(newDiscount + itemDiscount);
+
+    if (edit) {
+      changes.push({
+        itemId: item.id,
+        nameSnapshot: item.nameSnapshot,
+        before: { unitPrice: Number(item.unitPrice), discount: Number(item.discount) },
+        unitPrice,
+        discount: itemDiscount,
+        total,
+      });
+    }
+  }
+
+  if (changes.length === 0) return { ok: false, error: "Nenhuma alteração informada." };
+
+  const newTotal = round2(newSubtotal - newDiscount - Number(sale.convenioDiscount));
+  if (Math.abs(newTotal - Number(sale.total)) > CENT) {
+    return {
+      ok: false,
+      error: `Essa correção mudaria o total da venda de ${formatBRL(Number(sale.total))} para ${formatBRL(newTotal)} — ajuste os valores até o total ficar igual ao original.`,
+    };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const change of changes) {
+        await tx.saleItem.update({
+          where: { id: change.itemId },
+          data: { unitPrice: change.unitPrice, discount: change.discount, total: change.total },
+        });
+      }
+      await tx.sale.update({
+        where: { id: saleId },
+        data: {
+          subtotal: newSubtotal,
+          discount: newDiscount,
+          editedAt: new Date(),
+          editedById: userId,
+        },
+      });
+    });
+
+    return {
+      ok: true,
+      changes: changes.map((c) => ({
+        nameSnapshot: c.nameSnapshot,
+        before: c.before,
+        after: { unitPrice: c.unitPrice, discount: c.discount },
+      })),
+    };
+  } catch {
+    return { ok: false, error: "Não foi possível salvar a correção. Tente novamente." };
+  }
+}
+
 export type ReportSaleItemDefectResult = { ok: true } | { ok: false; error: string };
 
 /**

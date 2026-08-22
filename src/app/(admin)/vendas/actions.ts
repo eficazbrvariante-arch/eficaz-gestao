@@ -3,14 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canCancelSale } from "@/lib/permissions";
-import { cancelSale, reportSaleItemDefect } from "@/modules/sales/sale-service";
+import { canCancelSale, canEditSale } from "@/lib/permissions";
+import { cancelSale, editSaleItems, reportSaleItemDefect } from "@/modules/sales/sale-service";
 import { recordAudit } from "@/modules/audit/audit-service";
+import { formatBRL } from "@/lib/format";
 import {
   cancelSaleSchema,
+  editSaleSchema,
   findSaleByNumberSchema,
   reportSaleItemDefectSchema,
   type CancelSaleInput,
+  type EditSaleInput,
   type FindSaleByNumberInput,
   type ReportSaleItemDefectInput,
 } from "@/lib/validations/sale";
@@ -58,6 +61,43 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
   revalidatePath("/clientes");
 
   return { success: "Venda cancelada e crédito gerado para o cliente." };
+}
+
+export async function editSaleAction(saleId: string, input: EditSaleInput) {
+  const user = await requireUser();
+  if (!canEditSale(user.role)) {
+    return { error: "Seu perfil não tem permissão para editar vendas." };
+  }
+
+  const parsed = editSaleSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Informe os valores corrigidos." };
+  }
+
+  const result = await editSaleItems(user.tenantId, saleId, user.id, parsed.data.edits);
+  if (!result.ok) return { error: result.error };
+
+  const sale = await prisma.sale.findUnique({ where: { id: saleId }, select: { number: true, total: true } });
+  const description = result.changes
+    .map(
+      (c) =>
+        `"${c.nameSnapshot}": preço ${formatBRL(c.before.unitPrice)} → ${formatBRL(c.after.unitPrice)}, desconto ${formatBRL(c.before.discount)} → ${formatBRL(c.after.discount)}`
+    )
+    .join("; ");
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "sale.edit",
+    entity: "Sale",
+    entityId: saleId,
+    description: `Corrigiu a venda #${sale?.number} — ${description}. Total mantido em ${formatBRL(Number(sale?.total ?? 0))}.`,
+  });
+
+  revalidatePath(`/vendas/${saleId}`);
+  revalidatePath("/vendas");
+
+  return { success: "Venda corrigida." };
 }
 
 export async function reportSaleItemDefectAction(saleId: string, input: ReportSaleItemDefectInput) {
