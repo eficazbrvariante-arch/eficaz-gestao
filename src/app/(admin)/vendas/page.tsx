@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime, formatISODate, periodRange, todayISO } from "@/lib/format";
-import { canCancelSale, canSell, canViewAllSales } from "@/lib/permissions";
+import { canCancelSale, canManageRepairOrders, canSell, canViewAllSales } from "@/lib/permissions";
 import { PeriodPicker } from "../relatorios/report-nav";
 
 const STATUS_FILTERS = [
@@ -76,7 +76,15 @@ export default async function VendasPage({
   const period = resolveSalesPeriod({ de, ate });
   const { start, end } = periodRange(period.from, period.to);
 
-  const [sales, viewedRegister] = await Promise.all([
+  // OS de Assistência Técnica aparecem juntas nesta lista só pra comparação
+  // visual (tag "OS") — nunca vira Sale de verdade, então não duplica em
+  // estoque/comissão (o pagamento de OS já é lançado no caixa por outro
+  // caminho, ver `repair-payment-service.ts`). Só quem tem acesso à
+  // Assistência Técnica vê essas linhas; "Canceladas" nunca traz OS, já que
+  // pagamento de OS não tem o conceito de "venda cancelada".
+  const showOsRows = canManageRepairOrders(user.role) && status !== "CANCELLED";
+
+  const [sales, viewedRegister, repairOrderPayments] = await Promise.all([
     prisma.sale.findMany({
       where: {
         tenantId: user.tenantId,
@@ -99,7 +107,86 @@ export default async function VendasPage({
           include: { openedBy: { select: { name: true } }, closedBy: { select: { name: true } } },
         })
       : null,
+    showOsRows
+      ? prisma.repairOrderPayment.findMany({
+          where: {
+            tenantId: user.tenantId,
+            ...(filterCashRegisterId ? { cashRegisterId: filterCashRegisterId } : {}),
+            ...(isSpecificRegisterView ? {} : { createdAt: { gte: start, lt: end } }),
+            repairOrder: { status: { not: "CANCELLED" } },
+          },
+          include: {
+            repairOrder: {
+              select: {
+                id: true,
+                number: true,
+                customer: { select: { name: true } },
+                seller: { select: { name: true } },
+                _count: { select: { items: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        })
+      : Promise.resolve([]),
   ]);
+
+  type SaleRow = {
+    key: string;
+    kind: "SALE" | "OS";
+    displayNumber: string;
+    createdAt: Date;
+    customerName: string;
+    sellerName: string;
+    itemsCount: number;
+    total: number;
+    discount: number;
+    statusLabel: string;
+    statusClassName: string;
+    comprovanteHref: string;
+    cancelHref: string | null;
+  };
+
+  const saleRows: SaleRow[] = sales.map((sale) => ({
+    key: `sale-${sale.id}`,
+    kind: "SALE",
+    displayNumber: `#${sale.number}`,
+    createdAt: sale.createdAt,
+    customerName: sale.customer?.name ?? "Consumidor final",
+    sellerName: sale.seller.name,
+    itemsCount: sale._count.items,
+    total: Number(sale.total),
+    discount: Number(sale.discount),
+    statusLabel: sale.status === "CANCELLED" ? "Cancelada" : "Concluída",
+    statusClassName:
+      sale.status === "CANCELLED"
+        ? "rounded bg-red-50 px-2 py-0.5 text-xs text-red-700"
+        : "rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700",
+    comprovanteHref: `/vendas/${sale.id}`,
+    cancelHref:
+      sale.status === "COMPLETED" && canCancelSale(user.role) ? `/vendas/${sale.id}?cancelar=1` : null,
+  }));
+
+  const osRows: SaleRow[] = repairOrderPayments.map((payment) => ({
+    key: `os-${payment.id}`,
+    kind: "OS",
+    displayNumber: `OS #${String(payment.repairOrder.number).padStart(6, "0")}`,
+    createdAt: payment.createdAt,
+    customerName: payment.repairOrder.customer?.name ?? "Consumidor final",
+    sellerName: payment.repairOrder.seller.name,
+    itemsCount: payment.repairOrder._count.items,
+    total: Number(payment.amount),
+    discount: 0,
+    statusLabel: "Recebido",
+    statusClassName: "rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700",
+    comprovanteHref: `/assistencia-tecnica/${payment.repairOrder.id}/cupom`,
+    cancelHref: null,
+  }));
+
+  const rows = [...saleRows, ...osRows].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+  );
 
   return (
     <div>
@@ -174,6 +261,7 @@ export default async function VendasPage({
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 text-left text-slate-500">
             <tr>
+              {showOsRows && <th className="px-4 py-3 font-medium">Tipo</th>}
               <th className="px-4 py-3 font-medium">Venda</th>
               <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium">Cliente</th>
@@ -185,47 +273,42 @@ export default async function VendasPage({
             </tr>
           </thead>
           <tbody>
-            {sales.map((sale) => (
-              <tr key={sale.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-4 py-3 font-medium text-slate-900">#{sale.number}</td>
-                <td className="px-4 py-3 text-slate-500">{formatDateTime(sale.createdAt)}</td>
-                <td className="px-4 py-3 text-slate-500">
-                  {sale.customer?.name ?? "Consumidor final"}
-                </td>
-                <td className="px-4 py-3 text-slate-500">{sale.seller.name}</td>
-                <td className="px-4 py-3 text-slate-500">{sale._count.items}</td>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-slate-100 last:border-0">
+                {showOsRows && (
+                  <td className="px-4 py-3">
+                    <span
+                      className={
+                        row.kind === "OS"
+                          ? "rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                          : "rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                      }
+                    >
+                      {row.kind === "OS" ? "OS" : "PDV"}
+                    </span>
+                  </td>
+                )}
+                <td className="px-4 py-3 font-medium text-slate-900">{row.displayNumber}</td>
+                <td className="px-4 py-3 text-slate-500">{formatDateTime(row.createdAt)}</td>
+                <td className="px-4 py-3 text-slate-500">{row.customerName}</td>
+                <td className="px-4 py-3 text-slate-500">{row.sellerName}</td>
+                <td className="px-4 py-3 text-slate-500">{row.itemsCount}</td>
                 <td className="px-4 py-3 text-slate-900">
-                  {formatBRL(sale.total)}
-                  {Number(sale.discount) > 0 && (
-                    <div className="text-xs text-slate-400">
-                      desc. {formatBRL(sale.discount)}
-                    </div>
+                  {formatBRL(row.total)}
+                  {row.discount > 0 && (
+                    <div className="text-xs text-slate-400">desc. {formatBRL(row.discount)}</div>
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={
-                      sale.status === "CANCELLED"
-                        ? "rounded bg-red-50 px-2 py-0.5 text-xs text-red-700"
-                        : "rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
-                    }
-                  >
-                    {sale.status === "CANCELLED" ? "Cancelada" : "Concluída"}
-                  </span>
+                  <span className={row.statusClassName}>{row.statusLabel}</span>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-3">
-                    <Link
-                      href={`/vendas/${sale.id}`}
-                      className="text-sm text-slate-600 hover:underline"
-                    >
+                    <Link href={row.comprovanteHref} className="text-sm text-slate-600 hover:underline">
                       Comprovante
                     </Link>
-                    {sale.status === "COMPLETED" && canCancelSale(user.role) && (
-                      <Link
-                        href={`/vendas/${sale.id}?cancelar=1`}
-                        className="text-sm text-red-600 hover:underline"
-                      >
+                    {row.cancelHref && (
+                      <Link href={row.cancelHref} className="text-sm text-red-600 hover:underline">
                         Cancelar
                       </Link>
                     )}
@@ -233,9 +316,9 @@ export default async function VendasPage({
                 </td>
               </tr>
             ))}
-            {sales.length === 0 && (
+            {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={showOsRows ? 9 : 8} className="px-4 py-6 text-center text-slate-400">
                   {isSpecificRegisterView
                     ? "Nenhuma venda registrada ainda."
                     : "Nenhuma venda encontrada nesse período."}
