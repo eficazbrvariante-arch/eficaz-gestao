@@ -1456,3 +1456,30 @@ R$20 de desconto em cada uma — as duas aceitas (antes, só a primeira
 passaria). `lint`, `typecheck`, `build:app` e os 110 testes unitários
 limpos. Commit `d7c5272`, enviado ao remoto a pedido do usuário; deploy
 verificado `Ready`.
+
+### Revertido de novo, minutos depois — o rateio proporcional era o comportamento certo
+
+O usuário esclareceu (sem print desta vez): a trava "1 capinha = 1
+película" **não era o bug** — é assim que tem que funcionar mesmo (2
+películas com só 1 capinha = desconto só numa das duas; a segunda bloqueia
+até ter uma segunda capinha). Ou seja, o commit anterior (`d7c5272`)
+resolveu um "problema" que na verdade era o comportamento correto,
+revertendo por engano a proteção que existia contra dar desconto de
+película acima da quantidade de capinha vendida.
+
+Revertido com `git revert --no-edit d7c5272` (commit `066a74a`) — volta ao
+rateio proporcional original. `lint`, `typecheck`, `build:app` e os 110
+testes limpos. Enviado ao remoto e verificado (`check:deploy` OK)
+imediatamente, dado o vaivém de mudanças already em produção no mesmo dia.
+
+**Pendência real, ainda não resolvida:** o bug original relatado pelo
+usuário — "2 capinhas + 1 película, não consegui dar desconto" — nunca foi
+de fato investigado a fundo; as duas tentativas desta sessão (desconto
+automático, depois remover o rateio) miraram no problema errado. Pelo
+rastreio do código, 2 capinhas + 1 película *deveria* liberar o teto cheio
+de R$20 nessa película (`allocateSellerDiscountBudget` aloca
+`min(quantidade, capinhas restantes)`, e com 2 capinhas sobrando pra 1
+película o resultado é 1 unidade alocada = R$20 de teto) — não haveria
+bug nesse caminho. Próximo passo: pedir ao usuário um print de exatamente
+esse cenário (2 capinhas + 1 película) reproduzindo o problema, em vez de
+adivinhar de novo.
