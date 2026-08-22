@@ -93,11 +93,14 @@ export type RegisterHourlyPaymentResult =
 /**
  * Registra o pagamento por horas como um `EmployeeLedgerEntry` — recalcula a
  * prévia aqui dentro (nunca aceita o valor vindo do formulário), mesmo
- * princípio de `createSale` relendo preço do banco.
+ * princípio de `createSale` relendo preço do banco. `transportAmount`
+ * (opcional) é um valor fixo à parte das horas — ex.: passagem — somado ao
+ * mesmo lançamento, pra virar uma única confirmação/comprovante em vez de um
+ * "Outro" separado que o colaborador poderia esquecer de conferir.
  */
 export async function registerHourlyPayment(
   ctx: { tenantId: string; createdById: string },
-  input: { userId: string; from: string; to: string }
+  input: { userId: string; from: string; to: string; transportAmount?: number }
 ): Promise<RegisterHourlyPaymentResult> {
   const user = await prisma.user.findFirst({
     where: { id: input.userId, tenantId: ctx.tenantId },
@@ -119,23 +122,33 @@ export async function registerHourlyPayment(
         "Tem dia com marcação incompleta no período (falta bater saída) — corrija no Ponto antes de registrar o pagamento.",
     };
   }
-  if (preview.totalMinutes <= 0) {
+
+  const transportAmount = round2(Math.max(0, input.transportAmount ?? 0));
+  if (preview.totalMinutes <= 0 && transportAmount <= 0) {
     return { ok: false, error: "Nenhuma hora trabalhada registrada no Ponto nesse período." };
   }
+
+  const totalAmount = round2(preview.amount + transportAmount);
+  const description = [
+    `${preview.totalHours}h × ${formatBRLNoSymbol(preview.hourlyRate)} (${formatISODate(input.from)} a ${formatISODate(input.to)})`,
+    transportAmount > 0 ? `Passagem ${formatBRLNoSymbol(transportAmount)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" + ");
 
   const created = await prisma.employeeLedgerEntry.create({
     data: {
       tenantId: ctx.tenantId,
       userId: input.userId,
       type: "HOURLY_PAYMENT",
-      amount: preview.amount,
-      description: `${preview.totalHours}h × ${formatBRLNoSymbol(preview.hourlyRate)} (${formatISODate(input.from)} a ${formatISODate(input.to)})`,
+      amount: totalAmount,
+      description,
       createdById: ctx.createdById,
     },
     select: { id: true },
   });
 
-  return { ok: true, id: created.id, amount: preview.amount };
+  return { ok: true, id: created.id, amount: totalAmount };
 }
 
 function formatBRLNoSymbol(value: number) {

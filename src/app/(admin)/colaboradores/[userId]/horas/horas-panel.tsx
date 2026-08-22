@@ -38,7 +38,11 @@ export function HorasPanel({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [rateInput, setRateInput] = useState(String(hourlyRate));
+  const [transportInput, setTransportInput] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
+
+  const transportAmount = Math.max(0, Number(transportInput) || 0);
+  const totalWithTransport = amount + transportAmount;
 
   function handleSaveRate() {
     setFeedback(undefined);
@@ -56,12 +60,13 @@ export function HorasPanel({
   function handleRegister() {
     setFeedback(undefined);
     startTransition(async () => {
-      const result = await registerHourlyPaymentAction({ userId, from, to });
+      const result = await registerHourlyPaymentAction({ userId, from, to, transportAmount });
       if (result?.error) {
         setFeedback({ type: "error", message: result.error });
         return;
       }
       setFeedback({ type: "success", message: result?.success ?? "Pagamento registrado." });
+      setTransportInput("");
       router.refresh();
     });
   }
@@ -139,11 +144,35 @@ export function HorasPanel({
             <span>Valor por hora</span>
             <span className="font-medium text-slate-900">{formatBRL(hourlyRate)}</span>
           </div>
-          <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-bold text-black">
-            <span>Total a pagar</span>
-            <span>{formatBRL(amount)}</span>
+          <div className="flex justify-between border-t border-slate-100 pt-2 text-sm text-slate-600">
+            <span>Subtotal horas</span>
+            <span className="font-medium text-slate-900">{formatBRL(amount)}</span>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="mb-1 text-sm font-semibold text-slate-900">Passagem (opcional)</p>
+        <p className="mb-3 text-xs text-slate-500">
+          Valor fixo somado ao pagamento por horas — entra no mesmo lançamento e na mesma
+          confirmação/comprovante, sem precisar registrar à parte.
+        </p>
+        <div className="w-40">
+          <Label htmlFor="transport-amount">Passagem (R$)</Label>
+          <Input
+            id="transport-amount"
+            type="number"
+            step="0.01"
+            min={0}
+            value={transportInput}
+            onChange={(e) => setTransportInput(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-black shadow-sm">
+        <span>Total a pagar</span>
+        <span>{formatBRL(totalWithTransport)}</span>
       </div>
 
       {hasIncompleteDays && (
@@ -155,12 +184,12 @@ export function HorasPanel({
 
       <Button
         type="button"
-        disabled={isPending || amount <= 0 || hasIncompleteDays}
+        disabled={isPending || totalWithTransport <= 0 || hasIncompleteDays}
         onClick={handleRegister}
         fullWidth={false}
         className="px-4"
       >
-        {isPending ? "Registrando..." : `Registrar pagamento de ${formatBRL(amount)}`}
+        {isPending ? "Registrando..." : `Registrar pagamento de ${formatBRL(totalWithTransport)}`}
       </Button>
     </div>
   );

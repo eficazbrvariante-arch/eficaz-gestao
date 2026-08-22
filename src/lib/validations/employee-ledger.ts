@@ -40,5 +40,8 @@ export const registerHourlyPaymentSchema = z.object({
   userId: z.string().trim().min(1),
   from: z.string().trim().min(1, "Informe o início do período"),
   to: z.string().trim().min(1, "Informe o fim do período"),
+  /** Valor fixo somado ao pagamento por horas (ex.: passagem) — mesmo
+   *  lançamento, mesma confirmação por selfie, em vez de um "Outro" à parte. */
+  transportAmount: z.coerce.number().min(0, "Informe um valor válido").optional().default(0),
 });
 export type RegisterHourlyPaymentInput = z.infer<typeof registerHourlyPaymentSchema>;
