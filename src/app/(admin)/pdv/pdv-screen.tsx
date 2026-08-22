@@ -24,7 +24,12 @@ import { ConvenioModal } from "./convenio-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
 import type { ProtecaoEficazRedemptionCredential } from "@/modules/protecao-eficaz/protecao-eficaz-service";
-import { isCapinhaCategory, isPeliculaCategory, peliculaKitUnitDiscount } from "@/lib/seller-discount-rules";
+import {
+  allocateSellerDiscountBudget,
+  getSellerDiscountRule,
+  isCapinhaCategory,
+  isPeliculaCategory,
+} from "@/lib/seller-discount-rules";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -53,27 +58,15 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-/**
- * Aplica a regra de kit em todo o carrinho: toda película recebe o desconto
- * automático quando há capinha em qualquer quantidade, e some se não houver
- * mais nenhuma — chamado depois de qualquer mudança no carrinho (adicionar,
- * mudar quantidade, remover linha), nunca por escolha de quem vende.
- */
-function withPeliculaKitDiscount(items: CartLine[]): CartLine[] {
-  const hasCapinha = items.some((line) => isCapinhaCategory(line.categoryName));
-  return items.map((line) => {
-    if (!isPeliculaCategory(line.categoryName)) return line;
-    const discount = hasCapinha ? round2(peliculaKitUnitDiscount(line.unitPrice) * line.quantity) : 0;
-    return line.discount === discount ? line : { ...line, discount };
-  });
-}
-
 export function PdvScreen({
   canDiscount,
+  canDiscountFreely,
   canFiado,
   autoPrintReceipt,
 }: {
   canDiscount: boolean;
+  /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
+  canDiscountFreely: boolean;
   /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
   canFiado: boolean;
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
@@ -94,6 +87,7 @@ export function PdvScreen({
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [error, setError] = useState<string>();
+  const [discountNotice, setDiscountNotice] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
   const [customerTerm, setCustomerTerm] = useState("");
@@ -196,17 +190,18 @@ export function PdvScreen({
     ? round2(Math.min(convenioMember.benefitAmount, Math.max(0, subtotal - discount)))
     : 0;
 
-  // Regra de kit (ver `seller-discount-rules.ts`): toda película do carrinho
-  // recebe o desconto automático assim que há pelo menos uma capinha na
-  // mesma venda — não depende da quantidade de capinhas nem é escolha de
-  // quem vende. Aplicado de verdade em `addToCart`/`changeQuantity`/
-  // `removeLine` (ver `withPeliculaKitDiscount`); usado aqui só pra exibir.
+  // Desconto de segurança nas películas 3D (ver `seller-discount-rules.ts`):
+  // cada capinha no carrinho libera o desconto de uma película — nunca
+  // "qualquer quantidade de película com uma capinha só". Vale pra Vendedor
+  // e Gerente — só Admin (canDiscountFreely) não passa por essa trava.
   const capinhaUnits = cart.reduce(
     (sum, line) => sum + (isCapinhaCategory(line.categoryName) ? line.quantity : 0),
     0
   );
+  const sellerDiscountAllocation = allocateSellerDiscountBudget(cart, capinhaUnits);
 
-  // Proteção Eficaz: vale pra qualquer película do catálogo, desde que haja capinha junto.
+  // Proteção Eficaz: vale pra qualquer película do catálogo (não só as duas
+  // elegíveis ao desconto de segurança acima), desde que haja capinha junto.
   const peliculaUnits = cart.reduce(
     (sum, line) => sum + (isPeliculaCategory(line.categoryName) ? line.quantity : 0),
     0
@@ -248,9 +243,44 @@ export function PdvScreen({
   }
 
   function maxLineDiscount(line: CartLine) {
-    if (isPeliculaCategory(line.categoryName)) return 0; // automático, não editável — ver `withPeliculaKitDiscount`
     const grossTotal = round2(line.unitPrice * line.quantity);
+    const rule = getSellerDiscountRule(line.name, line.unitPrice);
+    if (rule) {
+      if (canDiscountFreely) return grossTotal;
+      const allocatedUnits = sellerDiscountAllocation.get(line.key) ?? 0;
+      return Math.min(grossTotal, round2(allocatedUnits * rule.maxDiscountPerUnit));
+    }
     return canDiscount ? grossTotal : 0;
+  }
+
+  // Se o orçamento de capinhas encolher (capinha removida, quantidade
+  // reduzida, ou mais película entrando no carrinho do que capinha
+  // sustenta), o desconto de película dado por quem não tem desconto livre
+  // (Vendedor ou Gerente) se ajusta ao novo teto — durante a renderização
+  // (não num efeito, mesmo padrão de `selectionItems` em
+  // `produtos-tabela.tsx`: evita um reflow extra). A assinatura só muda
+  // quando a composição do carrinho muda de verdade — editar o valor de um
+  // desconto já dentro do teto não mexe nela, então não reprocessa à toa a
+  // cada tecla digitada.
+  const allocationSignature = canDiscountFreely
+    ? ""
+    : JSON.stringify([...sellerDiscountAllocation.entries()].sort());
+  const [syncedAllocationSignature, setSyncedAllocationSignature] = useState(allocationSignature);
+  if (!canDiscountFreely && allocationSignature !== syncedAllocationSignature) {
+    setSyncedAllocationSignature(allocationSignature);
+    const next = cart.map((line) => {
+      const rule = getSellerDiscountRule(line.name, line.unitPrice);
+      if (!rule) return line;
+      const allocatedUnits = sellerDiscountAllocation.get(line.key) ?? 0;
+      const cap = round2(Math.min(line.unitPrice * line.quantity, allocatedUnits * rule.maxDiscountPerUnit));
+      return line.discount > cap + 0.005 ? { ...line, discount: cap } : line;
+    });
+    if (next.some((line, i) => line.discount !== cart[i].discount)) {
+      setCart(next);
+      setDiscountNotice(
+        "O desconto de película foi ajustado — cada capinha no carrinho libera o desconto de uma película."
+      );
+    }
   }
 
   const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
@@ -290,23 +320,25 @@ export function PdvScreen({
     setError(undefined);
     setCart((current) => {
       const existing = current.find((line) => line.key === key);
-      const next = existing
-        ? current.map((line) => (line.key === key ? { ...line, quantity: line.quantity + 1 } : line))
-        : [
-            ...current,
-            {
-              key,
-              productId: product.id,
-              variantId: variantId ?? null,
-              name: variant ? `${product.name} (${variant.name})` : product.name,
-              unitPrice,
-              quantity: 1,
-              stockQty: availableStock,
-              discount: 0,
-              categoryName: product.categoryName,
-            },
-          ];
-      return withPeliculaKitDiscount(next);
+      if (existing) {
+        return current.map((line) =>
+          line.key === key ? { ...line, quantity: line.quantity + 1 } : line
+        );
+      }
+      return [
+        ...current,
+        {
+          key,
+          productId: product.id,
+          variantId: variantId ?? null,
+          name: variant ? `${product.name} (${variant.name})` : product.name,
+          unitPrice,
+          quantity: 1,
+          stockQty: availableStock,
+          discount: 0,
+          categoryName: product.categoryName,
+        },
+      ];
     });
 
     setTerm("");
@@ -345,17 +377,14 @@ export function PdvScreen({
 
   function changeQuantity(key: string, quantity: number) {
     setCart((current) =>
-      withPeliculaKitDiscount(
-        current.map((line) => {
-          if (line.key !== key) return line;
-          const newQuantity = Math.max(1, quantity);
-          // Desconto de item não-película nunca pode passar do teto da
-          // linha — se a quantidade cair, reajusta pra baixo junto (a
-          // película é recalculada de novo logo abaixo, ver `withPeliculaKitDiscount`).
-          const updated = { ...line, quantity: newQuantity };
-          return { ...updated, discount: Math.min(line.discount, maxLineDiscount(updated)) };
-        })
-      )
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const newQuantity = Math.max(1, quantity);
+        // O desconto nunca pode passar do teto da linha — se a quantidade
+        // cair, ele é reajustado pra baixo junto.
+        const updated = { ...line, quantity: newQuantity };
+        return { ...updated, discount: Math.min(line.discount, maxLineDiscount(updated)) };
+      })
     );
   }
 
@@ -369,7 +398,7 @@ export function PdvScreen({
   }
 
   function removeLine(key: string) {
-    setCart((current) => withPeliculaKitDiscount(current.filter((line) => line.key !== key)));
+    setCart((current) => current.filter((line) => line.key !== key));
   }
 
   function searchCustomers() {
@@ -559,6 +588,20 @@ export function PdvScreen({
           onLoad={(e) => e.currentTarget.contentWindow?.print()}
           style={{ position: "fixed", top: 0, left: "-10000px", width: "380px", height: "600px", border: "none" }}
         />
+      )}
+
+      {discountNotice && (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          <span>{discountNotice}</span>
+          <button
+            type="button"
+            onClick={() => setDiscountNotice(undefined)}
+            className="text-amber-700 hover:text-amber-900"
+            aria-label="Fechar aviso"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -752,29 +795,15 @@ export function PdvScreen({
                     </div>
 
                     {(() => {
-                      // Película não tem campo editável — o desconto de kit
-                      // é sempre automático (ver `withPeliculaKitDiscount`).
-                      if (isPeliculaCategory(line.categoryName)) {
-                        return (
-                          <div className="w-24">
-                            <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>
-                            {line.discount > 0 ? (
-                              <p className="text-xs font-medium text-emerald-700">
-                                -{formatBRL(line.discount)}
-                                <span className="block text-[10px] font-normal text-emerald-600">
-                                  automático (capinha na venda)
-                                </span>
-                              </p>
-                            ) : (
-                              <p className="text-[10px] leading-tight text-slate-400">
-                                Precisa de capinha na venda
-                              </p>
-                            )}
-                          </div>
-                        );
-                      }
-                      if (!canDiscount) return null;
                       const cap = maxLineDiscount(line);
+                      const sellerRule =
+                        !canDiscountFreely && getSellerDiscountRule(line.name, line.unitPrice);
+                      if (!canDiscount && !sellerRule) return null;
+                      const blockedBySellerRule = Boolean(sellerRule) && cap === 0;
+                      const blockedReason =
+                        capinhaUnits === 0
+                          ? "precisa de capinha no carrinho"
+                          : "capinha já usada em outra película";
                       return (
                         <div>
                           <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>
@@ -787,11 +816,13 @@ export function PdvScreen({
                               step="0.01"
                               min={0}
                               max={cap}
-                              disabled={paid > 0}
+                              disabled={paid > 0 || blockedBySellerRule}
                               title={
-                                paid > 0
-                                  ? "Zere as formas de pagamento para alterar o desconto"
-                                  : `Desconto máximo neste item: ${formatBRL(cap)}`
+                                blockedBySellerRule
+                                  ? `${blockedReason} — cada capinha libera o desconto de uma película`
+                                  : paid > 0
+                                    ? "Zere as formas de pagamento para alterar o desconto"
+                                    : `Desconto máximo neste item: ${formatBRL(cap)}`
                               }
                               placeholder="0,00"
                               value={line.discount || ""}
@@ -801,6 +832,11 @@ export function PdvScreen({
                               className="money-input h-8 w-full rounded border border-slate-300 py-1 pl-7 pr-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
                             />
                           </div>
+                          {blockedBySellerRule && (
+                            <p className="mt-0.5 max-w-[6rem] text-[10px] leading-tight text-amber-600">
+                              {blockedReason}
+                            </p>
+                          )}
                         </div>
                       );
                     })()}
