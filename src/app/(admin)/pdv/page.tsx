@@ -2,9 +2,9 @@ import Link from "next/link";
 import type { Viewport } from "next";
 import { requireTenant } from "@/lib/session";
 import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
-import { getOpenCashRegister, getCashSummary } from "@/modules/cash/cash-service";
+import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
-import { formatBRL, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { PdvScreen } from "./pdv-screen";
 
 // Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
@@ -51,10 +51,7 @@ export default async function PdvPage() {
     );
   }
 
-  const [summary, birthdayAlerts] = await Promise.all([
-    getCashSummary(user.tenantId, register.id),
-    getBirthdayAlerts(user.tenantId),
-  ]);
+  const birthdayAlerts = await getBirthdayAlerts(user.tenantId);
 
   return (
     <div>
@@ -66,12 +63,6 @@ export default async function PdvPage() {
           </p>
         </div>
         <div className="flex items-center gap-4 text-sm">
-          <div className="text-right">
-            <p className="text-slate-500">Vendas neste caixa</p>
-            <p className="font-semibold text-slate-900">
-              {summary.salesCount} · {formatBRL(summary.cashSales + summary.otherSales)}
-            </p>
-          </div>
           <Link
             href="/vendas"
             className="rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"

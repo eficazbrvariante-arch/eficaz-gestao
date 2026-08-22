@@ -72,12 +72,15 @@ export default async function CaixaPage() {
     }),
   ]);
 
+  // Dinheiro/Pix/débito/crédito somam venda do PDV + recebimento de
+  // Assistência Técnica (ver `totalCash`/`totalPix`/`totalDebit`/`totalCredit`
+  // em `getCashSummary`) — não é só "vendas", por isso os rótulos genéricos.
   const stats = [
     { label: "Abertura", value: formatBRL(summary.openingAmount) },
-    { label: "Vendas em dinheiro", value: formatBRL(summary.cashSales) },
-    { label: "Vendas no débito", value: formatBRL(summary.debitSales) },
-    { label: "Vendas no crédito", value: formatBRL(summary.creditSales) },
-    { label: "Vendas no Pix", value: formatBRL(summary.pixSales) },
+    { label: "Dinheiro", value: formatBRL(summary.totalCash) },
+    { label: "Débito", value: formatBRL(summary.totalDebit) },
+    { label: "Crédito", value: formatBRL(summary.totalCredit) },
+    { label: "Pix", value: formatBRL(summary.totalPix) },
     { label: "Esperado na gaveta", value: formatBRL(summary.expectedInDrawer) },
   ];
 
@@ -105,6 +108,13 @@ export default async function CaixaPage() {
             Ir para o PDV
           </Link>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-900 p-5 shadow-sm">
+        <p className="text-sm text-slate-300">
+          Total do caixa <span className="text-slate-400">(todas as formas de pagamento)</span>
+        </p>
+        <p className="mt-1 text-3xl font-bold text-white">{formatBRL(summary.grandTotal)}</p>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

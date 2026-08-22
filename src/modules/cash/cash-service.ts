@@ -35,6 +35,8 @@ export type CashSummary = {
   withdrawals: number;
   /** Quanto o sistema espera encontrar na gaveta (só dinheiro em espécie: vendas + assistência técnica). */
   expectedInDrawer: number;
+  /** Soma de todas as formas de pagamento (dinheiro + Pix + débito + crédito), vendas + assistência técnica — o valor total do caixa. */
+  grandTotal: number;
   salesCount: number;
 };
 
@@ -96,6 +98,11 @@ export async function getCashSummary(
   const supplies = sumByType("SUPPLY");
   const withdrawals = sumByType("WITHDRAWAL");
 
+  const totalCash = round2(cashSales + repairCashReceipts);
+  const totalPix = round2(pixSales + repairPixReceipts);
+  const totalDebit = round2(debitSales + repairDebitReceipts);
+  const totalCredit = round2(creditSales + repairCreditReceipts);
+
   return {
     openingAmount,
     cashSales,
@@ -107,13 +114,14 @@ export async function getCashSummary(
     repairPixReceipts,
     repairDebitReceipts,
     repairCreditReceipts,
-    totalCash: round2(cashSales + repairCashReceipts),
-    totalPix: round2(pixSales + repairPixReceipts),
-    totalDebit: round2(debitSales + repairDebitReceipts),
-    totalCredit: round2(creditSales + repairCreditReceipts),
+    totalCash,
+    totalPix,
+    totalDebit,
+    totalCredit,
     supplies,
     withdrawals,
     expectedInDrawer: round2(openingAmount + cashSales + repairCashReceipts + supplies - withdrawals),
+    grandTotal: round2(totalCash + totalPix + totalDebit + totalCredit),
     salesCount,
   };
 }
