@@ -1,12 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateSaleInput } from "@/lib/validations/sale";
 import { createFiadoEntry } from "@/modules/fiado/fiado-service";
-import {
-  allocateSellerDiscountBudget,
-  getSellerDiscountRule,
-  isCapinhaCategory,
-  isPeliculaCategory,
-} from "@/lib/seller-discount-rules";
+import { isCapinhaCategory, isPeliculaCategory, peliculaKitUnitDiscount } from "@/lib/seller-discount-rules";
 import { revalidateConvenioMember } from "@/modules/convenios/convenio-redemption-service";
 import { resolveProtecaoEficazRedemption } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import { formatBRL } from "@/lib/format";
@@ -22,10 +17,9 @@ export type CreateSaleContext = {
   tenantId: string;
   sellerId: string;
   cashRegisterId: string;
-  /** Se falso, qualquer desconto informado é rejeitado (exceto a exceção de película abaixo). */
+  /** Se falso, qualquer desconto informado é rejeitado (o desconto automático de película com capinha vale sempre, não depende disso). */
   allowDiscount: boolean;
-  /** Se falso, mesmo com `allowDiscount`, a película 3D continua presa à
-   *  trava de capinha (ver `seller-discount-rules.ts`) — só ADMIN dispensa. */
+  /** Se falso, desconto em item algum passa sem cair no `allowDiscount` acima. */
   allowFreeDiscount: boolean;
   /** Se falso, pagamento com a forma "Fiado" é rejeitado. */
   allowFiado: boolean;
@@ -61,17 +55,18 @@ export async function createSale(
   });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
-  // Desconto restrito do Vendedor (película 3D): cada capinha na venda
-  // libera o desconto de uma película, nunca "qualquer quantidade de
-  // película com uma capinha só" — checagem em cima dos itens da venda
-  // inteira, não item a item isolado (ver `allocateSellerDiscountBudget`,
-  // mesma lógica usada no PDV pra mostrar o teto ao vivo — precisa dar o
-  // mesmo resultado nos dois lugares, já que aqui é a validação que vale de
-  // verdade).
+  // Regra de kit: toda película da venda (qualquer uma — 3D, privativa,
+  // hidrogel) recebe o desconto automático de `peliculaKitUnitDiscount`
+  // sempre que houver ao menos uma capinha na mesma nota, não importa a
+  // quantidade de capinhas (uma só libera pra todas as películas). Nunca é
+  // escolha de quem vende — recalculado aqui de novo, sem confiar no
+  // `item.discount` vindo do cliente pra nenhuma película (ver dentro do
+  // laço abaixo).
   const capinhaUnits = input.items.reduce((sum, item) => {
     const product = productMap.get(item.productId);
     return sum + (isCapinhaCategory(product?.category?.name) ? item.quantity : 0);
   }, 0);
+  const hasCapinha = capinhaUnits > 0;
 
   // Proteção Eficaz: revalidada aqui de novo, nunca aceita só porque o PDV
   // mandou o campo marcado — só vale numa venda com capinha + película
@@ -123,21 +118,6 @@ export async function createSale(
     });
   }
 
-  const sellerDiscountAllocation = allocateSellerDiscountBudget(
-    input.items.map((item, index) => {
-      const product = productMap.get(item.productId);
-      const variant = item.variantId ? product?.variants.find((v) => v.id === item.variantId) : undefined;
-      const basePrice = product ? Number(product.promoPrice ?? product.salePrice) : 0;
-      return {
-        key: String(index),
-        name: product?.name ?? "",
-        unitPrice: round2(basePrice + Number(variant?.priceAdjustment ?? 0)),
-        quantity: item.quantity,
-      };
-    }),
-    capinhaUnits
-  );
-
   // Consolida quantidades por produto (o mesmo item pode vir repetido).
   const quantityByProduct = new Map<string, number>();
   for (const item of input.items) {
@@ -183,36 +163,22 @@ export async function createSale(
     const grossTotal = round2(unitPrice * item.quantity);
 
     const isProtecaoEficazRedemptionItem = itemIndex === protecaoEficazRedemptionItemIndex;
-    const itemDiscount = isProtecaoEficazRedemptionItem ? grossTotal : round2(item.discount ?? 0);
-    if (!isProtecaoEficazRedemptionItem && itemDiscount > 0 && !ctx.allowFreeDiscount) {
-      // Só ADMIN (allowFreeDiscount) tem desconto livre em qualquer item.
-      // Vendedor e Gerente podem aplicar o desconto de segurança nas
-      // películas 3D — só com uma capinha na venda e até o teto da regra
-      // (ver `seller-discount-rules.ts`) — mesmo Gerente não escapa dessa
-      // trava. Fora da película, Vendedor não desconta nada.
-      const rule = getSellerDiscountRule(product.name, unitPrice);
-      if (!rule) {
-        if (!ctx.allowDiscount) {
-          return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
-        }
-      } else {
-        const allocatedUnits = sellerDiscountAllocation.get(String(itemIndex)) ?? 0;
-        if (allocatedUnits === 0) {
-          return {
-            ok: false,
-            error:
-              capinhaUnits === 0
-                ? `O desconto em "${product.name}" só é permitido com uma capinha na venda.`
-                : `O desconto em "${product.name}" excede a quantidade de capinhas na venda — cada capinha libera o desconto de uma película.`,
-          };
-        }
-        const maxLineDiscount = round2(allocatedUnits * rule.maxDiscountPerUnit);
-        if (itemDiscount > maxLineDiscount + CENT) {
-          return {
-            ok: false,
-            error: `O desconto máximo em "${product.name}" é ${formatBRL(maxLineDiscount)}.`,
-          };
-        }
+    const isPelicula = isPeliculaCategory(product.category?.name);
+
+    let itemDiscount: number;
+    if (isProtecaoEficazRedemptionItem) {
+      itemDiscount = grossTotal;
+    } else if (isPelicula) {
+      // Automático — nunca confia no `item.discount` vindo do cliente pra
+      // película, recalcula sempre a partir da regra de kit (ver acima).
+      itemDiscount = hasCapinha ? round2(peliculaKitUnitDiscount(unitPrice) * item.quantity) : 0;
+    } else {
+      itemDiscount = round2(item.discount ?? 0);
+      // Só ADMIN (allowFreeDiscount) tem desconto livre em qualquer item;
+      // Gerente/Vendedor com `allowDiscount` descontam dentro do que a
+      // Server Action já autorizou pro papel deles.
+      if (itemDiscount > 0 && !ctx.allowFreeDiscount && !ctx.allowDiscount) {
+        return { ok: false, error: `Seu perfil não pode conceder desconto em "${product.name}".` };
       }
     }
     if (itemDiscount > grossTotal + CENT) {
