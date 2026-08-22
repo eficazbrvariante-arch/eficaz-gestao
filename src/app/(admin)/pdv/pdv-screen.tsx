@@ -58,6 +58,14 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Tempo parado (sem interação nenhuma) até o PDV recarregar a página
+ * sozinho — garante que o terminal sempre rode o JS mais recente depois de
+ * um deploy, sem precisar de alguém lembrar de dar F5. Só dispara com o
+ * carrinho vazio (ver `PdvScreen`), nunca no meio de uma venda.
+ */
+const PDV_IDLE_RELOAD_MS = 2 * 60 * 1000;
+
 export function PdvScreen({
   canDiscount,
   canDiscountFreely,
@@ -181,6 +189,38 @@ export function PdvScreen({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [suggestionsOpen]);
+
+  // Recarrega o PDV sozinho depois de `PDV_IDLE_RELOAD_MS` sem nenhuma
+  // interação — sempre que isso acontece, confere o carrinho de novo antes
+  // de recarregar de fato: com item no carrinho, só adia a checagem (nunca
+  // derruba uma venda em andamento, mesmo que o vendedor tenha ficado
+  // parado pensando). `cartRef` evita fechar sobre um `cart` desatualizado
+  // nas re-tentativas encadeadas.
+  const cartRef = useRef(cart);
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+  useEffect(() => {
+    let timer: number;
+    function reloadIfIdleAndEmpty() {
+      if (cartRef.current.length === 0) {
+        window.location.reload();
+        return;
+      }
+      timer = window.setTimeout(reloadIfIdleAndEmpty, PDV_IDLE_RELOAD_MS);
+    }
+    function resetTimer() {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(reloadIfIdleAndEmpty, PDV_IDLE_RELOAD_MS);
+    }
+    const activityEvents = ["mousedown", "mousemove", "keydown", "touchstart", "scroll"] as const;
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      window.clearTimeout(timer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, []);
 
   const subtotal = round2(cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
   const discount = round2(cart.reduce((sum, line) => sum + (line.discount || 0), 0));
