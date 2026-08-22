@@ -1209,3 +1209,126 @@ diagnóstico estático, sem alteração de código). Não commitado: `.codex/`
 (config de hooks de outra ferramenta, não relacionada a este código —
 deixado de fora até confirmar com o usuário se deve entrar no repositório).
 Nada foi enviado ao remoto (`git push`) nesta etapa.
+
+**3. Push e verificação pós-deploy.** A pedido do usuário, os 5 commits
+acima foram enviados (`git push origin main`); deploy acompanhado até
+`Ready` e `npm run check:deploy` OK.
+
+## 2026-08-21 (continuação 2) — Link e filtro de período no Ranking de Comissão; OS em Vendas; edição de venda por Admin
+
+Três pedidos em sequência do usuário, cada um virando commit próprio.
+
+**1. Link em cada vendedor no Ranking de Comissão** pra tela de comissão
+individual (`/colaboradores/[userId]/comissao`, que já existia com lista de
+vendas do período e filtro de data — só faltava o link de acesso a partir
+do ranking). Commit `3a1cc20`.
+
+**2. Filtro de período no Ranking de Comissão**, que antes só mostrava o
+dia de hoje sem opção de trocar. Reaproveitado o `PeriodPicker` padrão dos
+Relatórios; `resolvePeriod` ganhou um `defaultFrom` opcional pra manter
+"hoje" como abertura padrão desta tela (é um placar do dia) sem afetar o
+padrão "mês atual" das outras páginas que já usam a função.
+`getCommissionRanking` passou a receber o range em vez de calculá-lo
+internamente. Commit `6b27d09`.
+
+**3. OS de Assistência Técnica listada junto em Vendas, só pra comparação**
+(pedido do usuário: "para que eu venha comparar"). Decisão tomada com o
+usuário via pergunta explícita antes de codar: a OS **não vira uma Sale de
+verdade** — só uma linha a mais na mesma tabela, com tag "OS" numa coluna
+"Tipo" nova e link pro comprovante da própria OS. Evita duplicar em
+estoque/comissão (o pagamento de OS já é lançado no caixa por outro
+caminho, `repair-payment-service.ts`). Só aparece pra quem tem acesso à
+Assistência Técnica; nunca aparece no filtro "Canceladas". Commit `a7e4856`.
+Teste ao vivo da tag "OS" com um pagamento real não foi concluído (fricção
+no formulário de automação do navegador) — vale conferir visualmente na
+primeira OS que passar por lá.
+
+**4. Admin pode corrigir preço/desconto de item já vendido** (pedido do
+usuário: poder editar a nota, não só cancelar, mantendo histórico de quem
+editou). Decisões de escopo também fechadas com o usuário antes de codar
+(todas as recomendadas): só preço/desconto de item existente (nunca troca
+produto, quantidade, nem adiciona/remove linha); a gravação é **recusada**
+se o total corrigido não bater exatamente com o total original (isso é
+correção, não troca/reembolso); bloqueado se o caixa da venda já fechou.
+Migration pequena `Sale.editedAt`/`editedById` (mesmo padrão de
+`cancelledAt`/`cancelledById`) mostra aviso no comprovante; o detalhe
+completo de cada correção (valor antigo → novo, por item) vai pro log
+central de auditoria (`AuditLog`, ação nova `sale.edit`). Testado ao vivo no
+dev-local: venda real criada pelo PDV (`Adaptador 3 saidas`, R$7), preço
+corrigido pra R$8 com desconto de R$1 (total mantido em R$7,00) —
+comprovante e `/usuarios/atividades` conferidos com o registro certo.
+Commit `4648571`.
+
+**Testado:** `lint` (0 erros, warnings pré-existentes de sempre),
+`typecheck` e `npm run build` completo (envolve a migration acima) limpos.
+`npm test` com os 110 testes unitários passando. Push dos 3 commits feito a
+pedido do usuário; `check:deploy` OK depois (painel, loja, produto,
+categoria, `comprar-whatsapp`, logs sem erro novo).
+
+**Pendência:** `.codex/` segue não commitado (mesma observação da sessão
+anterior).
+
+## 2026-08-22 — Comissão de venda: alíquota única de 2%, remove bônus fixos
+
+Pedido do usuário a partir de uma observação sobre o print do Ranking de
+Comissão: em vez do esquema anterior (só produto marcado com
+`commissionEnabled` entrava na comissão, mais dois bônus fixos — R$1/unidade
+no kit capinha+película com desconto do vendedor, e R$2 por cadastro de
+Proteção Eficaz aprovado), pediu pra comissão virar uma alíquota única de 2%
+sobre todo o catálogo, removendo os bônus fixos. Esclarecido em seguida, a
+pedido dele mesmo: o percentual/valor fixo configurado num produto
+específico (`Product.commissionPercent`/`commissionFixedAmount`) continua
+funcionando como **exceção** — só o padrão vira 2% pra tudo que não tiver
+essa exceção, em vez de precisar marcar produto por produto.
+
+`commission-service.ts` simplificado: removidas `kitDiscountCommissionForItems`,
+`getProtecaoEficazCommissionByUsers` e a checagem de `commissionEnabled`;
+`itemCommission` passa a aplicar sempre `commissionPercent` do produto (se
+configurado) ou `Tenant.defaultCommissionPercent` (2%), com o tipo `FIXED`
+por unidade ainda disponível como exceção também. Nenhuma mudança de schema
+— os campos de comissão por produto continuam no banco, só deixam de ser
+checados como "habilitado/desabilitado" (o toggle "Comissionar todos os
+produtos" e o de cada produto na tela de Colaboradores ficam sem efeito
+prático agora — sinalizado ao usuário, ainda não removido da UI).
+
+Verificado com dados reais no dev-local (script temporário, apagado ao
+final): venda de R$7 → comissão R$0,14 no padrão de 2%; com uma exceção de
+10% configurada no produto vendido → R$0,70; revertida a exceção, volta a
+R$0,14 — confirma tanto o padrão quanto a exceção funcionando.
+`defaultCommissionPercent` setado para 2 no tenant do dev-local pra ficar
+condizente com produção (é dado, não código — o usuário ainda precisa
+ajustar manualmente na tela de Colaboradores em produção). `lint`,
+`typecheck`, `build:app` e os 110 testes unitários limpos. Commit `9b7ee63`,
+enviado ao remoto a pedido do usuário; `check:deploy` OK depois (painel,
+loja, produto, categoria, `comprar-whatsapp`, logs sem erro novo).
+
+**Observação para o usuário:** o Ranking de Comissão, que antes ranqueava
+por "comissão efetiva" (variava pelo mix de produtos vendidos), agora tende
+a mostrar a mesma porcentagem (2%) pra todo mundo — o que diferencia os
+vendedores no ranking passa a ser o valor em R$ (segue o volume vendido),
+não mais a eficiência do mix. Não alterado sem confirmação; só registrado
+aqui como consequência natural da mudança.
+
+### Correção no mesmo dia — alíquota de 2% não pode retroagir
+
+Poucas horas depois, o usuário viu no Ranking de Comissão (print anexado)
+vendas de dias anteriores já contando comissão, e pediu: a regra de 2% é
+pra começar a valer só a partir de 21/08/2026 (dia em que foi decidida) —
+antes disso não deveria existir comissão nem histórico de ranking nenhum.
+
+Adicionado `COMMISSION_POLICY_EFFECTIVE_AT` (`2026-08-21T00:00:00-03:00`)
+em `commission-service.ts`: toda consulta de comissão (`getCommissionTotalsByUsers`,
+usada tanto no total acumulado do colaborador quanto dentro do Ranking; e
+`getSellerCommissionHistory`) passa a ignorar qualquer venda anterior a essa
+data, mesmo quando o período pedido começa antes — inclusive o total "desde
+sempre" mostrado no card do colaborador. No histórico individual de vendas
+(`/colaboradores/[userId]/comissao`), a venda antiga continua aparecendo na
+lista (é útil pra comparar), só a comissão dela sai R$0,00; no Ranking,
+tanto o total vendido quanto a comissão do período ficam limitados a partir
+do corte, pra não existir "história" de ranking anterior a ele.
+
+Verificado no dev-local: venda de teste (a mesma `#9` da sessão anterior)
+com `createdAt` alterado artificialmente pra 20/08 → comissão zera; restaurado
+o valor real (21/08 à noite) → volta a calcular os R$0,14 normalmente.
+`lint`, `typecheck`, `build:app` e os 110 testes unitários limpos. Commit
+`3940ed3`.
