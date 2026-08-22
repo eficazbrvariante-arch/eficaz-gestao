@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canMoveCash } from "@/lib/permissions";
+import { canMoveCash, canViewReports } from "@/lib/permissions";
 import { getCashSummary, getOpenCashRegister } from "@/modules/cash/cash-service";
 import { OpenCashForm, CloseCashForm, CashMovementForm } from "./cash-forms";
 
@@ -110,12 +110,16 @@ export default async function CaixaPage() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-900 p-5 shadow-sm">
-        <p className="text-sm text-slate-300">
-          Total do caixa <span className="text-slate-400">(todas as formas de pagamento)</span>
-        </p>
-        <p className="mt-1 text-3xl font-bold text-white">{formatBRL(summary.grandTotal)}</p>
-      </div>
+      {/* Só Admin/Gerente vê o total geral — Vendedor fecha conferindo forma
+          por forma, sem ver o faturamento consolidado do dia (ver `canViewReports`). */}
+      {canViewReports(user.role) && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-900 p-5 shadow-sm">
+          <p className="text-sm text-slate-300">
+            Total do caixa <span className="text-slate-400">(todas as formas de pagamento)</span>
+          </p>
+          <p className="mt-1 text-3xl font-bold text-white">{formatBRL(summary.grandTotal)}</p>
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
