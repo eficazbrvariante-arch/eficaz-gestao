@@ -1,13 +1,15 @@
 import { HTMLAttributes } from "react";
 import { clsx } from "@/lib/clsx";
 
-type BadgeVariant = "success" | "warning" | "danger" | "neutral" | "brand";
+type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "brand";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  success: "bg-emerald-50 text-emerald-700",
-  warning: "bg-amber-50 text-amber-700",
-  danger: "bg-red-50 text-red-700",
-  neutral: "bg-slate-100 text-slate-500",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  danger: "bg-danger/10 text-danger",
+  /** Estados informativos neutros (ex.: "novo", "confirmado") — nunca usar pra sucesso/erro. */
+  info: "bg-info/10 text-info",
+  neutral: "bg-surface-hover text-text-muted",
   brand: "bg-brand/10 text-brand",
 };
 

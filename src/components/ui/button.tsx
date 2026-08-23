@@ -4,12 +4,13 @@ import { clsx } from "@/lib/clsx";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "brand" | "danger";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400",
-  secondary: "bg-white text-slate-900 border border-slate-300 hover:bg-slate-50",
-  ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
-  /** CTA principal com a cor da marca (ex.: "Novo produto"). */
-  brand: "bg-brand text-white hover:bg-brand-hover disabled:bg-slate-400",
-  danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-slate-400",
+  /** Ação de maior destaque neutro — inverte fundo/texto (funciona em claro e escuro sem cor própria). */
+  primary: "bg-foreground text-background hover:opacity-90",
+  secondary: "bg-surface text-foreground border border-border hover:bg-surface-hover",
+  ghost: "bg-transparent text-text-secondary hover:bg-surface-hover",
+  /** CTA principal com a cor da marca (ex.: "Novo produto") — a única assinatura verde de destaque. */
+  brand: "bg-brand text-brand-contrast hover:bg-brand-hover",
+  danger: "bg-danger text-white hover:opacity-90",
 };
 
 /**
@@ -29,7 +30,7 @@ export const Button = forwardRef<
       ref={ref}
       disabled={disabled}
       className={clsx(
-        "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
         fullWidth ? "w-full" : "w-auto",
         VARIANT_CLASSES[variant],
         className

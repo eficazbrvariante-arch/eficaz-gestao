@@ -12,8 +12,8 @@ export function FormBanner({
     <div
       className={clsx(
         "mb-4 rounded-md px-3 py-2 text-sm",
-        variant === "error" && "bg-red-50 text-red-700",
-        variant === "success" && "bg-emerald-50 text-emerald-700"
+        variant === "error" && "bg-danger/10 text-danger",
+        variant === "success" && "bg-success/10 text-success"
       )}
     >
       {message}

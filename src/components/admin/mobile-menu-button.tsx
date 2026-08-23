@@ -9,7 +9,7 @@ export function MobileMenuButton() {
     <button
       type="button"
       onClick={open}
-      className="mr-3 rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-50 md:hidden"
+      className="mr-3 rounded-md border border-border p-2 text-text-secondary hover:bg-surface-hover md:hidden"
       aria-label="Abrir menu de navegação"
     >
       <svg

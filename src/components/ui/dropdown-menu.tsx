@@ -93,7 +93,7 @@ export function DropdownMenu({
           aria-expanded={open}
           aria-label={triggerLabel}
           onClick={() => (open ? setOpen(false) : openMenu())}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand"
+          className="rounded-md p-1.5 text-text-muted hover:bg-surface-hover hover:text-text-secondary focus:outline-none focus:ring-2 focus:ring-brand"
         >
           {trigger}
         </button>
@@ -106,11 +106,14 @@ export function DropdownMenu({
             role="menu"
             onClick={() => setOpen(false)}
             style={{ top: position.top, left: position.left, width: MENU_WIDTH }}
-            className="fixed z-50 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+            className="fixed z-50 rounded-md border border-border bg-surface-elevated py-1 shadow-lg"
           >
             {children}
           </div>,
-          document.body
+          // Precisa ficar dentro de `.eficaz-admin` pra herdar os tokens
+          // escuros — `document.body` é compartilhado com a loja pública,
+          // que fica fora desse escopo (ver `(admin)/layout.tsx`).
+          document.getElementById("eficaz-admin-portal-root") ?? document.body
         )}
     </div>
   );
@@ -118,8 +121,8 @@ export function DropdownMenu({
 
 export function dropdownItemClassName(danger?: boolean, className?: string) {
   return clsx(
-    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent",
-    danger ? "text-red-600" : "text-gray-800",
+    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+    danger ? "text-danger" : "text-foreground",
     className
   );
 }

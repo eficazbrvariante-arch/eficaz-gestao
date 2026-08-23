@@ -43,8 +43,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             className={clsx(
               "pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-lg border px-3 py-2.5 text-sm shadow-lg sm:w-auto",
               toast.variant === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-800"
+                ? "border-success/20 bg-success/10 text-success"
+                : "border-danger/20 bg-danger/10 text-danger"
             )}
           >
             {toast.variant === "success" ? (

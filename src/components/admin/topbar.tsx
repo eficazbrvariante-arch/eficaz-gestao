@@ -5,16 +5,16 @@ import type { UserRole } from "@/generated/prisma/enums";
 
 export function Topbar({ name, role }: { name: string; role: UserRole }) {
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 print:hidden">
-      <div className="flex items-center text-sm text-slate-500">
+    <header className="flex items-center justify-between border-b border-border bg-sidebar px-6 py-3 print:hidden">
+      <div className="flex items-center text-sm text-text-muted">
         <MobileMenuButton />
-        Bem-vindo(a), <span className="font-medium text-slate-900">{name}</span>{" "}
-        <span className="text-xs text-slate-400">({ROLE_LABELS[role] ?? role})</span>
+        Bem-vindo(a), <span className="font-medium text-foreground">{name}</span>{" "}
+        <span className="text-xs text-text-muted">({ROLE_LABELS[role] ?? role})</span>
       </div>
       <form action={logoutAction}>
         <button
           type="submit"
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-hover"
         >
           Sair
         </button>

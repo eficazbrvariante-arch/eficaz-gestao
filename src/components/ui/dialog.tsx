@@ -45,17 +45,17 @@ export function Dialog({
         // A centralização padrão do <dialog> (via `margin: auto` da UA
         // stylesheet) não sobrevive ao reset de margens do Tailwind —
         // centraliza de novo aqui, de forma explícita.
-        "fixed top-1/2 left-1/2 m-0 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-0 shadow-xl backdrop:bg-slate-900/50",
+        "fixed top-1/2 left-1/2 m-0 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface-elevated p-0 shadow-xl backdrop:bg-black/60",
         className
       )}
     >
       <div className="p-5">
-        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
-        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
         {children && <div className="mt-4">{children}</div>}
       </div>
       {footer && (
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-border bg-surface-hover px-5 py-3">
           {footer}
         </div>
       )}
