@@ -113,11 +113,11 @@ export default async function CaixaPage() {
       {/* Só Admin/Gerente vê o total geral — Vendedor fecha conferindo forma
           por forma, sem ver o faturamento consolidado do dia (ver `canViewReports`). */}
       {canViewReports(user.role) && (
-        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-900 p-5 shadow-sm">
-          <p className="text-sm text-slate-300">
-            Total do caixa <span className="text-slate-400">(todas as formas de pagamento)</span>
+        <div className="mb-6 rounded-xl border border-brand bg-brand p-5 shadow-sm">
+          <p className="text-sm text-brand-contrast/80">
+            Total do caixa <span className="text-brand-contrast/60">(todas as formas de pagamento)</span>
           </p>
-          <p className="mt-1 text-3xl font-bold text-white">{formatBRL(summary.grandTotal)}</p>
+          <p className="mt-1 text-3xl font-bold text-brand-contrast">{formatBRL(summary.grandTotal)}</p>
         </div>
       )}
 

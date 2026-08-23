@@ -57,7 +57,7 @@ export function SellerPickerModal({
               onClick={() => onSelect(seller)}
               className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center transition-colors hover:border-brand hover:bg-surface-hover"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-contrast">
                 {nameInitials(seller.name)}
               </span>
               <span className="text-sm font-medium text-foreground">{seller.name}</span>

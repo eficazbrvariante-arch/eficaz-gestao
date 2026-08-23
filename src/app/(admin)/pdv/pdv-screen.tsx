@@ -648,7 +648,9 @@ export function PdvScreen({
         {/* Coluna esquerda: busca e carrinho */}
         <div className="lg:col-span-3">
         <div ref={searchBoxRef} className="relative mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <Label htmlFor="pdv-search">Produto (nome, código interno ou código de barras)</Label>
+          <Label htmlFor="pdv-search" className="text-black">
+            Produto (nome, código interno ou código de barras)
+          </Label>
           <div className="flex gap-2">
             <Input
               id="pdv-search"
