@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FormBanner } from "@/components/ui/form-banner";
 import { formatDate } from "@/lib/format";
 import { validateProtecaoEficazRedemptionAction } from "./actions";
 import type { ProtecaoEficazRedemptionCredential } from "@/modules/protecao-eficaz/protecao-eficaz-service";
@@ -96,7 +98,7 @@ export function ProtecaoEficazRedemptionModal({
         )
       }
     >
-      {error && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <FormBanner message={error} variant="error" />
 
       {resolved ? (
         <div>
@@ -111,7 +113,7 @@ export function ProtecaoEficazRedemptionModal({
           </p>
         </div>
       ) : (
-        <input
+        <Input
           ref={inputRef}
           type="number"
           min={1}
@@ -125,7 +127,6 @@ export function ProtecaoEficazRedemptionModal({
           }}
           placeholder="Número da venda, ex.: 123"
           disabled={isPending}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       )}
     </Dialog>

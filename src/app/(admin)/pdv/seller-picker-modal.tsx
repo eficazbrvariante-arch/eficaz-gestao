@@ -55,7 +55,7 @@ export function SellerPickerModal({
               key={seller.id}
               type="button"
               onClick={() => onSelect(seller)}
-              className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 p-4 text-center transition-colors hover:border-slate-900 hover:bg-slate-50"
+              className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center transition-colors hover:border-brand hover:bg-surface-hover"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
                 {nameInitials(seller.name)}

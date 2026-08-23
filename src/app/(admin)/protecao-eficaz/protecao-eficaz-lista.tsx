@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FormBanner } from "@/components/ui/form-banner";
+import { Textarea } from "@/components/ui/textarea";
 import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import {
   approveProtecaoEficazAction,
@@ -218,12 +219,11 @@ export function ProtecaoEficazLista({ registrations }: { registrations: AdminPro
           </>
         }
       >
-        <textarea
+        <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="Motivo (opcional)"
           rows={3}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </Dialog>
     </div>

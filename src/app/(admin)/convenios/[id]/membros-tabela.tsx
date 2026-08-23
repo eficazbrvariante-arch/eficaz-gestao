@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { FormBanner } from "@/components/ui/form-banner";
+import { Textarea } from "@/components/ui/textarea";
 import { MoreHorizontal } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -173,12 +174,11 @@ export function MembrosTabela({ members }: { members: ConvenioMemberRow[] }) {
           </>
         }
       >
-        <textarea
+        <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="Motivo (opcional)"
           rows={3}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       </Dialog>
     </div>

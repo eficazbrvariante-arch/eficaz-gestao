@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FormBanner } from "@/components/ui/form-banner";
 import { formatBRL } from "@/lib/format";
 import { validateConvenioCredentialAction } from "./actions";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
@@ -98,9 +100,7 @@ export function ConvenioModal({
         )
       }
     >
-      {error && (
-        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      )}
+      <FormBanner message={error} variant="error" />
 
       {resolved ? (
         <div className="flex items-center gap-4">
@@ -119,7 +119,7 @@ export function ConvenioModal({
           </div>
         </div>
       ) : (
-        <input
+        <Input
           ref={inputRef}
           type="text"
           value={code}
@@ -132,7 +132,6 @@ export function ConvenioModal({
           }}
           placeholder="Código de 6 dígitos, QR ou link"
           disabled={isPending}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
       )}
     </Dialog>
