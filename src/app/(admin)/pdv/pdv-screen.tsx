@@ -1126,7 +1126,12 @@ export function PdvScreen({
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            {/* Card escuro de propósito (adiantado da Fase 4) — o MixedPaymentPanel
+                compartilhado já usa os tokens escuros desde a Fase 1, e ficava
+                com texto quase invisível dentro do card branco que ainda restava
+                aqui (bug real reportado: "Pago"/"Restante"/"Calcular troco"
+                só apareciam ao selecionar o texto). */}
             {/* A seleção do vendedor acontece antes da forma de pagamento: sem
                 vendedor escolhido, o painel abaixo fica desabilitado. */}
             <div className="mb-3">
@@ -1146,14 +1151,14 @@ export function PdvScreen({
               />
 
               {sellerId && remaining < -0.005 && (
-                <p className="mt-2 text-xs text-red-600">
+                <p className="mt-2 text-xs text-danger">
                   Excede o total em {formatBRL(Math.abs(remaining))}
                 </p>
               )}
             </div>
 
             {fiadoPortion > 0 && (
-              <div className="mb-3 rounded-md bg-amber-50 p-3">
+              <div className="mb-3 rounded-md bg-warning/10 p-3">
                 <Label htmlFor="fiado-due-date">Data prevista de pagamento (fiado)</Label>
                 <input
                   id="fiado-due-date"
@@ -1161,18 +1166,18 @@ export function PdvScreen({
                   disabled={!sellerId}
                   value={fiadoDueDate}
                   onChange={(e) => setFiadoDueDate(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-300 px-2 text-sm disabled:bg-slate-50"
+                  className="h-9 w-full rounded border border-border bg-surface px-2 text-sm text-foreground disabled:bg-surface-hover"
                 />
               </div>
             )}
 
             {cashPortion > 0 && (
-              <div className="mb-3 rounded-md bg-slate-50 p-3">
+              <div className="mb-3 rounded-md bg-surface-hover p-3">
                 <Label htmlFor="cash-received" className="mb-1">
                   Calcular troco
                 </Label>
                 <div className="relative mb-2">
-                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-slate-500">
+                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-text-muted">
                     R$
                   </span>
                   <input
@@ -1186,12 +1191,12 @@ export function PdvScreen({
                       setCashReceived(e.target.value === "" ? "" : Number(e.target.value))
                     }
                     placeholder={String(cashPortion.toFixed(2))}
-                    className="money-input h-9 w-full rounded border border-slate-300 py-1 pl-8 pr-2 text-right text-sm disabled:bg-slate-50"
+                    className="money-input h-9 w-full rounded border border-border bg-surface py-1 pl-8 pr-2 text-right text-sm text-foreground disabled:bg-surface-hover"
                   />
                 </div>
                 <div className="flex justify-between text-base font-bold">
-                  <span className="text-black">Troco</span>
-                  <span className={change < 0 ? "text-red-600" : "text-emerald-700"}>
+                  <span className="text-foreground">Troco</span>
+                  <span className={change < 0 ? "text-danger" : "text-success"}>
                     {formatBRL(Math.max(0, change))}
                   </span>
                 </div>
@@ -1204,6 +1209,7 @@ export function PdvScreen({
               type="button"
               onClick={finalizeSale}
               disabled={isPending || cart.length === 0}
+              variant={Math.abs(remaining) <= 0.005 ? "primary" : "secondary"}
               className="py-3 text-base"
             >
               {isPending ? "Finalizando..." : `Finalizar venda · ${formatBRL(total)}`}

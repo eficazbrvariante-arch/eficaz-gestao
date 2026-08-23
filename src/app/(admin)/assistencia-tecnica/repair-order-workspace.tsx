@@ -1001,7 +1001,11 @@ export function RepairOrderWorkspace({
                           + Registrar pagamento (entrada)
                         </button>
                       ) : (
-                        <div>
+                        // Caixa escura dentro do card ainda branco — o MixedPaymentPanel
+                        // compartilhado já usa os tokens escuros desde a Fase 1 e ficava
+                        // com texto quase invisível direto no card branco (mesmo bug
+                        // corrigido no PDV).
+                        <div className="rounded-md border border-border bg-surface p-3">
                           <MixedPaymentPanel
                             slots={paymentSlots}
                             amounts={paymentAmounts}
@@ -1018,7 +1022,7 @@ export function RepairOrderWorkspace({
                                 type="date"
                                 value={paymentFiadoDueDate}
                                 onChange={(e) => setPaymentFiadoDueDate(e.target.value)}
-                                className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
+                                className="h-8 w-full rounded border border-border bg-surface px-2 text-sm text-foreground"
                               />
                             </div>
                           )}
@@ -1038,7 +1042,7 @@ export function RepairOrderWorkspace({
                                 setShowPaymentForm(false);
                                 setPaymentAmounts(EMPTY_PAYMENT_AMOUNTS);
                               }}
-                              className="text-xs text-slate-500 hover:underline"
+                              className="text-xs text-text-muted hover:underline"
                             >
                               Cancelar
                             </button>
@@ -1079,9 +1083,9 @@ export function RepairOrderWorkspace({
                       Entregar — acerto financeiro
                     </Button>
                   ) : (
-                    <div>
-                      <p className="mb-2 text-xs text-slate-500">
-                        Saldo a receber: <strong>{formatBRL(financials.balance)}</strong>
+                    <div className="rounded-md border border-border bg-surface p-3">
+                      <p className="mb-2 text-xs text-text-muted">
+                        Saldo a receber: <strong className="text-foreground">{formatBRL(financials.balance)}</strong>
                       </p>
                       <MixedPaymentPanel
                         slots={paymentSlots}
@@ -1099,7 +1103,7 @@ export function RepairOrderWorkspace({
                             type="date"
                             value={deliveryFiadoDueDate}
                             onChange={(e) => setDeliveryFiadoDueDate(e.target.value)}
-                            className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
+                            className="h-8 w-full rounded border border-border bg-surface px-2 text-sm text-foreground"
                           />
                         </div>
                       )}
@@ -1119,7 +1123,7 @@ export function RepairOrderWorkspace({
                             setShowDeliveryForm(false);
                             setDeliveryAmounts(EMPTY_PAYMENT_AMOUNTS);
                           }}
-                          className="text-xs text-slate-500 hover:underline"
+                          className="text-xs text-text-muted hover:underline"
                         >
                           Cancelar
                         </button>
