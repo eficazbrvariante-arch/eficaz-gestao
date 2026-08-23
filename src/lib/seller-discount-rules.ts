@@ -7,6 +7,12 @@ export type SellerDiscountRule = {
 
 const CAPINHA_CATEGORY_NAME = "Capas";
 const PELICULA_CATEGORY_NAME = "Película";
+/** Preço de catálogo das capinhas "padrão" que liberam a trava — mesmo
+ *  raciocínio de `getSellerDiscountRule`: nome sozinho pega demais (uma capa
+ *  premium de R$80 não é a mesma coisa), preço sozinho também (produto sem
+ *  ver o nome), os dois juntos evitam falso positivo/negativo. */
+const CAPINHA_PRICE = 30;
+const CAPINHA_NAME_PATTERN = /\bcapa\b|\bcapinha\b/i;
 
 /**
  * Desconto que o Vendedor pode aplicar sozinho, sem passar por Gerente —
@@ -31,9 +37,21 @@ export function getSellerDiscountRule(
   return { maxDiscountPerUnit: 20, minPricePerUnit: 10 };
 }
 
-/** O desconto de película do Vendedor só é liberado com uma capinha no carrinho. */
-export function isCapinhaCategory(categoryName: string | null | undefined): boolean {
-  return categoryName === CAPINHA_CATEGORY_NAME;
+/**
+ * O desconto de película do Vendedor só é liberado com uma capinha no
+ * carrinho. Conta como capinha um produto da categoria "Capas" (qualquer
+ * preço) OU, mesmo fora dela — catálogo com categoria inconsistente —,
+ * qualquer produto de R$30 cujo nome tenha "capa" ou "capinha" (ex.: "Capa
+ * space iPhone 17 Pro" não estava em "Capas" e a trava não liberava).
+ */
+export function isCapinhaCategory(product: {
+  categoryName?: string | null;
+  name?: string | null;
+  unitPrice?: number | null;
+}): boolean {
+  if (product.categoryName === CAPINHA_CATEGORY_NAME) return true;
+  if (!product.name || product.unitPrice == null) return false;
+  return CAPINHA_NAME_PATTERN.test(product.name) && Math.abs(product.unitPrice - CAPINHA_PRICE) < 0.01;
 }
 
 /**

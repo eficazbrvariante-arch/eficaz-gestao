@@ -122,7 +122,13 @@ async function loadSaleSnapshot(tenantId: string, saleNumber: number): Promise<P
     found: true,
     createdAt: sale.createdAt,
     sellerName: sale.seller.name,
-    hasCapinha: sale.items.some((item) => isCapinhaCategory(item.product.category?.name)),
+    hasCapinha: sale.items.some((item) =>
+      isCapinhaCategory({
+        categoryName: item.product.category?.name,
+        name: item.nameSnapshot,
+        unitPrice: Number(item.unitPrice),
+      })
+    ),
     hasPelicula: sale.items.some((item) => isPeliculaCategory(item.product.category?.name)),
     protecaoEficazOptedIn: sale.protecaoEficazOptedIn,
     items: sale.items.map((item) => ({

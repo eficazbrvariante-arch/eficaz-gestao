@@ -70,7 +70,14 @@ export async function createSale(
   // verdade).
   const capinhaUnits = input.items.reduce((sum, item) => {
     const product = productMap.get(item.productId);
-    return sum + (isCapinhaCategory(product?.category?.name) ? item.quantity : 0);
+    const variant = item.variantId ? product?.variants.find((v) => v.id === item.variantId) : undefined;
+    const basePrice = product ? Number(product.promoPrice ?? product.salePrice) : null;
+    const isCapinha = isCapinhaCategory({
+      categoryName: product?.category?.name,
+      name: product?.name,
+      unitPrice: basePrice == null ? null : round2(basePrice + Number(variant?.priceAdjustment ?? 0)),
+    });
+    return sum + (isCapinha ? item.quantity : 0);
   }, 0);
 
   // Proteção Eficaz: revalidada aqui de novo, nunca aceita só porque o PDV

@@ -235,7 +235,11 @@ export function PdvScreen({
   // "qualquer quantidade de película com uma capinha só". Vale pra Vendedor
   // e Gerente — só Admin (canDiscountFreely) não passa por essa trava.
   const capinhaUnits = cart.reduce(
-    (sum, line) => sum + (isCapinhaCategory(line.categoryName) ? line.quantity : 0),
+    (sum, line) =>
+      sum +
+      (isCapinhaCategory({ categoryName: line.categoryName, name: line.name, unitPrice: line.unitPrice })
+        ? line.quantity
+        : 0),
     0
   );
   const sellerDiscountAllocation = allocateSellerDiscountBudget(cart, capinhaUnits);
