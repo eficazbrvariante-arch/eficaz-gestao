@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sumWorkedMinutesByDay } from "./hourly-payment-service";
+import { clampPeriodToUnpaid, sumWorkedMinutesByDay } from "./hourly-payment-service";
 import type { EffectiveAttendanceEntry } from "@/modules/attendance/attendance-service";
 
 function entry(
@@ -82,5 +82,36 @@ describe("sumWorkedMinutesByDay", () => {
       { date: "2026-08-16", workedMinutes: 0, incomplete: true },
       { date: "2026-08-17", workedMinutes: 60, incomplete: false },
     ]);
+  });
+});
+
+describe("clampPeriodToUnpaid", () => {
+  // Bug real: Gabriel recebeu o dia 21/08 (pagamento já registrado), e ao
+  // abrir o período 01/08-22/08 o calculador somava o dia 21 de novo junto
+  // com o 22 — dobrando a hora já paga.
+  it("sem pagamento anterior, devolve o período pedido sem alterar", () => {
+    expect(clampPeriodToUnpaid({ from: "2026-08-01", to: "2026-08-22" }, null)).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-22",
+    });
+  });
+
+  it("com pagamento cobrindo até 21/08, começa a somar só a partir de 22/08", () => {
+    expect(clampPeriodToUnpaid({ from: "2026-08-01", to: "2026-08-22" }, "2026-08-21")).toEqual({
+      from: "2026-08-22",
+      to: "2026-08-22",
+    });
+  });
+
+  it("período pedido já totalmente coberto: devolve null (nada pendente)", () => {
+    expect(clampPeriodToUnpaid({ from: "2026-08-01", to: "2026-08-21" }, "2026-08-21")).toBeNull();
+    expect(clampPeriodToUnpaid({ from: "2026-08-01", to: "2026-08-15" }, "2026-08-21")).toBeNull();
+  });
+
+  it("período pedido começa depois da cobertura: não mexe no início", () => {
+    expect(clampPeriodToUnpaid({ from: "2026-08-25", to: "2026-08-30" }, "2026-08-21")).toEqual({
+      from: "2026-08-25",
+      to: "2026-08-30",
+    });
   });
 });

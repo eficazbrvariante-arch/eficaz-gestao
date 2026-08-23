@@ -1241,6 +1241,12 @@ model EmployeeLedgerEntry {
   /// como pago manualmente (ver `settleEmployeeLedgerEntry`), sem passar
   /// pela confirmação do colaborador.
   paidSelfieUrl String?
+  /// Início/fim (inclusive) do período de Ponto já coberto por este
+  /// lançamento — só preenchido quando `type = HOURLY_PAYMENT`. Usado pra
+  /// nunca recontar, num pagamento futuro, horas que já viraram um
+  /// lançamento (pendente ou pago) — ver `computeHourlyPaymentPreview`.
+  hourlyPeriodFrom DateTime?
+  hourlyPeriodTo   DateTime?
   createdById   String
   createdAt     DateTime             @default(now())
 
@@ -1250,6 +1256,7 @@ model EmployeeLedgerEntry {
 
   @@index([tenantId, userId, status])
   @@index([tenantId, status, createdAt])
+  @@index([tenantId, userId, type, hourlyPeriodTo])
   @@map("employee_ledger_entries")
 }
 

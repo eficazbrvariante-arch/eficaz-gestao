@@ -1,10 +1,37 @@
 import { prisma } from "@/lib/prisma";
-import { formatISODate, periodRange, todayISO } from "@/lib/format";
+import { addDaysISO, formatISODate, periodRange, todayISO } from "@/lib/format";
 import { computeWorkedMinutesForDay } from "@/modules/attendance/attendance-rules";
 import { listEffectiveEntries, type EffectiveAttendanceEntry } from "@/modules/attendance/attendance-service";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+/** `YYYY-MM-DD` → meio-dia UTC, mesma convenção de `addDaysISO` — evita
+ *  problemas de fuso na borda do dia ao gravar/ler uma data pura no banco. */
+function isoToDate(iso: string): Date {
+  return new Date(`${iso}T12:00:00Z`);
+}
+
+function dateToISO(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Ajusta o início do período pra nunca reincluir dias já cobertos por um
+ * pagamento por horas registrado antes (`coveredThrough` = fim do último
+ * período já lançado, pendente ou pago) — evita contar de novo horas já
+ * lançadas quando o admin amplia o período pra frente. `null` quando o
+ * período pedido já está inteiramente coberto (nada de novo a pagar).
+ */
+export function clampPeriodToUnpaid(
+  period: { from: string; to: string },
+  coveredThrough: string | null
+): { from: string; to: string } | null {
+  if (!coveredThrough) return period;
+  const effectiveFrom = period.from > coveredThrough ? period.from : addDaysISO(coveredThrough, 1);
+  if (effectiveFrom > period.to) return null;
+  return { from: effectiveFrom, to: period.to };
 }
 
 export type DayWorkedMinutes = {
@@ -55,7 +82,33 @@ export type HourlyPaymentPreview = {
    *  "saída") — o total já exclui esses dias, mas registrar o pagamento
    *  assim mesmo pagaria a menos sem avisar; bloqueado até corrigir. */
   hasIncompleteDays: boolean;
+  /** Início realmente usado no cálculo — pode ser depois do `period.from`
+   *  pedido, se parte do período já tinha pagamento registrado (ver
+   *  `clampPeriodToUnpaid`). Igual a `period.from` quando nada foi ajustado. */
+  effectiveFrom: string;
+  /** Fim do último pagamento por horas já registrado (pendente ou pago)
+   *  antes deste período, ou `null` se nunca houve um. Usado pra avisar o
+   *  admin quando o total mostrado é menor que o período pedido porque
+   *  parte já está lançada. */
+  coveredThrough: string | null;
+  /** `true` quando o período pedido inteiro já tinha pagamento registrado
+   *  antes — não há nada novo pra pagar (`days`/`totalMinutes`/`amount`
+   *  vêm zerados só por causa disso, não por falta de marcação no Ponto). */
+  fullyCovered: boolean;
 };
+
+/**
+ * Fim do último período de pagamento por horas já lançado (`HOURLY_PAYMENT`,
+ * qualquer status — pendente já "gasta" as horas tanto quanto pago) pra este
+ * colaborador. `null` se nunca registrou nenhum.
+ */
+async function getHourlyPaymentCoveredThrough(tenantId: string, userId: string): Promise<string | null> {
+  const last = await prisma.employeeLedgerEntry.aggregate({
+    where: { tenantId, userId, type: "HOURLY_PAYMENT", hourlyPeriodTo: { not: null } },
+    _max: { hourlyPeriodTo: true },
+  });
+  return last._max.hourlyPeriodTo ? dateToISO(last._max.hourlyPeriodTo) : null;
+}
 
 /**
  * Prévia do pagamento por horas de um colaborador num período — soma as
@@ -63,6 +116,10 @@ export type HourlyPaymentPreview = {
  * por hora configurado (`User.hourlyRate`). Usada tanto pra mostrar a
  * calculadora quanto, de novo, no momento de registrar o pagamento (nunca
  * confia num valor calculado no cliente).
+ *
+ * Nunca reconta dias que já viraram um lançamento anterior (pendente ou
+ * pago): o início efetivo é ajustado pra depois do último período já
+ * coberto, mesmo que o filtro escolhido na tela peça um período maior.
  */
 export async function computeHourlyPaymentPreview(
   tenantId: string,
@@ -70,7 +127,25 @@ export async function computeHourlyPaymentPreview(
   /** `YYYY-MM-DD`, inclusivo dos dois lados — mesmo formato de `resolvePeriod`. */
   period: { from: string; to: string }
 ): Promise<HourlyPaymentPreview> {
-  const { start, end } = periodRange(period.from, period.to);
+  const coveredThrough = await getHourlyPaymentCoveredThrough(tenantId, userId);
+  const effectivePeriod = clampPeriodToUnpaid(period, coveredThrough);
+
+  if (!effectivePeriod) {
+    const user = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { hourlyRate: true } });
+    return {
+      hourlyRate: Number(user?.hourlyRate ?? 0),
+      days: [],
+      totalMinutes: 0,
+      totalHours: 0,
+      amount: 0,
+      hasIncompleteDays: false,
+      effectiveFrom: period.to,
+      coveredThrough,
+      fullyCovered: true,
+    };
+  }
+
+  const { start, end } = periodRange(effectivePeriod.from, effectivePeriod.to);
   const [user, entries] = await Promise.all([
     prisma.user.findFirst({ where: { id: userId, tenantId }, select: { hourlyRate: true } }),
     listEffectiveEntries(tenantId, { userId, from: start, to: end }),
@@ -83,7 +158,17 @@ export async function computeHourlyPaymentPreview(
   const amount = round2(totalHours * hourlyRate);
   const hasIncompleteDays = days.some((day) => day.incomplete);
 
-  return { hourlyRate, days, totalMinutes, totalHours, amount, hasIncompleteDays };
+  return {
+    hourlyRate,
+    days,
+    totalMinutes,
+    totalHours,
+    amount,
+    hasIncompleteDays,
+    effectiveFrom: effectivePeriod.from,
+    coveredThrough,
+    fullyCovered: false,
+  };
 }
 
 export type RegisterHourlyPaymentResult =
@@ -124,13 +209,21 @@ export async function registerHourlyPayment(
   }
 
   const transportAmount = round2(Math.max(0, input.transportAmount ?? 0));
+  if (preview.fullyCovered && transportAmount <= 0) {
+    return {
+      ok: false,
+      error: `Esse período já está todo coberto por pagamento(s) registrado(s) até ${formatISODate(preview.coveredThrough!)}.`,
+    };
+  }
   if (preview.totalMinutes <= 0 && transportAmount <= 0) {
     return { ok: false, error: "Nenhuma hora trabalhada registrada no Ponto nesse período." };
   }
 
   const totalAmount = round2(preview.amount + transportAmount);
   const description = [
-    `${preview.totalHours}h × ${formatBRLNoSymbol(preview.hourlyRate)} (${formatISODate(input.from)} a ${formatISODate(input.to)})`,
+    preview.totalMinutes > 0
+      ? `${preview.totalHours}h × ${formatBRLNoSymbol(preview.hourlyRate)} (${formatISODate(preview.effectiveFrom)} a ${formatISODate(input.to)})`
+      : null,
     transportAmount > 0 ? `Passagem ${formatBRLNoSymbol(transportAmount)}` : null,
   ]
     .filter(Boolean)
@@ -144,6 +237,9 @@ export async function registerHourlyPayment(
       amount: totalAmount,
       description,
       createdById: ctx.createdById,
+      ...(preview.fullyCovered
+        ? {}
+        : { hourlyPeriodFrom: isoToDate(preview.effectiveFrom), hourlyPeriodTo: isoToDate(input.to) }),
     },
     select: { id: true },
   });
@@ -161,4 +257,53 @@ export async function setHourlyRate(tenantId: string, userId: string, hourlyRate
     data: { hourlyRate: round2(hourlyRate) },
   });
   return result.count > 0;
+}
+
+export type HourlyPaymentHistoryEntry = {
+  id: string;
+  /** `null` num lançamento antigo, de antes desta coluna existir. */
+  from: string | null;
+  to: string | null;
+  amount: number;
+  status: "PENDING" | "PAID";
+  createdAt: Date;
+  settledAt: Date | null;
+  paidSelfieUrl: string | null;
+};
+
+/**
+ * Histórico de pagamentos por horas já registrados de um colaborador, mais
+ * recente primeiro — mostrado no fim do painel de Horas pra separar
+ * visualmente o que já foi lançado (pendente ou pago) do cálculo do
+ * período em aberto acima.
+ */
+export async function listHourlyPaymentHistory(
+  tenantId: string,
+  userId: string
+): Promise<HourlyPaymentHistoryEntry[]> {
+  const entries = await prisma.employeeLedgerEntry.findMany({
+    where: { tenantId, userId, type: "HOURLY_PAYMENT" },
+    select: {
+      id: true,
+      amount: true,
+      status: true,
+      createdAt: true,
+      settledAt: true,
+      paidSelfieUrl: true,
+      hourlyPeriodFrom: true,
+      hourlyPeriodTo: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return entries.map((entry) => ({
+    id: entry.id,
+    from: entry.hourlyPeriodFrom ? dateToISO(entry.hourlyPeriodFrom) : null,
+    to: entry.hourlyPeriodTo ? dateToISO(entry.hourlyPeriodTo) : null,
+    amount: Number(entry.amount),
+    status: entry.status,
+    createdAt: entry.createdAt,
+    settledAt: entry.settledAt,
+    paidSelfieUrl: entry.paidSelfieUrl,
+  }));
 }

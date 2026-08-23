@@ -7,9 +7,10 @@ import { formatWorkedMinutes } from "@/modules/attendance/attendance-rules";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { FormBanner } from "@/components/ui/form-banner";
 import { setHourlyRateAction, registerHourlyPaymentAction } from "../../actions";
-import type { DayWorkedMinutes } from "@/modules/employees/hourly-payment-service";
+import type { DayWorkedMinutes, HourlyPaymentHistoryEntry } from "@/modules/employees/hourly-payment-service";
 
 export function HorasPanel({
   userId,
@@ -21,6 +22,10 @@ export function HorasPanel({
   hasIncompleteDays,
   from,
   to,
+  effectiveFrom,
+  coveredThrough,
+  fullyCovered,
+  history,
 }: {
   userId: string;
   hourlyRate: number;
@@ -34,6 +39,15 @@ export function HorasPanel({
   hasIncompleteDays: boolean;
   from: string;
   to: string;
+  /** Início realmente usado no cálculo — depois de `from` quando parte do
+   *  período já tinha pagamento registrado. */
+  effectiveFrom: string;
+  /** Fim do último pagamento por horas já registrado (pendente ou pago),
+   *  ou `null` se nunca houve um. */
+  coveredThrough: string | null;
+  /** `true` quando o período pedido inteiro já está coberto — nada pendente. */
+  fullyCovered: boolean;
+  history: HourlyPaymentHistoryEntry[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -74,6 +88,14 @@ export function HorasPanel({
   return (
     <div className="space-y-6">
       <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      {coveredThrough && (
+        <p className="rounded-md bg-info/10 px-3 py-2 text-sm text-info">
+          {fullyCovered
+            ? `Todo o período pedido já tem pagamento registrado (até ${formatISODate(coveredThrough)}). Nada pendente aqui — veja o histórico abaixo.`
+            : `Já tem pagamento registrado até ${formatISODate(coveredThrough)} — mostrando só as horas pendentes a partir de ${formatISODate(effectiveFrom)}.`}
+        </p>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Valor por hora</p>
@@ -191,6 +213,52 @@ export function HorasPanel({
       >
         {isPending ? "Registrando..." : `Registrar pagamento de ${formatBRL(totalWithTransport)}`}
       </Button>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <p className="text-sm font-semibold text-slate-900">Histórico de pagamentos</p>
+        </div>
+        {history.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-slate-900">
+            Nenhum pagamento por horas registrado ainda.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {history.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  {entry.paidSelfieUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- selfie em blob storage, domínio variável
+                    <img
+                      src={entry.paidSelfieUrl}
+                      alt="Selfie de confirmação"
+                      className="h-10 w-10 shrink-0 rounded-full object-cover"
+                    />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {entry.from && entry.to
+                        ? `${formatISODate(entry.from)} a ${formatISODate(entry.to)}`
+                        : "Período não registrado"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {entry.status === "PAID" && entry.settledAt
+                        ? `Pago em ${formatISODate(entry.settledAt.toISOString().slice(0, 10))}`
+                        : `Lançado em ${formatISODate(entry.createdAt.toISOString().slice(0, 10))}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-slate-900">{formatBRL(entry.amount)}</span>
+                  <Badge variant={entry.status === "PAID" ? "success" : "warning"}>
+                    {entry.status === "PAID" ? "Pago" : "Pendente"}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
