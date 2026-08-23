@@ -46,8 +46,8 @@ export default async function ConfiguracoesDominioPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Domínio próprio</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Domínio próprio</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Faça seu catálogo responder pelo endereço da sua empresa, no lugar do subdomínio do
         sistema.
       </p>

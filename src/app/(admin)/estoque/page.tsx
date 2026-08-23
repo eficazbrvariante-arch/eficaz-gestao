@@ -46,8 +46,8 @@ export default async function EstoquePage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Estoque</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">Estoque</h1>
+          <p className="text-sm text-text-muted">
             Movimentações, alertas de estoque baixo e inventário.
           </p>
         </div>

@@ -100,12 +100,12 @@ export function ProtecaoEficazRedemptionModal({
 
       {resolved ? (
         <div>
-          <p className="text-base font-semibold text-slate-900">{resolved.customerName}</p>
-          <p className="text-sm text-slate-500">Venda original #{resolved.saleNumber}</p>
+          <p className="text-base font-semibold text-foreground">{resolved.customerName}</p>
+          <p className="text-sm text-text-muted">Venda original #{resolved.saleNumber}</p>
           <p className="mt-1 text-sm font-medium text-emerald-700">
             Válido para troca até {formatDate(resolved.protectionExpiresAt)}
           </p>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-text-muted">
             Precisa ter exatamente 1 película no carrinho — ela sai com o valor zerado ao
             finalizar.
           </p>

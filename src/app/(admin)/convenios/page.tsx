@@ -35,8 +35,8 @@ export default async function ConveniosPage() {
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Convênios Corporativos</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">Convênios Corporativos</h1>
+          <p className="text-sm text-text-muted">
             Empresas parceiras, colaboradores vinculados e o benefício de cada uma.
           </p>
         </div>

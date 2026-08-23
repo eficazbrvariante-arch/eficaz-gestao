@@ -160,7 +160,7 @@ export function ProdutosComissionadosPicker({
       )}
 
       <div>
-        <p className="mb-2 text-sm font-semibold text-slate-900">
+        <p className="mb-2 text-sm font-semibold text-foreground">
           Já selecionados ({products.length})
         </p>
         {totalCount > listLimit && (

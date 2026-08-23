@@ -19,11 +19,11 @@ export default async function AtividadesPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link href="/usuarios" className="text-sm text-slate-500 hover:underline">
+        <Link href="/usuarios" className="text-sm text-text-muted hover:underline">
           ← Voltar para usuários
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">Registro de atividades</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">Registro de atividades</h1>
+        <p className="text-sm text-text-muted">
           Ações importantes feitas no painel: cancelamentos, ajustes de estoque, mudanças de
           usuário e de configuração.
         </p>

@@ -327,7 +327,7 @@ export function EmployeeLedgerPanel({
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-semibold text-slate-900">Colaboradores</p>
+        <p className="mb-3 text-sm font-semibold text-foreground">Colaboradores</p>
         {cardRows.length === 0 ? (
           <EmptyState message="Nenhum Vendedor ou Gerente ativo cadastrado." />
         ) : (
@@ -380,7 +380,7 @@ export function EmployeeLedgerPanel({
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-semibold text-slate-900">Lançamentos</p>
+        <p className="mb-3 text-sm font-semibold text-foreground">Lançamentos</p>
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">

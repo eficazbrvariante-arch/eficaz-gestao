@@ -38,13 +38,13 @@ export default async function HorasColaboradorPage({
   return (
     <div>
       <div className="mb-6">
-        <Link href="/colaboradores" className="text-sm text-slate-500 hover:underline">
+        <Link href="/colaboradores" className="text-sm text-text-muted hover:underline">
           ← Voltar para Colaboradores
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">
           Pagamento por horas — {employee.name}
         </h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-text-muted">
           {formatISODate(period.from)} a {formatISODate(period.to)} · horas somadas a partir do
           que já está registrado no Ponto.
         </p>

@@ -9,8 +9,8 @@ export default async function PontoPage() {
 
   return (
     <div className="mx-auto max-w-md">
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Controle de Ponto</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Controle de Ponto</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Várias pessoas usam este dispositivo — selecione quem está batendo o ponto antes de
         registrar.
       </p>

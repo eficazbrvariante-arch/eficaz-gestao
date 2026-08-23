@@ -43,9 +43,9 @@ export function SellerPickerModal({
       }
     >
       {isPending ? (
-        <p className="py-6 text-center text-sm text-slate-400">Carregando vendedores...</p>
+        <p className="py-6 text-center text-sm text-text-muted">Carregando vendedores...</p>
       ) : sellers.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400">
+        <p className="py-6 text-center text-sm text-text-muted">
           Nenhum vendedor ativo encontrado. Cadastre um vendedor em Usuários.
         </p>
       ) : (
@@ -60,7 +60,7 @@ export function SellerPickerModal({
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
                 {nameInitials(seller.name)}
               </span>
-              <span className="text-sm font-medium text-slate-900">{seller.name}</span>
+              <span className="text-sm font-medium text-foreground">{seller.name}</span>
             </button>
           ))}
         </div>

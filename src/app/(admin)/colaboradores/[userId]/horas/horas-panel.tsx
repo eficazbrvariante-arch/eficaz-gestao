@@ -77,7 +77,7 @@ export function HorasPanel({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Valor por hora</p>
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-900">
           Usado pra calcular o pagamento a partir das horas já registradas no Ponto.
           {!canEditRate && " Somente o Administrador pode alterar."}
         </p>
@@ -115,13 +115,13 @@ export function HorasPanel({
         </div>
         <div className="divide-y divide-slate-100">
           {days.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-400">
+            <p className="px-4 py-6 text-center text-sm text-slate-900">
               Nenhuma marcação de ponto neste período.
             </p>
           ) : (
             days.map((day) => (
               <div key={day.date} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-slate-600">{formatISODate(day.date)}</span>
+                <span className="text-slate-900">{formatISODate(day.date)}</span>
                 {day.incomplete ? (
                   <span className="text-xs font-medium text-red-600">
                     Falta bater saída — corrigir no Ponto
@@ -136,15 +136,15 @@ export function HorasPanel({
           )}
         </div>
         <div className="space-y-1 border-t border-slate-200 px-4 py-3">
-          <div className="flex justify-between text-sm text-slate-600">
+          <div className="flex justify-between text-sm text-slate-900">
             <span>Total de horas</span>
             <span className="font-medium text-slate-900">{formatWorkedMinutes(totalMinutes)}</span>
           </div>
-          <div className="flex justify-between text-sm text-slate-600">
+          <div className="flex justify-between text-sm text-slate-900">
             <span>Valor por hora</span>
             <span className="font-medium text-slate-900">{formatBRL(hourlyRate)}</span>
           </div>
-          <div className="flex justify-between border-t border-slate-100 pt-2 text-sm text-slate-600">
+          <div className="flex justify-between border-t border-slate-100 pt-2 text-sm text-slate-900">
             <span>Subtotal horas</span>
             <span className="font-medium text-slate-900">{formatBRL(amount)}</span>
           </div>
@@ -153,7 +153,7 @@ export function HorasPanel({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-1 text-sm font-semibold text-slate-900">Passagem (opcional)</p>
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-900">
           Valor fixo somado ao pagamento por horas — entra no mesmo lançamento e na mesma
           confirmação/comprovante, sem precisar registrar à parte.
         </p>

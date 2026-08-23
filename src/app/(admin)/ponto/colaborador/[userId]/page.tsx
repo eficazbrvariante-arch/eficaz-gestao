@@ -71,8 +71,8 @@ export default async function EmployeeAttendancePage({
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">{employee.name}</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">{employee.name}</h1>
+      <p className="mb-6 text-sm text-text-muted">
         {formatISODate(period.from)} a {formatISODate(period.to)}
       </p>
 

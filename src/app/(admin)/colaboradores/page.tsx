@@ -80,8 +80,8 @@ export default async function ColaboradoresPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Colaboradores</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Colaboradores</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Adiantamento de salário, compra de mercadoria e comissão de venda.
       </p>
 

@@ -4,8 +4,8 @@ import { CSV_COLUMNS } from "@/lib/csv-columns";
 export default function ImportarProdutosPage() {
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Importar produtos</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Importar produtos</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Envie um arquivo CSV com as colunas abaixo. Categorias, marcas e fornecedores informados
         que ainda não existirem serão criados automaticamente. Produtos com o mesmo código interno
         de um produto já existente serão atualizados.

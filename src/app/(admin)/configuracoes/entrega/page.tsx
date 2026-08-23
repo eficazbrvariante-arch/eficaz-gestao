@@ -25,8 +25,8 @@ export default async function ConfiguracoesEntregaPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Entrega e retirada</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Entrega e retirada</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Define como o cliente recebe o pedido feito no catálogo online e quanto custa a entrega
         em cada região.
       </p>

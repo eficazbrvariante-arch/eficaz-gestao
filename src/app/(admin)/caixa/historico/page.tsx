@@ -36,10 +36,10 @@ export default async function HistoricoCaixaPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link href="/caixa" className="text-sm text-slate-500 hover:underline">
+        <Link href="/caixa" className="text-sm text-text-muted hover:underline">
           ← Voltar para o caixa
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">Histórico de caixas</h1>
+        <h1 className="mt-2 text-xl font-semibold text-foreground">Histórico de caixas</h1>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">

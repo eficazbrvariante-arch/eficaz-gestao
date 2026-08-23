@@ -31,8 +31,8 @@ export default async function UsuariosPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Usuários</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-foreground">Usuários</h1>
+        <p className="text-sm text-text-muted">
           Quem tem acesso ao painel e o que cada um pode fazer.
         </p>
       </div>
@@ -121,7 +121,7 @@ export default async function UsuariosPage() {
       )}
 
       <div className="mt-6">
-        <Link href="/usuarios/atividades" className="text-sm text-slate-600 hover:underline">
+        <Link href="/usuarios/atividades" className="text-sm text-text-muted hover:underline">
           Ver registro de atividades →
         </Link>
       </div>

@@ -36,8 +36,8 @@ export default async function DispositivosPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Dispositivos</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-foreground">Dispositivos</h1>
+        <p className="text-sm text-text-muted">
           Só computadores/navegadores aprovados aqui conseguem fazer login no PDV,
           mesmo com senha certa.
         </p>

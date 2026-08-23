@@ -58,10 +58,10 @@ export default async function FichaClientePage({
   return (
     <div>
       <div className="mb-6">
-        <Link href="/clientes" className="text-sm text-slate-500 hover:underline">
+        <Link href="/clientes" className="text-sm text-text-muted hover:underline">
           ← Voltar para clientes
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">{customer.name}</h1>
+        <h1 className="mt-2 text-xl font-semibold text-foreground">{customer.name}</h1>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -15,8 +15,8 @@ export default async function FornecedoresPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Fornecedores</h1>
-          <p className="text-sm text-slate-500">Fornecedores vinculados aos seus produtos.</p>
+          <h1 className="text-xl font-semibold text-foreground">Fornecedores</h1>
+          <p className="text-sm text-text-muted">Fornecedores vinculados aos seus produtos.</p>
         </div>
         <Link
           href="/fornecedores/novo"

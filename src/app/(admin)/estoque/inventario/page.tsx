@@ -17,8 +17,8 @@ export default async function InventarioPage({
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Inventário</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Inventário</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Informe a quantidade contada fisicamente para cada produto. Só os produtos com quantidade
         alterada geram um ajuste de estoque.
       </p>

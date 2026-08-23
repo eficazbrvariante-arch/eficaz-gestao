@@ -85,8 +85,8 @@ export default async function AssistenciaTecnicaPage({
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Assistência Técnica</h1>
-          <p className="text-sm text-slate-500">Ordens de serviço de reparo e manutenção.</p>
+          <h1 className="text-xl font-semibold text-foreground">Assistência Técnica</h1>
+          <p className="text-sm text-text-muted">Ordens de serviço de reparo e manutenção.</p>
         </div>
         <Link
           href="/assistencia-tecnica/novo"

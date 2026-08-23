@@ -18,8 +18,8 @@ export default async function ProtecaoEficazPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Proteção Eficaz</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-foreground">Proteção Eficaz</h1>
+        <p className="text-sm text-text-muted">
           Cadastros enviados pelos clientes — compare a foto da nota com o rascunho da venda antes
           de aprovar.
         </p>

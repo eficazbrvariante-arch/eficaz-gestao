@@ -14,7 +14,7 @@ export default async function CategoriasPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Produtos</h1>
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Produtos</h1>
       <ProdutosTabs />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

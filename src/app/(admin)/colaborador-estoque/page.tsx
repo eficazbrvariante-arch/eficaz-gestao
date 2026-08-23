@@ -36,8 +36,8 @@ export default async function ColaboradorEstoquePage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Contagem de Estoque</h1>
-      <p className="mb-1 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Contagem de Estoque</h1>
+      <p className="mb-1 text-sm text-text-muted">
         Confirme cada produto (foto, quando faltar, e a quantidade em estoque). Ao confirmar, ele
         sai da sua lista.
       </p>

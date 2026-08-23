@@ -21,10 +21,10 @@ export default async function NovoMembroPage({
   return (
     <div>
       <div className="mb-6">
-        <Link href={`/convenios/${convenio.id}`} className="text-sm text-slate-500 hover:underline">
+        <Link href={`/convenios/${convenio.id}`} className="text-sm text-text-muted hover:underline">
           ← Voltar para {convenio.name}
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">Novo colaborador — {convenio.name}</h1>
+        <h1 className="mt-2 text-xl font-semibold text-foreground">Novo colaborador — {convenio.name}</h1>
       </div>
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <MembroForm convenioId={convenio.id} />

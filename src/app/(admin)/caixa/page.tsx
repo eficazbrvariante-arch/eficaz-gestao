@@ -24,8 +24,8 @@ export default async function CaixaPage() {
 
     return (
       <div>
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">Caixa</h1>
-        <p className="mb-6 text-sm text-slate-500">
+        <h1 className="mb-1 text-xl font-semibold text-foreground">Caixa</h1>
+        <p className="mb-6 text-sm text-text-muted">
           Nenhum caixa aberto. Abra o caixa para começar a vender no PDV.
         </p>
 
@@ -55,7 +55,7 @@ export default async function CaixaPage() {
         )}
 
         <div className="mt-6">
-          <Link href="/caixa/historico" className="text-sm text-slate-600 hover:underline">
+          <Link href="/caixa/historico" className="text-sm text-text-muted hover:underline">
             Ver histórico de caixas →
           </Link>
         </div>
@@ -88,8 +88,8 @@ export default async function CaixaPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Caixa aberto</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">Caixa aberto</h1>
+          <p className="text-sm text-text-muted">
             Aberto por {register.openedBy.name} em {formatDateTime(register.openedAt)} ·{" "}
             {summary.salesCount} venda(s)
           </p>

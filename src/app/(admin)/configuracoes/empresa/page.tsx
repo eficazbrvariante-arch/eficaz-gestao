@@ -6,8 +6,8 @@ export default async function ConfiguracoesEmpresaPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Dados da empresa</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Dados da empresa</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Essas informações aparecerão no catálogo online e nos comprovantes de venda.
       </p>
 

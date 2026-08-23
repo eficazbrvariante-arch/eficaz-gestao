@@ -57,8 +57,8 @@ export default async function OfertaRelampagoPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Oferta Relâmpago</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Oferta Relâmpago</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Configure um produto e um preço promocional para cada dia da semana. A loja mostra
         automaticamente só a oferta do dia de hoje e troca sozinha à meia-noite — dias
         desativados ou sem produto configurado não exibem nada.

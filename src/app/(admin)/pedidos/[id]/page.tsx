@@ -77,11 +77,11 @@ export default async function PedidoDetalhePage({
   return (
     <div>
       <div className="mb-6">
-        <Link href="/pedidos" className="text-sm text-slate-500 hover:underline">
+        <Link href="/pedidos" className="text-sm text-text-muted hover:underline">
           ← Voltar para pedidos
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Pedido #{order.number}</h1>
+          <h1 className="text-xl font-semibold text-foreground">Pedido #{order.number}</h1>
           <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
             {ORDER_STATUS_LABELS[order.status]}
           </span>

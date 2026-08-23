@@ -57,8 +57,8 @@ export default async function DashboardPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-500">Resumo do dia de hoje.</p>
+          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-sm text-text-muted">Resumo do dia de hoje.</p>
         </div>
         <div
           className={
@@ -91,7 +91,7 @@ export default async function DashboardPage() {
             key={stat.label}
             className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
           >
-            <p className="text-sm text-slate-500">{stat.label}</p>
+            <p className="text-sm text-slate-900">{stat.label}</p>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{stat.value}</p>
           </div>
         ))}
@@ -101,12 +101,12 @@ export default async function DashboardPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Produtos mais vendidos</h2>
-            <Link href="/vendas" className="text-sm text-slate-600 hover:underline">
+            <Link href="/vendas" className="text-sm text-slate-800 hover:underline">
               Ver vendas
             </Link>
           </div>
           {topItems.length === 0 ? (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-600">
               Nenhuma venda registrada ainda. Os mais vendidos aparecerão aqui.
             </p>
           ) : (
@@ -118,14 +118,14 @@ export default async function DashboardPage() {
                     className="flex items-center justify-between text-slate-700"
                   >
                     <span>{item.nameSnapshot}</span>
-                    <span className="text-slate-500">{item._sum.quantity} un.</span>
+                    <span className="text-slate-700">{item._sum.quantity} un.</span>
                   </li>
                 ))}
               </ul>
-              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
+              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-600">
                 Ranking por quantidade vendida, considerando todo o período. Para faturamento e
                 margem por produto,{" "}
-                <Link href="/relatorios/produtos" className="underline hover:text-slate-600">
+                <Link href="/relatorios/produtos" className="underline hover:text-slate-900">
                   veja os relatórios de produtos
                 </Link>
                 .
@@ -139,12 +139,12 @@ export default async function DashboardPage() {
             <h2 className="text-sm font-semibold text-slate-900">
               Produtos a repor ({lowStock.length})
             </h2>
-            <Link href="/estoque" className="text-sm text-slate-600 hover:underline">
+            <Link href="/estoque" className="text-sm text-slate-800 hover:underline">
               Ver estoque
             </Link>
           </div>
           {lowStock.length === 0 ? (
-            <p className="text-sm text-slate-400">Nenhum produto precisando de reposição.</p>
+            <p className="text-sm text-slate-600">Nenhum produto precisando de reposição.</p>
           ) : (
             <ul className="space-y-1 text-sm">
               {lowStock.slice(0, 8).map((p) => (
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-          <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
+          <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-600">
             {totalProducts} produto(s) cadastrado(s) no total.
           </p>
         </div>

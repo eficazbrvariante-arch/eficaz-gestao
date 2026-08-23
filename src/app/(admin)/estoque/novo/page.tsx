@@ -12,7 +12,7 @@ export default async function NovoLancamentoEstoquePage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Novo lançamento de estoque</h1>
+      <h1 className="mb-6 text-xl font-semibold text-foreground">Novo lançamento de estoque</h1>
       <div className="max-w-xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <StockMovementForm products={products} />
       </div>

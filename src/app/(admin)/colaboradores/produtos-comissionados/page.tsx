@@ -32,11 +32,11 @@ export default async function ProdutosComissionadosPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link href="/colaboradores" className="text-sm text-slate-500 hover:underline">
+        <Link href="/colaboradores" className="text-sm text-text-muted hover:underline">
           ← Voltar para Colaboradores
         </Link>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">Produtos comissionados</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">Produtos comissionados</h1>
+        <p className="text-sm text-text-muted">
           {totalCount} produto(s) ativo(s) marcado(s) para comissão de venda. Busque um produto pra
           adicionar ou remover na hora, ou desmarque na lista abaixo e clique em Salvar.
         </p>

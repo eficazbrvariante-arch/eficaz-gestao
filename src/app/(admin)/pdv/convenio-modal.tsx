@@ -111,8 +111,8 @@ export function ConvenioModal({
             className="h-20 w-20 shrink-0 rounded-full object-cover"
           />
           <div>
-            <p className="text-base font-semibold text-slate-900">{resolved.member.name}</p>
-            <p className="text-sm text-slate-500">Convênio {resolved.convenio.name}</p>
+            <p className="text-base font-semibold text-foreground">{resolved.member.name}</p>
+            <p className="text-sm text-text-muted">Convênio {resolved.convenio.name}</p>
             <p className="mt-1 text-sm font-medium text-emerald-700">
               Benefício: {formatBRL(resolved.benefitAmount)}
             </p>

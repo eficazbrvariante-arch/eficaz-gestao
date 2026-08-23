@@ -33,8 +33,8 @@ export default async function ClientesPage({
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Clientes</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">Clientes</h1>
+          <p className="text-sm text-text-muted">
             Histórico de compras e dados de contato dos seus clientes.
           </p>
         </div>

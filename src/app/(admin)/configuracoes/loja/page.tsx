@@ -50,8 +50,8 @@ export default async function ConfiguracoesLojaPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Loja: horário e políticas</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Loja: horário e políticas</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Horário de atendimento, políticas institucionais, formas de pagamento e parcelamento
         exibidos no catálogo online — tudo com base no que a loja realmente pratica.
       </p>

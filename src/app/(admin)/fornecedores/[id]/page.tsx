@@ -17,7 +17,7 @@ export default async function EditarFornecedorPage({
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Editar fornecedor</h1>
+      <h1 className="mb-6 text-xl font-semibold text-foreground">Editar fornecedor</h1>
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <SupplierForm
           supplierId={supplier.id}

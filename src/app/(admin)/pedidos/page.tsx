@@ -59,8 +59,8 @@ export default async function PedidosPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Pedidos online</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-foreground">Pedidos online</h1>
+        <p className="text-sm text-text-muted">
           Pedidos recebidos pelo catálogo.
           {newCount > 0 && (
             <span className="ml-1 font-medium text-blue-700">

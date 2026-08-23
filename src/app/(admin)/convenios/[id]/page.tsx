@@ -81,14 +81,14 @@ export default async function ConvenioDetalhePage({
   return (
     <div>
       <div className="mb-6">
-        <Link href="/convenios" className="text-sm text-slate-500 hover:underline">
+        <Link href="/convenios" className="text-sm text-text-muted hover:underline">
           ← Voltar para Convênios
         </Link>
         <div className="mt-2 flex items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold text-slate-900">{convenio.name}</h1>
+          <h1 className="text-xl font-semibold text-foreground">{convenio.name}</h1>
           <Link
             href={`/convenios/${convenio.id}/editar`}
-            className="text-sm text-slate-600 hover:underline"
+            className="text-sm text-text-muted hover:underline"
           >
             Editar convênio
           </Link>
@@ -124,7 +124,7 @@ export default async function ConvenioDetalhePage({
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-4">
-        <h2 className="text-lg font-semibold text-slate-900">Colaboradores</h2>
+        <h2 className="text-lg font-semibold text-foreground">Colaboradores</h2>
         <Link
           href={`/convenios/${convenio.id}/membros/novo`}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
@@ -136,8 +136,8 @@ export default async function ConvenioDetalhePage({
       <MembrosTabela members={memberRows} />
 
       <div className="mt-8 mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">Produtos com desconto exclusivo no site</h2>
-        <p className="text-sm text-slate-500">
+        <h2 className="text-lg font-semibold text-foreground">Produtos com desconto exclusivo no site</h2>
+        <p className="text-sm text-text-muted">
           Além do benefício de balcão, colaboradores ativos deste convênio veem estes produtos com
           desconto no painel de cliente da loja online — e já compram com o preço reduzido pelo
           site.

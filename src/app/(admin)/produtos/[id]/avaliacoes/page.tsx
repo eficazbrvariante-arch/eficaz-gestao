@@ -27,13 +27,13 @@ export default async function ProductReviewsPage({
 
   return (
     <div>
-      <Link href="/produtos" className="text-sm text-slate-500 hover:underline">
+      <Link href="/produtos" className="text-sm text-text-muted hover:underline">
         ← Produtos
       </Link>
-      <h1 className="mt-2 mb-1 text-xl font-semibold text-slate-900">
+      <h1 className="mt-2 mb-1 text-xl font-semibold text-foreground">
         Avaliações — {product.name}
       </h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <p className="mb-6 text-sm text-text-muted">
         {product.reviewCount > 0
           ? `Média ${Number(product.avgRating).toFixed(1)} de 5 · ${product.reviewCount} avaliação${
               product.reviewCount === 1 ? "" : "ões"

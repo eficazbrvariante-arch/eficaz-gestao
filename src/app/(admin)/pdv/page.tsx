@@ -32,8 +32,8 @@ export default async function PdvPage() {
   if (!register) {
     return (
       <div>
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">PDV</h1>
-        <p className="mb-6 text-sm text-slate-500">
+        <h1 className="mb-1 text-xl font-semibold text-foreground">PDV</h1>
+        <p className="mb-6 text-sm text-text-muted">
           É necessário abrir o caixa antes de registrar vendas.
         </p>
         <div className="max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6">
@@ -57,8 +57,8 @@ export default async function PdvPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">PDV</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">PDV</h1>
+          <p className="text-sm text-text-muted">
             Caixa aberto por {register.openedBy.name} em {formatDateTime(register.openedAt)}
           </p>
         </div>

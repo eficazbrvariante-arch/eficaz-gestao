@@ -29,7 +29,7 @@ export function ReportTabs({ period }: { period: Period }) {
               "border-b-2 px-3 py-2 text-sm font-medium",
               isActive
                 ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                : "border-transparent text-slate-700 hover:text-slate-900"
             )}
           >
             {tab.label}
@@ -65,7 +65,7 @@ export function PeriodPicker({
               <input key={key} type="hidden" name={key} value={value} />
             ))}
           <div>
-            <label htmlFor="de" className="mb-1 block text-xs font-medium text-slate-600">
+            <label htmlFor="de" className="mb-1 block text-xs font-medium text-slate-900">
               De
             </label>
             <input
@@ -77,7 +77,7 @@ export function PeriodPicker({
             />
           </div>
           <div>
-            <label htmlFor="ate" className="mb-1 block text-xs font-medium text-slate-600">
+            <label htmlFor="ate" className="mb-1 block text-xs font-medium text-slate-900">
               Até
             </label>
             <input
@@ -107,7 +107,7 @@ export function PeriodPicker({
                   "rounded-full px-3 py-1.5 text-xs",
                   isActive
                     ? "bg-slate-900 text-white"
-                    : "border border-slate-300 text-slate-600 hover:bg-slate-50"
+                    : "border border-slate-300 text-slate-800 hover:bg-slate-50"
                 )}
               >
                 {shortcut.label}

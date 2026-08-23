@@ -20,8 +20,8 @@ export default async function BuscarVendaPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Troca</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Troca</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Digite o número do cupom da venda original (impresso no comprovante) pra abrir o
         comprovante correspondente e processar a troca.
       </p>

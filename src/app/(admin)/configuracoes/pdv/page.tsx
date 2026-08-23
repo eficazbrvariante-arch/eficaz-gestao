@@ -6,8 +6,8 @@ export default async function ConfiguracoesPdvPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">PDV: impressão de comprovante</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">PDV: impressão de comprovante</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Controla a impressão do comprovante de venda na impressora térmica configurada como
         padrão no computador do caixa.
       </p>

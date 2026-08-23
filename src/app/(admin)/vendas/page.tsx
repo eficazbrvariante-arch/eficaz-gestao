@@ -50,8 +50,8 @@ export default async function VendasPage({
     if (!register) {
       return (
         <div>
-          <h1 className="mb-1 text-xl font-semibold text-slate-900">Vendas</h1>
-          <p className="mb-6 text-sm text-slate-500">
+          <h1 className="mb-1 text-xl font-semibold text-foreground">Vendas</h1>
+          <p className="mb-6 text-sm text-text-muted">
             Nenhum caixa aberto no momento — as vendas aparecem aqui a partir da abertura do
             caixa, e somem quando ele for fechado.
           </p>
@@ -192,8 +192,8 @@ export default async function VendasPage({
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Vendas</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-foreground">Vendas</h1>
+          <p className="text-sm text-text-muted">
             {isSpecificRegisterView
               ? "Vendas deste caixa."
               : `${!seeAll ? "Vendas do caixa aberto" : "Histórico de vendas"} · ${formatISODate(period.from)}${period.from !== period.to ? ` a ${formatISODate(period.to)}` : ""}`}

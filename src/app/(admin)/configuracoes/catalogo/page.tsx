@@ -18,8 +18,8 @@ export default async function ConfiguracoesCatalogoPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Catálogo online</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Catálogo online</h1>
+      <p className="mb-6 text-sm text-text-muted">
         A vitrine pública mostra automaticamente os produtos ativos marcados como
         &quot;Mostrar no catálogo online&quot;. Preço e estoque acompanham o PDV em tempo real.
       </p>

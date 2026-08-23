@@ -29,10 +29,10 @@ export default async function EditarProdutoPage({
   return (
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold text-slate-900">Editar produto</h1>
+        <h1 className="text-xl font-semibold text-foreground">Editar produto</h1>
         <Link
           href={`/produtos/${product.id}/avaliacoes`}
-          className="text-sm text-slate-600 hover:underline"
+          className="text-sm text-text-muted hover:underline"
         >
           Avaliações →
         </Link>

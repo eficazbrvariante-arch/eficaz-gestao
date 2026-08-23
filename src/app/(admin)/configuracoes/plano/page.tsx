@@ -58,8 +58,8 @@ export default async function PlanoPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Plano e uso</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-xl font-semibold text-foreground">Plano e uso</h1>
+      <p className="mb-6 text-sm text-text-muted">
         Seu plano atual e quanto dele você já está usando.
       </p>
 
@@ -82,7 +82,7 @@ export default async function PlanoPage() {
         </div>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-slate-900">Planos disponíveis</h2>
+      <h2 className="mb-3 text-sm font-semibold text-foreground">Planos disponíveis</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {PLAN_ORDER.map((plan) => {
           const limits = PLAN_LIMITS[plan];
