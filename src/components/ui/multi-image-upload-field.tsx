@@ -9,6 +9,7 @@ export function MultiImageUploadField({
   disabled,
   max,
   alt = "Foto",
+  uploadUrl = "/api/produtos/upload",
 }: {
   value: string[];
   onChange: (urls: string[]) => void;
@@ -16,6 +17,9 @@ export function MultiImageUploadField({
   /** Quando informado, limita o total de fotos e desativa o envio ao atingir o teto. */
   max?: number;
   alt?: string;
+  /** Rota de upload — cada área com política própria de tamanho/conteúdo
+   *  tem a sua própria rota dedicada; padrão mantém o comportamento antigo. */
+  uploadUrl?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,7 +45,7 @@ export function MultiImageUploadField({
       for (const file of selected) {
         const blob = await upload(file.name, file, {
           access: "public",
-          handleUploadUrl: "/api/produtos/upload",
+          handleUploadUrl: uploadUrl,
           contentType: file.type,
         });
         uploaded.push(blob.url);

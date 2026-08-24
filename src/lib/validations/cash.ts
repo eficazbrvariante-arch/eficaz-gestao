@@ -19,6 +19,28 @@ export const closeCashSchema = z.object({
 export type CloseCashInput = z.infer<typeof closeCashSchema>;
 export type CloseCashFormValues = z.input<typeof closeCashSchema>;
 
+/**
+ * Envio da contagem às cegas pelo Vendedor — só dinheiro (nunca vê o valor
+ * esperado nem a diferença na tela) e as fotos dos comprovantes da
+ * maquininha do período, pra o Admin comparar depois, de onde estiver.
+ */
+export const submitCashForReviewSchema = z.object({
+  countedAmount: money,
+  receiptPhotoUrls: z
+    .array(z.string().url())
+    .min(1, "Anexe pelo menos uma foto do comprovante da maquininha"),
+  notes: z.string().trim().optional().or(z.literal("")),
+});
+export type SubmitCashForReviewInput = z.infer<typeof submitCashForReviewSchema>;
+export type SubmitCashForReviewFormValues = z.input<typeof submitCashForReviewSchema>;
+
+/** Finalização do fechamento (só ADMIN) de um caixa enviado pra revisão. */
+export const finalizeCashReviewSchema = z.object({
+  registerId: z.string().trim().min(1),
+  notes: z.string().trim().optional().or(z.literal("")),
+});
+export type FinalizeCashReviewInput = z.infer<typeof finalizeCashReviewSchema>;
+
 export const cashMovementSchema = z.object({
   type: z.enum(["WITHDRAWAL", "SUPPLY"]),
   amount: z.coerce.number().positive("Informe um valor maior que zero"),

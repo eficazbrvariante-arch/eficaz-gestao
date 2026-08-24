@@ -110,19 +110,35 @@ export default async function HistoricoCaixaPage() {
                       className={
                         r.status === "OPEN"
                           ? "rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
-                          : "rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                          : r.status === "PENDING_REVIEW"
+                            ? "rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
+                            : "rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
                       }
                     >
-                      {r.status === "OPEN" ? "Aberto" : "Fechado"}
+                      {r.status === "OPEN"
+                        ? "Aberto"
+                        : r.status === "PENDING_REVIEW"
+                          ? "Aguardando revisão"
+                          : "Fechado"}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/vendas?cashRegisterId=${r.id}`}
-                      className="text-sm text-slate-600 hover:underline"
-                    >
-                      Ver vendas
-                    </Link>
+                    <div className="flex justify-end gap-3">
+                      {r.status === "PENDING_REVIEW" && (
+                        <Link
+                          href={`/caixa/historico/${r.id}`}
+                          className="text-sm font-medium text-brand hover:underline"
+                        >
+                          Revisar
+                        </Link>
+                      )}
+                      <Link
+                        href={`/vendas?cashRegisterId=${r.id}`}
+                        className="text-sm text-slate-600 hover:underline"
+                      >
+                        Ver vendas
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );

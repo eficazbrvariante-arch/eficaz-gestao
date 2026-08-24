@@ -2,9 +2,9 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canMoveCash, canViewReports } from "@/lib/permissions";
+import { canCloseCashRegisterDirectly, canMoveCash, canViewReports } from "@/lib/permissions";
 import { getCashSummary, getOpenCashRegister } from "@/modules/cash/cash-service";
-import { OpenCashForm, CloseCashForm, CashMovementForm } from "./cash-forms";
+import { OpenCashForm, CloseCashForm, SubmitCashForReviewForm, CashMovementForm } from "./cash-forms";
 
 const MOVEMENT_LABELS = {
   WITHDRAWAL: "Sangria",
@@ -16,11 +16,18 @@ export default async function CaixaPage() {
   const register = await getOpenCashRegister(user.tenantId);
 
   if (!register) {
-    const lastClosed = await prisma.cashRegister.findFirst({
-      where: { tenantId: user.tenantId, status: "CLOSED" },
-      include: { closedBy: { select: { name: true } } },
-      orderBy: { closedAt: "desc" },
-    });
+    const [lastClosed, pendingReview] = await Promise.all([
+      prisma.cashRegister.findFirst({
+        where: { tenantId: user.tenantId, status: "CLOSED" },
+        include: { closedBy: { select: { name: true } } },
+        orderBy: { closedAt: "desc" },
+      }),
+      prisma.cashRegister.findMany({
+        where: { tenantId: user.tenantId, status: "PENDING_REVIEW" },
+        include: { reviewSubmittedBy: { select: { name: true } } },
+        orderBy: { reviewSubmittedAt: "desc" },
+      }),
+    ]);
 
     return (
       <div>
@@ -33,6 +40,24 @@ export default async function CaixaPage() {
           <h2 className="mb-4 text-sm font-semibold text-slate-900">Abrir caixa</h2>
           <OpenCashForm />
         </div>
+
+        {pendingReview.length > 0 && (
+          <div className="mt-6 max-w-md rounded-xl border border-warning/30 bg-warning/10 p-5 text-sm">
+            <p className="mb-2 font-semibold text-warning">
+              {pendingReview.length === 1
+                ? "1 caixa aguardando revisão do Administrador"
+                : `${pendingReview.length} caixas aguardando revisão do Administrador`}
+            </p>
+            <div className="space-y-1 text-text-muted">
+              {pendingReview.map((r) => (
+                <div key={r.id} className="flex justify-between">
+                  <span>{r.reviewSubmittedBy?.name ?? "-"}</span>
+                  <span>{r.reviewSubmittedAt ? formatDateTime(r.reviewSubmittedAt) : "-"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {lastClosed && (
           <div className="mt-6 max-w-md rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-sm">
@@ -121,17 +146,22 @@ export default async function CaixaPage() {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p className="text-sm text-slate-500">{stat.label}</p>
-            <p className="mt-2 text-xl font-semibold text-slate-900">{stat.value}</p>
-          </div>
-        ))}
-      </div>
+      {/* Vendedor fecha o caixa às cegas (só digita o dinheiro contado, sem
+          ver o que o sistema espera em nenhuma forma de pagamento) — por
+          isso esse quadro some pra ele, não só o total geral acima. */}
+      {canViewReports(user.role) && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <p className="text-sm text-slate-900">{stat.label}</p>
+              <p className="mt-2 text-xl font-semibold text-slate-900">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {canMoveCash(user.role) && (
@@ -142,13 +172,26 @@ export default async function CaixaPage() {
         )}
 
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Fechar caixa</h2>
-          <CloseCashForm
-            expectedInDrawer={summary.expectedInDrawer}
-            expectedDebit={summary.totalDebit}
-            expectedCredit={summary.totalCredit}
-            expectedPix={summary.totalPix}
-          />
+          {canCloseCashRegisterDirectly(user.role) ? (
+            <>
+              <h2 className="mb-4 text-sm font-semibold text-slate-900">Fechar caixa</h2>
+              <CloseCashForm
+                expectedInDrawer={summary.expectedInDrawer}
+                expectedDebit={summary.totalDebit}
+                expectedCredit={summary.totalCredit}
+                expectedPix={summary.totalPix}
+              />
+            </>
+          ) : (
+            <>
+              <h2 className="mb-1 text-sm font-semibold text-slate-900">Fechar caixa</h2>
+              <p className="mb-4 text-sm text-slate-900">
+                Conte o dinheiro na gaveta e anexe a foto do comprovante da maquininha. O
+                Administrador confere e finaliza o fechamento depois.
+              </p>
+              <SubmitCashForReviewForm />
+            </>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">

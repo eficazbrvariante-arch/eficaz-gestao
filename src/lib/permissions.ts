@@ -82,6 +82,24 @@ export function canManageCashRegister(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER" || role === "SELLER";
 }
 
+/**
+ * Fecha o caixa direto (vê o valor esperado e a diferença na hora, define
+ * o status como fechado imediatamente) — Vendedor não passa por aqui: só
+ * envia a contagem às cegas pra revisão (ver `canFinalizeCashRegisterReview`).
+ */
+export function canCloseCashRegisterDirectly(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
+ * Finaliza de vez um caixa que o Vendedor enviou pra revisão (contagem às
+ * cegas + fotos da maquininha) — só ADMIN, mesmo Gerente não finaliza
+ * (pedido explícito: "vou fechar com o administrador no meu escritório").
+ */
+export function canFinalizeCashRegisterReview(role: UserRole) {
+  return role === "ADMIN";
+}
+
 /** Registrar sangria e suprimento. */
 export function canMoveCash(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";

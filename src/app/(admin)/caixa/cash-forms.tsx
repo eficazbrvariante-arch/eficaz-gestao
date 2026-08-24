@@ -1,22 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   openCashSchema,
   closeCashSchema,
+  submitCashForReviewSchema,
   cashMovementSchema,
   type OpenCashInput,
   type OpenCashFormValues,
   type CloseCashInput,
   type CloseCashFormValues,
+  type SubmitCashForReviewInput,
   type CashMovementInput,
   type CashMovementFormValues,
 } from "@/lib/validations/cash";
 import {
   openCashRegisterAction,
   closeCashRegisterAction,
+  submitCashRegisterForReviewAction,
+  finalizeCashRegisterReviewAction,
   createCashMovementAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
@@ -25,6 +30,7 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
+import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
 import { formatBRL } from "@/lib/format";
 
 type Feedback = { type: "success" | "error"; message: string } | undefined;
@@ -249,6 +255,75 @@ export function CloseCashForm({
   );
 }
 
+/**
+ * Fechamento às cegas do Vendedor: só conta e digita o dinheiro (nunca vê o
+ * valor esperado nem a diferença), anexa foto(s) do(s) comprovante(s) da
+ * maquininha do período — não fecha o caixa, manda pra revisão do Admin
+ * (ver `submitCashRegisterForReviewAction`/`canFinalizeCashRegisterReview`).
+ */
+export function SubmitCashForReviewForm() {
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [isPending, startTransition] = useTransition();
+  const [receiptPhotoUrls, setReceiptPhotoUrls] = useState<string[]>([]);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<Omit<SubmitCashForReviewInput, "receiptPhotoUrls">>({
+    defaultValues: { countedAmount: 0 },
+  });
+
+  const onSubmit = (data: Omit<SubmitCashForReviewInput, "receiptPhotoUrls">) => {
+    setFeedback(undefined);
+    const parsed = submitCashForReviewSchema.safeParse({ ...data, receiptPhotoUrls });
+    if (!parsed.success) {
+      setFeedback({ type: "error", message: parsed.error.issues[0]?.message ?? "Dados inválidos." });
+      return;
+    }
+    startTransition(async () => {
+      const result = await submitCashRegisterForReviewAction(parsed.data);
+      if (result?.error) setFeedback({ type: "error", message: result.error });
+      else setFeedback({ type: "success", message: result?.success ?? "Contagem enviada." });
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="mb-4">
+        <Label htmlFor="countedAmount" className="text-black">
+          Dinheiro contado na gaveta (R$)
+        </Label>
+        <Input id="countedAmount" type="number" step="0.01" autoFocus {...register("countedAmount")} />
+        <FieldError message={errors.countedAmount?.message} />
+      </div>
+
+      <div className="mb-4">
+        <Label className="text-black">Foto do(s) comprovante(s) da maquininha</Label>
+        <MultiImageUploadField
+          value={receiptPhotoUrls}
+          onChange={setReceiptPhotoUrls}
+          uploadUrl="/api/caixa/upload"
+          alt="Comprovante da maquininha"
+        />
+      </div>
+
+      <div className="mb-6">
+        <Label htmlFor="reviewNotes" className="text-black">
+          Observações
+        </Label>
+        <Input id="reviewNotes" {...register("notes")} />
+      </div>
+
+      <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
+        {isPending ? "Enviando..." : "Enviar contagem para revisão"}
+      </Button>
+    </form>
+  );
+}
+
 export function CashMovementForm() {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
@@ -304,5 +379,34 @@ export function CashMovementForm() {
         {isPending ? "Registrando..." : "Registrar movimentação"}
       </Button>
     </form>
+  );
+}
+
+/** Só ADMIN chega a ver este botão (ver `canFinalizeCashRegisterReview`). */
+export function FinalizeReviewForm({ registerId }: { registerId: string }) {
+  const router = useRouter();
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [isPending, startTransition] = useTransition();
+
+  function handleFinalize() {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await finalizeCashRegisterReviewAction({ registerId });
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      router.push("/caixa/historico");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div>
+      <FormBanner message={feedback?.message} variant={feedback?.type} />
+      <Button type="button" onClick={handleFinalize} disabled={isPending} fullWidth={false} className="px-6">
+        {isPending ? "Finalizando..." : "Finalizar fechamento"}
+      </Button>
+    </div>
   );
 }

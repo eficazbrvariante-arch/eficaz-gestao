@@ -219,6 +219,7 @@ model User {
   cashMovements                CashMovement[]
   registersOpened              CashRegister[]           @relation("CashRegisterOpenedBy")
   registersClosed              CashRegister[]           @relation("CashRegisterClosedBy")
+  registersSubmittedForReview  CashRegister[]           @relation("CashRegisterReviewSubmittedBy")
   salesMade                    Sale[]                   @relation("SaleSeller")
   salesCancelled               Sale[]                   @relation("SaleCancelledBy")
   salesEdited                  Sale[]                   @relation("SaleEditedBy")
@@ -941,6 +942,13 @@ model RepairOrderPayment {
 
 enum CashRegisterStatus {
   OPEN
+  /// Vendedor já enviou a contagem de dinheiro (às cegas, sem ver o valor
+  /// esperado) e as fotos dos comprovantes da maquininha, mas o fechamento
+  /// definitivo ainda depende do Admin revisar e finalizar — ver
+  /// `submitCashRegisterForReview`/`finalizeCashRegisterReview` em
+  /// `cash-service.ts`. Não conta como caixa aberto pro PDV: um novo caixa
+  /// já pode ser aberto pro próximo turno sem esperar essa revisão.
+  PENDING_REVIEW
   CLOSED
 }
 
@@ -951,6 +959,16 @@ model CashRegister {
   openedById           String
   openedAt             DateTime           @default(now())
   openingAmount        Decimal            @db.Decimal(12, 2)
+  /// Quem enviou a contagem pra revisão (Vendedor) — diferente de quem
+  /// finaliza o fechamento (`closedBy`, só Admin). Nulo quando quem fechou
+  /// já tem permissão de fechar direto (Admin/Gerente), sem passar por
+  /// revisão.
+  reviewSubmittedById  String?
+  reviewSubmittedAt    DateTime?
+  /// Fotos dos comprovantes da maquininha do período, anexadas pelo
+  /// Vendedor ao enviar a contagem pra revisão — pro Admin comparar contra
+  /// o valor esperado de débito/crédito/Pix, de onde estiver.
+  receiptPhotoUrls     String[]           @default([])
   closedById           String?
   closedAt             DateTime?
   /// Valor efetivamente contado na gaveta no fechamento.
@@ -960,6 +978,9 @@ model CashRegister {
   /// Valor conferido pelo vendedor no fechamento para cada forma de pagamento
   /// que não passa pela gaveta física (débito, crédito, Pix) — e o que o
   /// sistema esperava para cada uma, para calcular a diferença por forma.
+  /// Só preenchido no fechamento direto (Admin/Gerente); no fluxo de
+  /// revisão o Vendedor não confere essas formas, só o Admin, visualmente,
+  /// contra as fotos da maquininha.
   countedDebitAmount   Decimal?           @db.Decimal(12, 2)
   expectedDebitAmount  Decimal?           @db.Decimal(12, 2)
   countedCreditAmount  Decimal?           @db.Decimal(12, 2)
@@ -970,6 +991,7 @@ model CashRegister {
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   openedBy            User                 @relation("CashRegisterOpenedBy", fields: [openedById], references: [id])
+  reviewSubmittedBy   User?                @relation("CashRegisterReviewSubmittedBy", fields: [reviewSubmittedById], references: [id])
   closedBy            User?                @relation("CashRegisterClosedBy", fields: [closedById], references: [id])
   movements           CashMovement[]
   sales               Sale[]

@@ -3,14 +3,28 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageCashRegister, canMoveCash } from "@/lib/permissions";
-import { getCashSummary, getOpenCashRegister } from "@/modules/cash/cash-service";
+import {
+  canCloseCashRegisterDirectly,
+  canFinalizeCashRegisterReview,
+  canManageCashRegister,
+  canMoveCash,
+} from "@/lib/permissions";
+import {
+  finalizeCashRegisterReview,
+  getCashSummary,
+  getOpenCashRegister,
+  submitCashRegisterForReview,
+} from "@/modules/cash/cash-service";
 import {
   openCashSchema,
   closeCashSchema,
+  submitCashForReviewSchema,
+  finalizeCashReviewSchema,
   cashMovementSchema,
   type OpenCashInput,
   type CloseCashInput,
+  type SubmitCashForReviewInput,
+  type FinalizeCashReviewInput,
   type CashMovementInput,
 } from "@/lib/validations/cash";
 
@@ -47,8 +61,8 @@ export async function openCashRegisterAction(input: OpenCashInput) {
 
 export async function closeCashRegisterAction(input: CloseCashInput) {
   const user = await requireUser();
-  if (!canManageCashRegister(user.role)) {
-    return { error: "Seu perfil não tem permissão para fechar o caixa." };
+  if (!canCloseCashRegisterDirectly(user.role)) {
+    return { error: "Seu perfil não tem permissão para fechar o caixa direto — envie a contagem para revisão." };
   }
 
   const parsed = closeCashSchema.safeParse(input);
@@ -68,17 +82,65 @@ export async function closeCashRegisterAction(input: CloseCashInput) {
       countedAmount: parsed.data.countedAmount,
       expectedAmount: summary.expectedInDrawer,
       countedDebitAmount: parsed.data.countedDebitAmount,
-      expectedDebitAmount: summary.debitSales,
+      // Inclui recebimentos de Assistência Técnica, igual ao card exibido
+      // na tela — `debitSales`/`creditSales`/`pixSales` sozinhos (só PDV)
+      // subestimavam o esperado em lojas com pagamento de OS no cartão/Pix.
+      expectedDebitAmount: summary.totalDebit,
       countedCreditAmount: parsed.data.countedCreditAmount,
-      expectedCreditAmount: summary.creditSales,
+      expectedCreditAmount: summary.totalCredit,
       countedPixAmount: parsed.data.countedPixAmount,
-      expectedPixAmount: summary.pixSales,
+      expectedPixAmount: summary.totalPix,
       notes: parsed.data.notes || register.notes,
     },
   });
 
   revalidateCashPages();
   return { success: "Caixa fechado." };
+}
+
+/**
+ * Vendedor envia a contagem às cegas (só dinheiro, sem ver o esperado) mais
+ * as fotos dos comprovantes da maquininha — não fecha o caixa, deixa
+ * `PENDING_REVIEW` até o Admin finalizar (ver `finalizeCashRegisterReviewAction`).
+ */
+export async function submitCashRegisterForReviewAction(input: SubmitCashForReviewInput) {
+  const user = await requireUser();
+  if (!canManageCashRegister(user.role)) {
+    return { error: "Seu perfil não tem permissão para fechar o caixa." };
+  }
+
+  const parsed = submitCashForReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const register = await getOpenCashRegister(user.tenantId);
+  if (!register) return { error: "Nenhum caixa aberto para fechar." };
+
+  const result = await submitCashRegisterForReview(
+    { tenantId: user.tenantId, userId: user.id },
+    { registerId: register.id, ...parsed.data }
+  );
+  if (!result.ok) return { error: result.error };
+
+  revalidateCashPages();
+  return { success: "Contagem enviada. O Administrador finaliza o fechamento depois de revisar." };
+}
+
+/** Só ADMIN — finaliza de vez um caixa enviado pra revisão. */
+export async function finalizeCashRegisterReviewAction(input: FinalizeCashReviewInput) {
+  const user = await requireUser();
+  if (!canFinalizeCashRegisterReview(user.role)) {
+    return { error: "Seu perfil não tem permissão para finalizar o fechamento do caixa." };
+  }
+
+  const parsed = finalizeCashReviewSchema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  const result = await finalizeCashRegisterReview({ tenantId: user.tenantId, userId: user.id }, parsed.data);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/caixa/historico");
+  revalidatePath(`/caixa/historico/${parsed.data.registerId}`);
+  return { success: "Fechamento finalizado." };
 }
 
 export async function createCashMovementAction(input: CashMovementInput) {

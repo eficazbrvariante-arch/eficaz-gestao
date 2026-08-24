@@ -125,3 +125,72 @@ export async function getCashSummary(
     salesCount,
   };
 }
+
+export type SubmitCashForReviewResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Envio da contagem às cegas pelo Vendedor: só o dinheiro contado na gaveta
+ * (o valor esperado é lido do banco aqui dentro, nunca do formulário, nem
+ * mostrado antes de enviar) mais as fotos dos comprovantes da maquininha.
+ * Não fecha o caixa — deixa como `PENDING_REVIEW`, liberado pro próximo
+ * turno abrir um novo caixa sem esperar a revisão do Admin (ver
+ * `finalizeCashRegisterReview`).
+ */
+export async function submitCashRegisterForReview(
+  ctx: { tenantId: string; userId: string },
+  input: { registerId: string; countedAmount: number; receiptPhotoUrls: string[]; notes?: string }
+): Promise<SubmitCashForReviewResult> {
+  const register = await prisma.cashRegister.findFirst({
+    where: { id: input.registerId, tenantId: ctx.tenantId, status: "OPEN" },
+  });
+  if (!register) return { ok: false, error: "Caixa aberto não encontrado." };
+
+  const summary = await getCashSummary(ctx.tenantId, register.id);
+
+  await prisma.cashRegister.update({
+    where: { id: register.id },
+    data: {
+      status: "PENDING_REVIEW",
+      reviewSubmittedById: ctx.userId,
+      reviewSubmittedAt: new Date(),
+      countedAmount: input.countedAmount,
+      expectedAmount: summary.expectedInDrawer,
+      expectedDebitAmount: summary.totalDebit,
+      expectedCreditAmount: summary.totalCredit,
+      expectedPixAmount: summary.totalPix,
+      receiptPhotoUrls: input.receiptPhotoUrls,
+      notes: input.notes || register.notes,
+    },
+  });
+
+  return { ok: true };
+}
+
+export type FinalizeCashReviewResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Finalização de vez (só ADMIN, ver `canFinalizeCashRegisterReview`) de um
+ * caixa que o Vendedor enviou pra revisão — depois de olhar a contagem de
+ * dinheiro e as fotos dos comprovantes da maquininha.
+ */
+export async function finalizeCashRegisterReview(
+  ctx: { tenantId: string; userId: string },
+  input: { registerId: string; notes?: string }
+): Promise<FinalizeCashReviewResult> {
+  const register = await prisma.cashRegister.findFirst({
+    where: { id: input.registerId, tenantId: ctx.tenantId, status: "PENDING_REVIEW" },
+  });
+  if (!register) return { ok: false, error: "Caixa pendente de revisão não encontrado." };
+
+  await prisma.cashRegister.update({
+    where: { id: register.id },
+    data: {
+      status: "CLOSED",
+      closedById: ctx.userId,
+      closedAt: new Date(),
+      notes: input.notes || register.notes,
+    },
+  });
+
+  return { ok: true };
+}
