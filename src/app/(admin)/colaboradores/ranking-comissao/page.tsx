@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { todayISO, periodRange } from "@/lib/format";
 import { getCommissionRanking } from "@/modules/employees/commission-service";
 import { resolvePeriod } from "../../relatorios/period";
@@ -28,11 +29,23 @@ export default async function RankingComissaoPage({
 
   return (
     <div>
-      <h1 className="mb-1 text-xl font-semibold text-foreground">Ranking de Comissão</h1>
-      <p className="mb-6 text-sm text-text-muted">
-        Comissão efetiva de cada vendedor no período — quanto do que vendeu virou comissão, do
-        maior pro menor.
-      </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Ranking de Comissão</h1>
+          <p className="text-sm text-text-muted">
+            Comissão efetiva de cada vendedor no período — quanto do que vendeu virou comissão, do
+            maior pro menor.
+          </p>
+        </div>
+        {canEditCommission(user.role) && (
+          <Link
+            href="/colaboradores/ranking-comissao/configuracoes"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Configurações de Comissão
+          </Link>
+        )}
+      </div>
 
       <PeriodPicker period={period} />
 

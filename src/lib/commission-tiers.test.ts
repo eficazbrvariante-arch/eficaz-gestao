@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeProgressiveCommission, type CommissionTierInput } from "./commission-tier-service";
+import { computeProgressiveCommission, type CommissionTierInput } from "./commission-tiers";
 
 const BRONZE_PRATA_OURO: CommissionTierInput[] = [
   { name: "Bronze", order: 0, minAmount: 0, maxAmount: 8000, percent: 1 },

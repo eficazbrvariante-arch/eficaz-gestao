@@ -71,18 +71,21 @@ export function currentMonthStartISO(now = new Date()) {
   return startOfMonthISO(todayISO(now));
 }
 
+/** Dia 1 do mês seguinte a um mês `YYYY-MM-01` (ou qualquer data — só o ano/mês importam). */
+export function nextMonthStartISO(monthStartISO: string) {
+  const [year, month] = monthStartISO.slice(0, 7).split("-").map(Number);
+  const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+  return `${String(next.y).padStart(4, "0")}-${String(next.m).padStart(2, "0")}-01`;
+}
+
 /**
  * Início (dia 1) e início do mês seguinte de um mês `YYYY-MM-01`, como
  * instantes reais — usado pra faturamento mensal (ex.: comissão por faixa
  * progressiva). Mesmo deslocamento fixo `-03:00` de `periodRange`.
  */
 export function monthRange(monthStartISO: string) {
-  const [year, month] = monthStartISO.slice(0, 7).split("-").map(Number);
   const start = new Date(`${monthStartISO}T00:00:00-03:00`);
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  const nextMonthISO = `${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`;
-  const end = new Date(`${nextMonthISO}T00:00:00-03:00`);
+  const end = new Date(`${nextMonthStartISO(monthStartISO)}T00:00:00-03:00`);
   return { start, end };
 }
 

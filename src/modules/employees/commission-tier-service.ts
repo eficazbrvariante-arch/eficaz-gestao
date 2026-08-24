@@ -1,5 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { monthRange } from "@/lib/format";
+import { currentMonthStartISO, monthRange, nextMonthStartISO } from "@/lib/format";
+import {
+  computeProgressiveCommission,
+  type CommissionTierInput,
+  type ProgressiveCommissionResult,
+} from "@/lib/commission-tiers";
+
+export { computeProgressiveCommission } from "@/lib/commission-tiers";
+export type {
+  CommissionTierInput,
+  CommissionTierBreakdownRow,
+  ProgressiveCommissionResult,
+} from "@/lib/commission-tiers";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -13,63 +25,6 @@ function round2(value: number) {
  * nos dois lugares.
  */
 const COMMISSION_POLICY_EFFECTIVE_AT = new Date("2026-08-21T00:00:00-03:00");
-
-export type CommissionTierInput = {
-  name: string;
-  order: number;
-  minAmount: number;
-  /** `null` = sem teto (última faixa). */
-  maxAmount: number | null;
-  percent: number;
-};
-
-export type CommissionTierBreakdownRow = {
-  name: string;
-  minAmount: number;
-  maxAmount: number | null;
-  percent: number;
-  /** Quanto do faturamento caiu dentro desta faixa (pode ser 0 se o vendedor não chegou nela). */
-  amountInTier: number;
-  /** `amountInTier * percent / 100`. */
-  commission: number;
-};
-
-export type ProgressiveCommissionResult = {
-  breakdown: CommissionTierBreakdownRow[];
-  total: number;
-};
-
-/**
- * Cálculo progressivo por faixas — função central e pura (sem banco), usada
- * pelo cálculo real do mês, pelo ranking e pelo simulador do Admin, sempre a
- * mesma, nunca duplicada. Cada faixa comissiona só a fatia do faturamento que
- * cai dentro dela (marginal/progressivo, nunca a alíquota da faixa mais alta
- * sobre o total inteiro).
- *
- * Exemplo do pedido: R$20.000 em faixas 0–8000@1% / 8000–14000@2% /
- * 14000+@2,8% → R$80 + R$120 + R$168 = R$368.
- */
-export function computeProgressiveCommission(
-  totalSales: number,
-  tiers: CommissionTierInput[]
-): ProgressiveCommissionResult {
-  const sorted = [...tiers].sort((a, b) => a.order - b.order || a.minAmount - b.minAmount);
-  const breakdown: CommissionTierBreakdownRow[] = sorted.map((tier) => {
-    const upper = tier.maxAmount === null ? totalSales : Math.min(totalSales, tier.maxAmount);
-    const amountInTier = round2(Math.max(0, upper - tier.minAmount));
-    const commission = round2((amountInTier * tier.percent) / 100);
-    return {
-      name: tier.name,
-      minAmount: tier.minAmount,
-      maxAmount: tier.maxAmount,
-      percent: tier.percent,
-      amountInTier,
-      commission,
-    };
-  });
-
-  return { breakdown, total: round2(breakdown.reduce((sum, row) => sum + row.commission, 0)) };
-}
 
 /**
  * Faixas vigentes pro mês pedido: o `CommissionTierSet` mais recente com
@@ -194,4 +149,97 @@ export async function computeSellerMonthlyCommission(
     totalCommission: round2(overrideCommission + progressive.total),
     tierSetId: tierData.tierSetId,
   };
+}
+
+export type EditableCommissionTier = CommissionTierInput & { id: string | null; active: boolean };
+
+/**
+ * Faixas pra tela de "Configurações de Comissão" — sempre as do **mês
+ * seguinte** (nunca o mês em andamento, pra nenhuma edição afetar cálculo já
+ * em curso, e nunca um mês fechado, que já virou histórico). Se ainda não
+ * existe um conjunto criado especificamente pro próximo mês, pré-preenche
+ * com o que está vigente agora (inclusive o padrão implícito, se nenhuma
+ * faixa foi configurada nunca) — só um ponto de partida pra editar, nada é
+ * gravado até salvar.
+ */
+export async function getEditableTiersForNextMonth(
+  tenantId: string
+): Promise<{ monthStartISO: string; tierSetId: string | null; tiers: EditableCommissionTier[] }> {
+  const nextMonth = nextMonthStartISO(currentMonthStartISO());
+  const { start: nextMonthStart } = monthRange(nextMonth);
+
+  const explicitNextMonthSet = await prisma.commissionTierSet.findFirst({
+    where: { tenantId, validFrom: nextMonthStart },
+    include: { tiers: { orderBy: { order: "asc" } } },
+  });
+
+  if (explicitNextMonthSet) {
+    return {
+      monthStartISO: nextMonth,
+      tierSetId: explicitNextMonthSet.id,
+      tiers: explicitNextMonthSet.tiers.map((t) => ({
+        id: t.id,
+        name: t.name,
+        order: t.order,
+        minAmount: Number(t.minAmount),
+        maxAmount: t.maxAmount === null ? null : Number(t.maxAmount),
+        percent: Number(t.percent),
+        active: t.active,
+      })),
+    };
+  }
+
+  const fallback = await getTierSetForMonth(tenantId, nextMonth);
+  return {
+    monthStartISO: nextMonth,
+    tierSetId: null,
+    tiers: fallback.tiers.map((t) => ({ ...t, id: null, active: true })),
+  };
+}
+
+/**
+ * Salva as faixas do próximo mês (substitui a lista inteira — mesma
+ * convenção de "Oferta Relâmpago"). Nunca mexe no conjunto do mês atual nem
+ * de qualquer mês passado: se já existe um conjunto explícito pro próximo
+ * mês, atualiza suas faixas; senão, cria um novo. Não recalcula nem afeta o
+ * mês em andamento de nenhuma forma.
+ */
+export async function saveTiersForNextMonth(
+  ctx: { tenantId: string; userId: string },
+  tiers: Omit<EditableCommissionTier, "id">[]
+): Promise<{ tierSetId: string }> {
+  const nextMonth = nextMonthStartISO(currentMonthStartISO());
+  const { start: nextMonthStart } = monthRange(nextMonth);
+
+  const existing = await prisma.commissionTierSet.findFirst({
+    where: { tenantId: ctx.tenantId, validFrom: nextMonthStart },
+    select: { id: true },
+  });
+
+  const tierSetId = await prisma.$transaction(async (tx) => {
+    const setId =
+      existing?.id ??
+      (
+        await tx.commissionTierSet.create({
+          data: { tenantId: ctx.tenantId, validFrom: nextMonthStart, createdById: ctx.userId },
+        })
+      ).id;
+
+    await tx.commissionTier.deleteMany({ where: { tierSetId: setId } });
+    await tx.commissionTier.createMany({
+      data: tiers.map((tier) => ({
+        tierSetId: setId,
+        name: tier.name,
+        order: tier.order,
+        minAmount: tier.minAmount,
+        maxAmount: tier.maxAmount,
+        percent: tier.percent,
+        active: tier.active,
+      })),
+    });
+
+    return setId;
+  });
+
+  return { tierSetId };
 }
