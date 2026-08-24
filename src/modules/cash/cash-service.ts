@@ -171,11 +171,20 @@ export type FinalizeCashReviewResult = { ok: true } | { ok: false; error: string
 /**
  * Finalização de vez (só ADMIN, ver `canFinalizeCashRegisterReview`) de um
  * caixa que o Vendedor enviou pra revisão — depois de olhar a contagem de
- * dinheiro e as fotos dos comprovantes da maquininha.
+ * dinheiro e as fotos dos comprovantes da maquininha. O Admin confere e
+ * digita débito/crédito/Pix aqui (o Vendedor só confere dinheiro, às cegas);
+ * o valor esperado de cada forma já foi gravado no envio pra revisão
+ * (`submitCashRegisterForReview`) e não muda depois.
  */
 export async function finalizeCashRegisterReview(
   ctx: { tenantId: string; userId: string },
-  input: { registerId: string; notes?: string }
+  input: {
+    registerId: string;
+    countedDebitAmount: number;
+    countedCreditAmount: number;
+    countedPixAmount: number;
+    notes?: string;
+  }
 ): Promise<FinalizeCashReviewResult> {
   const register = await prisma.cashRegister.findFirst({
     where: { id: input.registerId, tenantId: ctx.tenantId, status: "PENDING_REVIEW" },
@@ -188,6 +197,9 @@ export async function finalizeCashRegisterReview(
       status: "CLOSED",
       closedById: ctx.userId,
       closedAt: new Date(),
+      countedDebitAmount: input.countedDebitAmount,
+      countedCreditAmount: input.countedCreditAmount,
+      countedPixAmount: input.countedPixAmount,
       notes: input.notes || register.notes,
     },
   });

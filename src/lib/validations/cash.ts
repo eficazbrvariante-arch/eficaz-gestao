@@ -34,12 +34,21 @@ export const submitCashForReviewSchema = z.object({
 export type SubmitCashForReviewInput = z.infer<typeof submitCashForReviewSchema>;
 export type SubmitCashForReviewFormValues = z.input<typeof submitCashForReviewSchema>;
 
-/** Finalização do fechamento (só ADMIN) de um caixa enviado pra revisão. */
+/**
+ * Finalização do fechamento (só ADMIN) de um caixa enviado pra revisão —
+ * além do dinheiro (já contado às cegas pelo Vendedor), o Admin confere
+ * débito/crédito/Pix contra os comprovantes da maquininha e digita o valor
+ * que de fato veio em cada forma, pra ver a diferença na hora.
+ */
 export const finalizeCashReviewSchema = z.object({
   registerId: z.string().trim().min(1),
+  countedDebitAmount: money,
+  countedCreditAmount: money,
+  countedPixAmount: money,
   notes: z.string().trim().optional().or(z.literal("")),
 });
 export type FinalizeCashReviewInput = z.infer<typeof finalizeCashReviewSchema>;
+export type FinalizeCashReviewFormValues = z.input<typeof finalizeCashReviewSchema>;
 
 export const cashMovementSchema = z.object({
   type: z.enum(["WITHDRAWAL", "SUPPLY"]),

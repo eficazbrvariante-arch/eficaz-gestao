@@ -1,19 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   openCashSchema,
   closeCashSchema,
   submitCashForReviewSchema,
+  finalizeCashReviewSchema,
   cashMovementSchema,
   type OpenCashInput,
   type OpenCashFormValues,
   type CloseCashInput,
   type CloseCashFormValues,
   type SubmitCashForReviewInput,
+  type FinalizeCashReviewInput,
+  type FinalizeCashReviewFormValues,
   type CashMovementInput,
   type CashMovementFormValues,
 } from "@/lib/validations/cash";
@@ -382,16 +385,101 @@ export function CashMovementForm() {
   );
 }
 
-/** Só ADMIN chega a ver este botão (ver `canFinalizeCashRegisterReview`). */
-export function FinalizeReviewForm({ registerId }: { registerId: string }) {
+/**
+ * Cartão "esperado" de uma forma de pagamento que não passa pela gaveta,
+ * com o campo pra digitar o que veio de fato (comprovante da maquininha) e
+ * a diferença já calculada dentro do mesmo cartão — pedido explícito do
+ * usuário: tudo num só lugar, não em cartões separados.
+ */
+function ExpectedWithCountedCard({
+  label,
+  expected,
+  counted,
+  inputId,
+  registerField,
+}: {
+  label: string;
+  expected: number;
+  counted: number;
+  inputId: string;
+  registerField: ReactNode;
+}) {
+  const difference = counted - expected;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-900">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-900">{formatBRL(expected)}</p>
+      <div className="mt-3">
+        <Label htmlFor={inputId} className="text-xs text-slate-500">
+          Quanto veio de fato no período (R$)
+        </Label>
+        {registerField}
+      </div>
+      <div className="mt-2 flex justify-between text-sm font-medium">
+        <span className="text-slate-600">Diferença</span>
+        <span
+          className={
+            Math.abs(difference) < 0.005
+              ? "text-slate-900"
+              : difference > 0
+                ? "text-emerald-700"
+                : "text-red-600"
+          }
+        >
+          {Math.abs(difference) < 0.005 ? formatBRL(0) : `${difference > 0 ? "+" : ""}${formatBRL(difference)}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Só ADMIN chega a ver este formulário (ver `canFinalizeCashRegisterReview`).
+ * O Vendedor só confere dinheiro às cegas; aqui o Admin confere débito,
+ * crédito e Pix contra os comprovantes da maquininha e digita o valor real
+ * de cada forma — vê a diferença na hora, sem precisar somar de cabeça.
+ */
+export function FinalizeReviewForm({
+  registerId,
+  expectedDebit,
+  expectedCredit,
+  expectedPix,
+}: {
+  registerId: string;
+  expectedDebit: number;
+  expectedCredit: number;
+  expectedPix: number;
+}) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
 
-  function handleFinalize() {
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<FinalizeCashReviewFormValues, unknown, FinalizeCashReviewInput>({
+    resolver: zodResolver(finalizeCashReviewSchema),
+    defaultValues: {
+      registerId,
+      countedDebitAmount: expectedDebit,
+      countedCreditAmount: expectedCredit,
+      countedPixAmount: expectedPix,
+    },
+  });
+
+  // `useWatch` (não `watch()` cru) — ver o comentário equivalente em
+  // commission-tiers-form.tsx: `watch()` direto no corpo do componente não é
+  // seguro combinado com memoização do React Compiler.
+  const countedDebit = Number(useWatch({ control, name: "countedDebitAmount" }) ?? 0);
+  const countedCredit = Number(useWatch({ control, name: "countedCreditAmount" }) ?? 0);
+  const countedPix = Number(useWatch({ control, name: "countedPixAmount" }) ?? 0);
+
+  const onSubmit = (data: FinalizeCashReviewInput) => {
     setFeedback(undefined);
     startTransition(async () => {
-      const result = await finalizeCashRegisterReviewAction({ registerId });
+      const result = await finalizeCashRegisterReviewAction(data);
       if (result?.error) {
         setFeedback({ type: "error", message: result.error });
         return;
@@ -399,14 +487,64 @@ export function FinalizeReviewForm({ registerId }: { registerId: string }) {
       router.push("/caixa/historico");
       router.refresh();
     });
-  }
+  };
 
   return (
-    <div>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <FormBanner message={feedback?.message} variant={feedback?.type} />
-      <Button type="button" onClick={handleFinalize} disabled={isPending} fullWidth={false} className="px-6">
-        {isPending ? "Finalizando..." : "Finalizar fechamento"}
-      </Button>
-    </div>
+
+      <p className="mb-2 text-xs text-text-muted">
+        Débito, crédito e Pix não passam pela gaveta — confira o comprovante da maquininha (fotos
+        acima) e digite o que de fato veio em cada forma.
+      </p>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <ExpectedWithCountedCard
+          label="Débito esperado"
+          expected={expectedDebit}
+          counted={countedDebit}
+          inputId="countedDebitAmount"
+          registerField={
+            <>
+              <Input id="countedDebitAmount" type="number" step="0.01" {...register("countedDebitAmount")} />
+              <FieldError message={errors.countedDebitAmount?.message} />
+            </>
+          }
+        />
+        <ExpectedWithCountedCard
+          label="Crédito esperado"
+          expected={expectedCredit}
+          counted={countedCredit}
+          inputId="countedCreditAmount"
+          registerField={
+            <>
+              <Input id="countedCreditAmount" type="number" step="0.01" {...register("countedCreditAmount")} />
+              <FieldError message={errors.countedCreditAmount?.message} />
+            </>
+          }
+        />
+        <ExpectedWithCountedCard
+          label="Pix esperado"
+          expected={expectedPix}
+          counted={countedPix}
+          inputId="countedPixAmount"
+          registerField={
+            <>
+              <Input id="countedPixAmount" type="number" step="0.01" {...register("countedPixAmount")} />
+              <FieldError message={errors.countedPixAmount?.message} />
+            </>
+          }
+        />
+      </div>
+
+      <div className="max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Finalizar fechamento</h2>
+        <p className="mb-4 text-sm text-slate-900">
+          Confira a contagem e as fotos acima. Ao finalizar, o caixa fica marcado como fechado.
+        </p>
+        <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
+          {isPending ? "Finalizando..." : "Finalizar fechamento"}
+        </Button>
+      </div>
+    </form>
   );
 }

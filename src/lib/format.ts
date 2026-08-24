@@ -1,6 +1,6 @@
 const TIMEZONE = "America/Sao_Paulo";
 
-type DecimalLike = number | string | { toString(): string };
+export type DecimalLike = number | string | { toString(): string };
 
 /** Formata um valor monetário no padrão brasileiro: R$ 1.234,56 */
 export function formatBRL(value: DecimalLike) {
