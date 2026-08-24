@@ -124,6 +124,8 @@ model Tenant {
   creditMovements             CustomerCreditMovement[]
   fiadoEntries                FiadoEntry[]
   employeeLedgerEntries       EmployeeLedgerEntry[]
+  commissionTierSets          CommissionTierSet[]
+  commissionSnapshots         CommissionMonthlySnapshot[]
   convenios                   Convenio[]
   convenioMembers             ConvenioMember[]
   convenioInvites             ConvenioInvite[]
@@ -234,6 +236,9 @@ model User {
   fiadoEntriesCreated          FiadoEntry[]
   employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
   employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
+  commissionTierSetsCreated    CommissionTierSet[]      @relation("CommissionTierSetCreatedBy")
+  commissionSnapshots          CommissionMonthlySnapshot[] @relation("CommissionSnapshotUser")
+  commissionSnapshotsApproved  CommissionMonthlySnapshot[] @relation("CommissionSnapshotApprovedBy")
   convenioMembersStatusChanged ConvenioMember[]         @relation("ConvenioMemberStatusChangedBy")
   convenioInvitesCreated       ConvenioInvite[]         @relation("ConvenioInviteCreatedBy")
   convenioRedemptionsSold      ConvenioRedemption[]     @relation("ConvenioRedemptionSeller")
@@ -1280,6 +1285,86 @@ model EmployeeLedgerEntry {
   @@index([tenantId, status, createdAt])
   @@index([tenantId, userId, type, hourlyPeriodTo])
   @@map("employee_ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 11 — Comissão progressiva por faixas
+// ---------------------------------------------------------------------------
+
+/// Conjunto de faixas de comissão vigente a partir de um mês (`validFrom`,
+/// sempre dia 1 às 00:00). As faixas de um mês inteiro nascem e morrem juntas
+/// nesse conjunto — nunca duas faixas do mesmo conjunto com vigências
+/// diferentes. Pra saber a regra de um mês qualquer: pega o `CommissionTierSet`
+/// mais recente com `validFrom <= início daquele mês`. Editar faixas do mês em
+/// andamento atualiza o conjunto atual; uma mudança feita depois que o mês já
+/// fechou sempre cria um conjunto novo com `validFrom` no mês seguinte — nunca
+/// reescreve um conjunto que já foi usado pra calcular um mês fechado (ver
+/// `commission-tier-service.ts`).
+model CommissionTierSet {
+  id          String   @id @default(cuid())
+  tenantId    String
+  validFrom   DateTime
+  createdById String
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("CommissionTierSetCreatedBy", fields: [createdById], references: [id])
+  tiers     CommissionTier[]
+
+  @@index([tenantId, validFrom])
+  @@map("commission_tier_sets")
+}
+
+/// Uma faixa dentro de um `CommissionTierSet` — nome e percentual totalmente
+/// configuráveis pelo Admin (nunca hardcoded), aplicada progressivamente sobre
+/// o faturamento comissionável do mês (ver `computeProgressiveCommission`).
+model CommissionTier {
+  id        String   @id @default(cuid())
+  tierSetId String
+  name      String
+  order     Int
+  minAmount Decimal  @db.Decimal(12, 2)
+  /// Nulo = sem teto (última faixa, "acima de X").
+  maxAmount Decimal? @db.Decimal(12, 2)
+  percent   Decimal  @db.Decimal(5, 2)
+  active    Boolean  @default(true)
+
+  tierSet CommissionTierSet @relation(fields: [tierSetId], references: [id], onDelete: Cascade)
+
+  @@index([tierSetId, order])
+  @@map("commission_tiers")
+}
+
+/// Fechamento "congelado" da comissão de um colaborador num mês — só existe
+/// depois que o Admin aprova (`approvedAt` preenchido). Sem isso, o status e o
+/// valor de qualquer mês são sempre calculados ao vivo (`ESTIMADA` se for o
+/// mês corrente, `EM_ANALISE` se já passou sem aprovação); com o snapshot
+/// gravado, o mês fica imune a qualquer alteração futura nas faixas —
+/// `APROVADA` sempre lê `totalCommission`/`tierBreakdown` daqui, nunca
+/// recalcula.
+model CommissionMonthlySnapshot {
+  id              String    @id @default(cuid())
+  tenantId        String
+  userId          String
+  /// Sempre dia 1 do mês às 00:00 — identifica o mês do snapshot.
+  month           DateTime
+  totalSales      Decimal   @db.Decimal(12, 2)
+  totalCommission Decimal   @db.Decimal(12, 2)
+  /// Detalhamento faixa a faixa no momento da aprovação — mesmo formato
+  /// devolvido por `computeProgressiveCommission` (nome, min, max, percent,
+  /// valor comissionado naquela faixa).
+  tierBreakdown   Json
+  approvedById    String
+  approvedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("CommissionSnapshotUser", fields: [userId], references: [id])
+  approvedBy User   @relation("CommissionSnapshotApprovedBy", fields: [approvedById], references: [id])
+
+  @@unique([tenantId, userId, month])
+  @@index([tenantId, month])
+  @@map("commission_monthly_snapshots")
 }
 
 model Payment {

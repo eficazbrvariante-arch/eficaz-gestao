@@ -66,6 +66,26 @@ export function startOfMonthISO(iso: string) {
   return `${iso.slice(0, 7)}-01`;
 }
 
+/** Primeiro dia do mês atual, no fuso da loja, formato `YYYY-MM-DD`. */
+export function currentMonthStartISO(now = new Date()) {
+  return startOfMonthISO(todayISO(now));
+}
+
+/**
+ * Início (dia 1) e início do mês seguinte de um mês `YYYY-MM-01`, como
+ * instantes reais — usado pra faturamento mensal (ex.: comissão por faixa
+ * progressiva). Mesmo deslocamento fixo `-03:00` de `periodRange`.
+ */
+export function monthRange(monthStartISO: string) {
+  const [year, month] = monthStartISO.slice(0, 7).split("-").map(Number);
+  const start = new Date(`${monthStartISO}T00:00:00-03:00`);
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonthISO = `${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`;
+  const end = new Date(`${nextMonthISO}T00:00:00-03:00`);
+  return { start, end };
+}
+
 /**
  * Converte um período `YYYY-MM-DD` (inclusivo nas duas pontas) em instantes UTC.
  *
