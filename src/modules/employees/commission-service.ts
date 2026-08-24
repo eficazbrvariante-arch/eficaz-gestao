@@ -8,9 +8,11 @@ function round2(value: number) {
  * A alíquota única de 2% (e suas exceções por produto) só passou a valer a
  * partir desta data — pedido explícito do usuário pra não retroagir: venda
  * anterior a isso nunca gera comissão, mesmo que o período pedido comece
- * antes. Não existe "história" de comissão/ranking anterior a este dia.
+ * antes. Não existe "história" de comissão/ranking anterior a este dia —
+ * por isso também é o início padrão do Ranking de Comissão.
  */
-const COMMISSION_POLICY_EFFECTIVE_AT = new Date("2026-08-21T00:00:00-03:00");
+export const COMMISSION_POLICY_EFFECTIVE_AT_ISO = "2026-08-21";
+const COMMISSION_POLICY_EFFECTIVE_AT = new Date(`${COMMISSION_POLICY_EFFECTIVE_AT_ISO}T00:00:00-03:00`);
 
 /** `createdAt` efetivo pra consultas de comissão — nunca abre antes da data acima, mesmo sem `range` (total acumulado). */
 function effectiveCreatedAtFilter(range?: { start: Date; end: Date }) {

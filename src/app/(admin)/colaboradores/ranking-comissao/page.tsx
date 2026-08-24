@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
-import { todayISO, periodRange } from "@/lib/format";
-import { getCommissionRanking } from "@/modules/employees/commission-service";
+import { periodRange } from "@/lib/format";
+import { getCommissionRanking, COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "@/modules/employees/commission-service";
 import { resolvePeriod } from "../../relatorios/period";
 import { PeriodPicker } from "../../relatorios/report-nav";
 import { RankingComissaoMatrix } from "./ranking-comissao-matrix";
@@ -21,9 +21,10 @@ export default async function RankingComissaoPage({
     );
   }
 
-  // Padrão "hoje" (placar do dia) em vez do mês inteiro — o usuário troca o
-  // período pelo PeriodPicker quando quiser olhar outra janela.
-  const period = resolvePeriod(await searchParams, { defaultFrom: todayISO() });
+  // Padrão: todo o histórico de comissão, desde que a alíquota entrou em
+  // vigor (não existe comissão antes disso) — o usuário troca o período
+  // pelo PeriodPicker quando quiser olhar só hoje ou uma janela menor.
+  const period = resolvePeriod(await searchParams, { defaultFrom: COMMISSION_POLICY_EFFECTIVE_AT_ISO });
   const { start, end } = periodRange(period.from, period.to);
   const ranking = await getCommissionRanking(user.tenantId, { start, end });
 

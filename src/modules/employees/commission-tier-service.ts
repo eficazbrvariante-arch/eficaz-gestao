@@ -5,6 +5,7 @@ import {
   type CommissionTierInput,
   type ProgressiveCommissionResult,
 } from "@/lib/commission-tiers";
+import { COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "./commission-service";
 
 export { computeProgressiveCommission } from "@/lib/commission-tiers";
 export type {
@@ -17,14 +18,8 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-/**
- * Mesmo corte de `commission-service.ts` — nenhuma comissão (faixa ou
- * exceção por produto) existe antes da alíquota única entrar em vigor.
- * Repetido aqui (não importado) porque `commission-service.ts` não exporta
- * a constante; ambos os motores precisam do mesmo corte, então documentado
- * nos dois lugares.
- */
-const COMMISSION_POLICY_EFFECTIVE_AT = new Date("2026-08-21T00:00:00-03:00");
+/** Mesmo corte de `commission-service.ts` — nenhuma comissão (faixa ou exceção por produto) existe antes da alíquota única entrar em vigor. */
+const COMMISSION_POLICY_EFFECTIVE_AT = new Date(`${COMMISSION_POLICY_EFFECTIVE_AT_ISO}T00:00:00-03:00`);
 
 /**
  * Faixas vigentes pro mês pedido: o `CommissionTierSet` mais recente com
