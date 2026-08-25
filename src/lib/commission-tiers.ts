@@ -61,13 +61,43 @@ export function computeProgressiveCommission(
   return { breakdown, total: round2(breakdown.reduce((sum, row) => sum + row.commission, 0)) };
 }
 
-/** Quanto falta pro vendedor entrar na próxima faixa (não a atual) — `null` se já está na última. */
-export function nextTierGap(
-  totalSales: number,
-  tiers: CommissionTierInput[]
-): { nextTier: CommissionTierInput; amountRemaining: number } | null {
+export type TierProgress = {
+  breakdown: CommissionTierBreakdownRow[];
+  total: number;
+  /** Faixa mais alta que o vendedor já preencheu (a última com `amountInTier > 0`); com zero vendido, a primeira faixa. */
+  currentTier: CommissionTierInput;
+  currentTierIndex: number;
+  /** Faixa seguinte à atual, ou `null` quando já está na última (faixa "sem teto" atingida). */
+  nextTier: CommissionTierInput | null;
+  /** Quanto falta pra alcançar `nextTier`; `null` quando já está na última faixa. */
+  amountToNextTier: number | null;
+  /** Quanto já vendeu além do início da faixa mais alta — só relevante quando `nextTier` é `null`. */
+  amountAboveTopTier: number;
+};
+
+/**
+ * Progresso do vendedor nas faixas — em qual faixa está, quanto falta pra
+ * próxima, quanto já vendeu acima da última. Reaproveita
+ * `computeProgressiveCommission`: a "faixa atual" é sempre a mais alta com
+ * fatia preenchida (`amountInTier > 0`) — no limite exato de uma faixa
+ * (ex.: vendeu exatamente R$8.000 com Bronze até R$8.000), o valor do limite
+ * já pertence à faixa de baixo, então ela continua sendo a "atual" até
+ * passar do limite (R$8.000,01 já é a de cima) — coerente com "até R$X"
+ * (inclusivo) vs. "acima de R$X" (exclusivo) descrito nas faixas.
+ */
+export function computeTierProgress(totalSales: number, tiers: CommissionTierInput[]): TierProgress {
   const sorted = [...tiers].sort((a, b) => a.order - b.order || a.minAmount - b.minAmount);
-  const next = sorted.find((tier) => tier.minAmount > totalSales);
-  if (!next) return null;
-  return { nextTier: next, amountRemaining: round2(next.minAmount - totalSales) };
+  const { breakdown, total } = computeProgressiveCommission(totalSales, sorted);
+
+  let currentTierIndex = 0;
+  breakdown.forEach((row, i) => {
+    if (row.amountInTier > 0) currentTierIndex = i;
+  });
+
+  const currentTier = sorted[currentTierIndex];
+  const nextTier = sorted[currentTierIndex + 1] ?? null;
+  const amountToNextTier = nextTier ? round2(nextTier.minAmount - totalSales) : null;
+  const amountAboveTopTier = nextTier ? 0 : round2(Math.max(0, totalSales - currentTier.minAmount));
+
+  return { breakdown, total, currentTier, currentTierIndex, nextTier, amountToNextTier, amountAboveTopTier };
 }

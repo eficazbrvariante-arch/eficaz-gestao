@@ -2,20 +2,63 @@ import { prisma } from "@/lib/prisma";
 import { currentMonthStartISO, monthRange, nextMonthStartISO } from "@/lib/format";
 import {
   computeProgressiveCommission,
+  computeTierProgress,
   type CommissionTierInput,
   type ProgressiveCommissionResult,
+  type TierProgress,
 } from "@/lib/commission-tiers";
 import { COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "./commission-service";
 
-export { computeProgressiveCommission } from "@/lib/commission-tiers";
+export { computeProgressiveCommission, computeTierProgress } from "@/lib/commission-tiers";
 export type {
   CommissionTierInput,
   CommissionTierBreakdownRow,
   ProgressiveCommissionResult,
+  TierProgress,
 } from "@/lib/commission-tiers";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+type CommissionableItem = {
+  total: unknown;
+  quantity: number;
+  product: {
+    commissionType: "PERCENT" | "FIXED";
+    commissionPercent: unknown;
+    commissionFixedAmount: unknown;
+  };
+};
+
+/**
+ * Separa o faturamento de um vendedor entre "elegível às faixas" e "exceção
+ * por produto" (`Product.commissionPercent`/`commissionFixedAmount`, que
+ * soma comissão à parte, fora do cálculo progressivo) — função central única
+ * usada tanto pro cálculo mensal de um vendedor quanto pro lote do ranking,
+ * pra não duplicar essa regra em dois lugares.
+ */
+function splitOverrideAndTierEligible(items: CommissionableItem[]) {
+  let tierEligibleSales = 0;
+  let overrideCommission = 0;
+
+  for (const item of items) {
+    const itemTotal = Number(item.total);
+    const hasOverride =
+      (item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null) ||
+      item.product.commissionPercent != null;
+
+    if (hasOverride) {
+      overrideCommission +=
+        item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null
+          ? Number(item.product.commissionFixedAmount) * item.quantity
+          : (itemTotal * Number(item.product.commissionPercent)) / 100;
+    } else {
+      tierEligibleSales += itemTotal;
+    }
+  }
+
+  return { tierEligibleSales, overrideCommission };
 }
 
 /** Mesmo corte de `commission-service.ts` — nenhuma comissão (faixa ou exceção por produto) existe antes da alíquota única entrar em vigor. */
@@ -111,28 +154,8 @@ export async function computeSellerMonthlyCommission(
     getTierSetForMonth(tenantId, monthStartISO),
   ]);
 
-  let totalSales = 0;
-  let tierEligibleSales = 0;
-  let overrideCommission = 0;
-
-  for (const item of items) {
-    const itemTotal = Number(item.total);
-    totalSales += itemTotal;
-
-    const hasOverride =
-      (item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null) ||
-      item.product.commissionPercent != null;
-
-    if (hasOverride) {
-      overrideCommission +=
-        item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null
-          ? Number(item.product.commissionFixedAmount) * item.quantity
-          : (itemTotal * Number(item.product.commissionPercent)) / 100;
-    } else {
-      tierEligibleSales += itemTotal;
-    }
-  }
-
+  const totalSales = items.reduce((sum, item) => sum + Number(item.total), 0);
+  const { tierEligibleSales, overrideCommission } = splitOverrideAndTierEligible(items);
   const progressive = computeProgressiveCommission(round2(tierEligibleSales), tierData.tiers);
 
   return {
@@ -144,6 +167,84 @@ export async function computeSellerMonthlyCommission(
     totalCommission: round2(overrideCommission + progressive.total),
     tierSetId: tierData.tierSetId,
   };
+}
+
+export type SellerTierProgress = TierProgress & {
+  userId: string;
+  monthStartISO: string;
+  /** Faturamento elegível às faixas no mês (exclui produto com exceção própria). */
+  tierEligibleSales: number;
+  /** Comissão de produtos com exceção própria (fora das faixas), no mês. */
+  overrideCommission: number;
+  /** `overrideCommission + progresso das faixas (TierProgress.total)`. */
+  totalCommission: number;
+};
+
+/**
+ * Progresso nas faixas de TODOS os vendedores pedidos, num mês só — usado
+ * pelo Ranking de Comissão pra mostrar a faixa/barra de cada um sem uma
+ * consulta por vendedor (o mesmo cálculo de `computeSellerMonthlyCommission`,
+ * em lote). A faixa mostrada é sempre a do **mês corrente**, independente do
+ * período escolhido no filtro do ranking — faixa é conceito mensal (mesma
+ * regra de `getTierSetForMonth`), enquanto a ordenação/comissão efetiva do
+ * ranking continua livre pra olhar qualquer período (são coisas diferentes,
+ * não confundir posição no ranking com faixa de comissão).
+ */
+export async function getSellerTierProgressByUsers(
+  tenantId: string,
+  userIds: string[],
+  monthStartISO: string
+): Promise<Map<string, SellerTierProgress>> {
+  const result = new Map<string, SellerTierProgress>();
+  if (userIds.length === 0) return result;
+
+  const { start, end } = monthRange(monthStartISO);
+  const effectiveStart = start < COMMISSION_POLICY_EFFECTIVE_AT ? COMMISSION_POLICY_EFFECTIVE_AT : start;
+
+  const [items, tierData] = await Promise.all([
+    effectiveStart >= end
+      ? Promise.resolve([])
+      : prisma.saleItem.findMany({
+          where: {
+            sale: {
+              tenantId,
+              sellerId: { in: userIds },
+              status: "COMPLETED",
+              createdAt: { gte: effectiveStart, lt: end },
+            },
+          },
+          select: {
+            total: true,
+            quantity: true,
+            product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
+            sale: { select: { sellerId: true } },
+          },
+        }),
+    getTierSetForMonth(tenantId, monthStartISO),
+  ]);
+
+  const itemsByUser = new Map<string, CommissionableItem[]>();
+  for (const item of items) {
+    const sellerId = item.sale.sellerId;
+    const list = itemsByUser.get(sellerId);
+    if (list) list.push(item);
+    else itemsByUser.set(sellerId, [item]);
+  }
+
+  for (const userId of userIds) {
+    const { tierEligibleSales, overrideCommission } = splitOverrideAndTierEligible(itemsByUser.get(userId) ?? []);
+    const progress = computeTierProgress(round2(tierEligibleSales), tierData.tiers);
+    result.set(userId, {
+      ...progress,
+      userId,
+      monthStartISO,
+      tierEligibleSales: round2(tierEligibleSales),
+      overrideCommission: round2(overrideCommission),
+      totalCommission: round2(overrideCommission + progress.total),
+    });
+  }
+
+  return result;
 }
 
 export type EditableCommissionTier = CommissionTierInput & { id: string | null; active: boolean };
