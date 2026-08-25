@@ -53,8 +53,13 @@ export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
 export const cancelSaleSchema = z.object({
   reason: z.string().trim().min(3, "Descreva o motivo do cancelamento"),
-  /** Só é obrigatório quando a venda ainda não tem cliente vinculado. */
+  /** Só é obrigatório quando a venda ainda não tem cliente vinculado e não é
+   *  um cancelamento administrativo sem crédito (`skipCredit`). */
   customerId: z.string().trim().optional().or(z.literal("")),
+  /** Cancelamento administrativo (só ADMIN, checado na action): não gera
+   *  crédito de loja pra ninguém — pra quando a venda não deveria ter
+   *  existido. */
+  skipCredit: z.boolean().optional(),
 });
 export type CancelSaleInput = z.infer<typeof cancelSaleSchema>;
 export type CancelSaleFormValues = z.input<typeof cancelSaleSchema>;

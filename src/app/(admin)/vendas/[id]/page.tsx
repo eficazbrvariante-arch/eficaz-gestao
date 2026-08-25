@@ -84,6 +84,7 @@ export default async function ComprovantePage({
           canCancel={canCancelSale(user.role)}
           canEdit={canEdit}
           canViewAllSales={canViewAllSales(user.role)}
+          isAdmin={user.role === "ADMIN"}
           isCancelled={isCancelled}
           openCancelForm={cancelar === "1"}
           items={isCancelled ? [] : defectItems}

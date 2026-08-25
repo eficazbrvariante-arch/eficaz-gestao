@@ -29,12 +29,18 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
     return { error: parsed.error.issues[0]?.message ?? "Informe o motivo do cancelamento." };
   }
 
+  // `skipCredit` (cancelamento sem gerar crédito de loja) é uma função
+  // exclusiva do Admin — mesmo que alguém force o campo no payload, um
+  // Vendedor/Gerente nunca consegue ativá-lo.
+  const skipCredit = parsed.data.skipCredit === true && user.role === "ADMIN";
+
   const result = await cancelSale(
     user.tenantId,
     saleId,
     user.id,
     parsed.data.reason,
-    parsed.data.customerId || null
+    parsed.data.customerId || null,
+    skipCredit
   );
   if (!result.ok) return { error: result.error };
 
@@ -49,7 +55,9 @@ export async function cancelSaleAction(saleId: string, input: CancelSaleInput) {
     action: "sale.cancel",
     entity: "Sale",
     entityId: saleId,
-    description: `Cancelou a venda #${sale?.number} (R$ ${sale?.total}). Motivo: ${parsed.data.reason}`,
+    description: skipCredit
+      ? `Cancelou a venda #${sale?.number} (R$ ${sale?.total}) sem gerar crédito de loja (cancelamento administrativo). Motivo: ${parsed.data.reason}`
+      : `Cancelou a venda #${sale?.number} (R$ ${sale?.total}). Motivo: ${parsed.data.reason}`,
   });
 
   revalidatePath("/vendas");

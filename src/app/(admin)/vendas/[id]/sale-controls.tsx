@@ -64,6 +64,7 @@ export function SaleActions({
   canCancel,
   canEdit,
   canViewAllSales,
+  isAdmin,
   isCancelled,
   openCancelForm = false,
   items,
@@ -77,6 +78,8 @@ export function SaleActions({
   /** Só ADMIN, venda não cancelada e caixa ainda aberto — ver `canEditSale`. */
   canEdit: boolean;
   canViewAllSales: boolean;
+  /** Só ADMIN pode cancelar sem gerar crédito de loja (`skipCredit`). */
+  isAdmin: boolean;
   isCancelled: boolean;
   /** Abre o formulário de cancelamento já expandido (link direto da lista de vendas). */
   openCancelForm?: boolean;
@@ -136,6 +139,7 @@ export function SaleActions({
   }
 
   const [creditCustomer, setCreditCustomer] = useState<CustomerOption | null>(null);
+  const [skipCredit, setSkipCredit] = useState(false);
   const [customerTerm, setCustomerTerm] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [isSearchingCustomer, startCustomerSearch] = useTransition();
@@ -219,7 +223,7 @@ export function SaleActions({
   }
 
   const onSubmit = (data: CancelSaleInput) => {
-    if (!existingCustomer && !creditCustomer) {
+    if (!skipCredit && !existingCustomer && !creditCustomer) {
       setServerError("Selecione o cliente que vai receber o crédito do cancelamento.");
       return;
     }
@@ -228,6 +232,7 @@ export function SaleActions({
       const result = await cancelSaleAction(saleId, {
         ...data,
         customerId: creditCustomer?.id ?? "",
+        skipCredit,
       });
       if (result?.error) setServerError(result.error);
       else setShowCancel(false);
@@ -371,12 +376,30 @@ export function SaleActions({
           className="mt-4 max-w-md rounded-xl border border-red-200 bg-red-50 p-4"
         >
           <p className="mb-3 text-sm text-red-900">
-            O cancelamento devolve os itens ao estoque, mantém a venda no histórico como
-            cancelada e gera {formatBRL(saleTotal)} de crédito de loja para o cliente. Esta ação
-            não pode ser desfeita.
+            O cancelamento devolve os itens ao estoque, mantém a venda no histórico como cancelada
+            {skipCredit
+              ? ". Esta ação não pode ser desfeita."
+              : ` e gera ${formatBRL(saleTotal)} de crédito de loja para o cliente. Esta ação não pode ser desfeita.`}
           </p>
           <FormBanner message={serverError} variant="error" />
 
+          {isAdmin && (
+            <label className="mb-3 flex items-start gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={skipCredit}
+                onChange={(e) => setSkipCredit(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-slate-900">Cancelar sem gerar crédito</span> — uso
+                administrativo, quando a venda não deveria ter existido (erro de lançamento,
+                duplicidade). Não vincula nem gera crédito para nenhum cliente.
+              </span>
+            </label>
+          )}
+
+          {!skipCredit && (
           <div className="mb-3">
             <Label>Cliente que recebe o crédito</Label>
             {existingCustomer ? (
@@ -452,6 +475,7 @@ export function SaleActions({
               </>
             )}
           </div>
+          )}
 
           <div className="mb-3">
             <Label htmlFor="reason">Motivo do cancelamento</Label>
@@ -461,7 +485,7 @@ export function SaleActions({
 
           <Button
             type="submit"
-            disabled={isPending || (!existingCustomer && !creditCustomer)}
+            disabled={isPending || (!skipCredit && !existingCustomer && !creditCustomer)}
             fullWidth={false}
             className="bg-red-700 px-4 hover:bg-red-800"
           >

@@ -517,8 +517,17 @@ export async function cancelSale(
   userId: string,
   reason: string,
   /** Só é usado quando a venda ainda não tem cliente vinculado — obrigatório
-   *  nesse caso, pois é pra ele que o crédito do cancelamento é gerado. */
-  creditCustomerId?: string | null
+   *  nesse caso (a menos que `skipCredit`), pois é pra ele que o crédito do
+   *  cancelamento é gerado. */
+  creditCustomerId?: string | null,
+  /**
+   * Cancelamento administrativo (só ADMIN, checado na action): não exige
+   * cliente nenhum e não gera crédito de loja pra ninguém — pra quando a
+   * venda simplesmente não deveria ter existido (erro de lançamento,
+   * duplicidade), sem dever nada a ninguém. Estoque, reversão de convênio e
+   * o registro do cancelamento em si continuam acontecendo normalmente.
+   */
+  skipCredit = false
 ): Promise<CancelSaleResult> {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId },
@@ -527,17 +536,20 @@ export async function cancelSale(
   if (!sale) return { ok: false, error: "Venda não encontrada." };
   if (sale.status === "CANCELLED") return { ok: false, error: "Esta venda já está cancelada." };
 
-  const customerId = sale.customerId ?? creditCustomerId ?? null;
-  if (!customerId) {
+  const customerId = skipCredit ? null : (sale.customerId ?? creditCustomerId ?? null);
+  if (!skipCredit && !customerId) {
     return {
       ok: false,
       error: "Selecione o cliente da venda para gerar o crédito do cancelamento.",
     };
   }
+  // A partir daqui, sempre que `!skipCredit`, `customerId` é garantidamente
+  // não-nulo (checado acima) — só o TypeScript não consegue provar isso a
+  // partir de duas variáveis distintas, daí os `customerId!` abaixo.
 
-  if (!sale.customerId) {
+  if (!skipCredit && !sale.customerId) {
     const customer = await prisma.customer.findFirst({
-      where: { id: customerId, tenantId },
+      where: { id: customerId!, tenantId },
       select: { id: true },
     });
     if (!customer) return { ok: false, error: "Cliente não encontrado." };
@@ -554,7 +566,8 @@ export async function cancelSale(
           cancelReason: reason,
           // Se a venda era de "consumidor final", o cliente escolhido agora pra
           // receber o crédito fica registrado retroativamente na própria venda.
-          ...(sale.customerId ? {} : { customerId }),
+          // Cancelamento administrativo sem crédito nunca precisa disso.
+          ...(sale.customerId || skipCredit ? {} : { customerId }),
         },
       });
 
@@ -597,21 +610,23 @@ export async function cancelSale(
         });
       }
 
-      await tx.customer.update({
-        where: { id: customerId },
-        data: { creditBalance: { increment: sale.total } },
-      });
-      await tx.customerCreditMovement.create({
-        data: {
-          tenantId,
-          customerId,
-          type: "GRANTED",
-          amount: sale.total,
-          saleId: sale.id,
-          userId,
-          reason: `Cancelamento da venda #${sale.number}`,
-        },
-      });
+      if (!skipCredit) {
+        await tx.customer.update({
+          where: { id: customerId! },
+          data: { creditBalance: { increment: sale.total } },
+        });
+        await tx.customerCreditMovement.create({
+          data: {
+            tenantId,
+            customerId: customerId!,
+            type: "GRANTED",
+            amount: sale.total,
+            saleId: sale.id,
+            userId,
+            reason: `Cancelamento da venda #${sale.number}`,
+          },
+        });
+      }
 
       // Venda cancelada não pode continuar contando pro limite de uso do
       // colaborador nem pros totais do convênio — reverte sem apagar o
