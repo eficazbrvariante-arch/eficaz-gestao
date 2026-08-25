@@ -167,6 +167,16 @@ export function canGrantRepairOrderCourtesy(role: UserRole) {
 }
 
 /**
+ * Cancelar uma OS sem faturamento (cliente não autorizou o serviço, aparelho
+ * devolvido sem cobrança). Mesmo nível de `canGrantRepairOrderCourtesy`: é um
+ * write-off maior que a cortesia (a OS inteira, não só o saldo), então nem
+ * Gerente decide sozinho.
+ */
+export function canCancelRepairOrderWithoutBilling(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Acesso restrito à tela de ajuste rápido de estoque (foto + quantidade,
  * sem preço nem qualquer outra informação do produto).
  */

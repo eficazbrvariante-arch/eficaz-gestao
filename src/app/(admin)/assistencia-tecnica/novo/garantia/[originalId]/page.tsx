@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import {
+  canCancelRepairOrderWithoutBilling,
   canEnterRepairOrderCostOnCreate,
   canGrantRepairOrderCourtesy,
   canManageFiado,
@@ -90,6 +91,7 @@ export default async function NovaGarantiaPage({
       financials={null}
       canFiado={canManageFiado(user.role)}
       canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
+      canCancelWithoutBilling={canCancelRepairOrderWithoutBilling(user.role)}
       warrantyOriginal={{
         id: originalId,
         number: original.number,

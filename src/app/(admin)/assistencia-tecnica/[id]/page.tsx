@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import {
+  canCancelRepairOrderWithoutBilling,
   canEnterRepairOrderCostOnCreate,
   canGrantRepairOrderCourtesy,
   canManageFiado,
@@ -135,6 +136,7 @@ export default async function OrdemServicoPage({
       financials={financials}
       canFiado={canManageFiado(user.role)}
       canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
+      canCancelWithoutBilling={canCancelRepairOrderWithoutBilling(user.role)}
     />
   );
 }

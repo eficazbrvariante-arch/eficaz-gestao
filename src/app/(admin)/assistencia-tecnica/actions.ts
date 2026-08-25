@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
+  canCancelRepairOrderWithoutBilling,
   canEnterRepairOrderCostOnCreate,
   canGrantRepairOrderCourtesy,
   canManageFiado,
@@ -17,6 +18,7 @@ import {
   updateRepairOrderStatus,
 } from "@/modules/repairs/repair-order-service";
 import {
+  cancelRepairOrderWithoutBilling,
   deliverRepairOrder,
   grantRepairOrderCourtesy,
   receiveRepairOrderPayment,
@@ -31,9 +33,11 @@ import {
   type RepairOrderInput,
 } from "@/lib/validations/repair-order";
 import {
+  cancelRepairOrderWithoutBillingSchema,
   deliverRepairOrderSchema,
   receiveRepairOrderPaymentSchema,
   repairOrderCourtesySchema,
+  type CancelRepairOrderWithoutBillingInput,
   type DeliverRepairOrderInput,
   type ReceiveRepairOrderPaymentInput,
   type RepairOrderCourtesyInput,
@@ -271,6 +275,61 @@ export async function grantRepairOrderCourtesyAction(id: string, input: RepairOr
   revalidatePath("/assistencia-tecnica");
 
   return { success: "Cortesia concedida." };
+}
+
+/**
+ * Cancela a OS sem faturamento (cliente não autorizou o serviço) — zera o
+ * total pro comprovante sair R$ 0,00 e exige quem está devolvendo o
+ * aparelho. Só ADMIN (ver `canCancelRepairOrderWithoutBilling`).
+ */
+export async function cancelRepairOrderWithoutBillingAction(
+  id: string,
+  input: CancelRepairOrderWithoutBillingInput
+) {
+  const user = await requireUser();
+  if (!canCancelRepairOrderWithoutBilling(user.role)) {
+    return { error: "Seu perfil não tem permissão para cancelar OS sem faturamento." };
+  }
+
+  const parsed = cancelRepairOrderWithoutBillingSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  // Quem devolve o aparelho nunca é assumido como quem está logado — mesma
+  // regra de `sellerId` na criação da OS — revalidado aqui, não confia só
+  // no que veio do formulário.
+  const deliveredBy = await prisma.user.findFirst({
+    where: { id: parsed.data.deliveredById },
+    select: { tenantId: true, active: true, role: true },
+  });
+  if (!isSellerAssignable(deliveredBy, user.tenantId)) {
+    return { error: "Selecione um colaborador válido para a devolução do aparelho." };
+  }
+
+  const result = await cancelRepairOrderWithoutBilling(
+    { tenantId: user.tenantId, userId: user.id },
+    id,
+    parsed.data.deliveredById,
+    parsed.data.reason
+  );
+  if (!result.ok) return { error: result.error };
+
+  const order = await prisma.repairOrder.findUnique({ where: { id }, select: { number: true } });
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "repair.cancel_without_billing",
+    entity: "RepairOrder",
+    entityId: id,
+    description: `Cancelou a OS #${order?.number} sem faturamento. Motivo: ${parsed.data.reason}`,
+  });
+
+  revalidatePath(`/assistencia-tecnica/${id}`);
+  revalidatePath("/assistencia-tecnica");
+
+  return { success: "OS cancelada sem faturamento." };
 }
 
 /** Garante que o comprovante em PDF da OS já foi gerado, antes de compartilhar o link. */

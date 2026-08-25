@@ -377,3 +377,76 @@ export async function grantRepairOrderCourtesy(
     return { ok: false, error: "Não foi possível conceder a cortesia. Tente novamente." };
   }
 }
+
+export type CancelRepairOrderResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Cancela a OS sem faturamento — pra quando o cliente não autoriza o serviço
+ * e retira o aparelho sem gastar nada. Zera o total (aumenta o `discount`
+ * até cobrir o valor dos serviços) pra o comprovante sair R$ 0,00, e exige
+ * `deliveredById` (nunca o usuário logado, mesma regra de `sellerId`/
+ * `deliverRepairOrder`) — sempre fica registrado quem devolveu o aparelho,
+ * mesmo sem cobrança nenhuma. Bloqueada se já houver pagamento registrado
+ * nesta OS (nesse caso o valor já recebido precisa de estorno/cortesia, não
+ * de um cancelamento que faria o dinheiro desaparecer dos relatórios sem
+ * deixar rastro). Só quem tem `canGrantRepairOrderCourtesy` chega a chamar
+ * isso — a permissão é checada na action, não aqui.
+ */
+export async function cancelRepairOrderWithoutBilling(
+  ctx: { tenantId: string; userId: string },
+  repairOrderId: string,
+  deliveredById: string,
+  reason: string
+): Promise<CancelRepairOrderResult> {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.repairOrder.findFirstOrThrow({
+        where: { id: repairOrderId, tenantId: ctx.tenantId },
+        select: {
+          status: true,
+          discount: true,
+          items: { select: { unitPrice: true, quantity: true } },
+          payments: { select: { amount: true } },
+        },
+      });
+
+      if (order.status === "CANCELLED") {
+        throw new RepairPaymentError("Esta OS já está cancelada.");
+      }
+      if (order.status === "DELIVERED") {
+        throw new RepairPaymentError("Esta OS já foi entregue e não pode ser cancelada.");
+      }
+
+      const alreadyPaid = round2(order.payments.reduce((sum, p) => sum + Number(p.amount), 0));
+      if (alreadyPaid > CENT) {
+        throw new RepairPaymentError(
+          "Esta OS já tem pagamento registrado — não é possível cancelar sem faturamento."
+        );
+      }
+
+      const total = repairOrderTotal(order.items, order.discount);
+      const newDiscount = round2(Number(order.discount) + total);
+
+      await tx.repairOrder.update({
+        where: { id: repairOrderId },
+        data: {
+          status: "CANCELLED",
+          discount: newDiscount,
+          pickedUpAt: new Date(),
+          deliveredById,
+          receiptPdfUrl: null,
+        },
+      });
+      await tx.repairOrderEvent.create({
+        data: {
+          repairOrderId,
+          message: `OS cancelada sem faturamento — aparelho devolvido ao cliente. Motivo: ${reason}`,
+        },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof RepairPaymentError) return { ok: false, error: error.message };
+    return { ok: false, error: "Não foi possível cancelar a ordem de serviço. Tente novamente." };
+  }
+}

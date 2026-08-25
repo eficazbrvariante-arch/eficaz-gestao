@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/session";
 import {
+  canCancelRepairOrderWithoutBilling,
   canEnterRepairOrderCostOnCreate,
   canGrantRepairOrderCourtesy,
   canManageFiado,
@@ -45,6 +46,7 @@ export default async function NovaOrdemServicoPage() {
       financials={null}
       canFiado={canManageFiado(user.role)}
       canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
+      canCancelWithoutBilling={canCancelRepairOrderWithoutBilling(user.role)}
     />
   );
 }

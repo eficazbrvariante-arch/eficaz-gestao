@@ -23,6 +23,7 @@ import {
 import { searchCustomersAction } from "../clientes/actions";
 import { listActiveSellersAction, type PdvSellerOption } from "../pdv/actions";
 import {
+  cancelRepairOrderWithoutBillingAction,
   createRepairOrderAction,
   deliverRepairOrderAction,
   ensureRepairOrderReceiptAction,
@@ -48,8 +49,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 };
 
 /** Status escolhíveis livremente no seletor — "Entregue" só acontece pelo
- *  acerto financeiro (ver `handleDeliver`), nunca como troca de status solta. */
-const SELECTABLE_STATUSES = REPAIR_ORDER_STATUSES.filter((s) => s !== "DELIVERED");
+ *  acerto financeiro (ver `handleDeliver`) e "Cancelado" só pelo cancelamento
+ *  sem faturamento (ver `handleCancelWithoutBilling`), nunca como troca de
+ *  status solta — os dois exigem um responsável e/ou acerto financeiro que
+ *  o seletor livre não capturaria. */
+const SELECTABLE_STATUSES = REPAIR_ORDER_STATUSES.filter(
+  (s) => s !== "DELIVERED" && s !== "CANCELLED"
+);
 
 type ServiceLine = {
   key: number;
@@ -137,6 +143,7 @@ export function RepairOrderWorkspace({
   financials,
   canFiado,
   canGrantCourtesy,
+  canCancelWithoutBilling,
   warrantyOriginal,
 }: {
   defaults: RepairOrderDefaults;
@@ -151,6 +158,8 @@ export function RepairOrderWorkspace({
   canFiado: boolean;
   /** Só ADMIN — dispensar saldo pendente sem cobrança. */
   canGrantCourtesy: boolean;
+  /** Só ADMIN — cancelar a OS inteira sem faturamento. */
+  canCancelWithoutBilling: boolean;
   /** Só na criação, vindo de "Acionar garantia" numa OS já entregue. */
   warrantyOriginal?: WarrantyOriginalInfo;
 }) {
@@ -217,6 +226,12 @@ export function RepairOrderWorkspace({
   const [showCourtesyForm, setShowCourtesyForm] = useState(false);
   const [courtesyReason, setCourtesyReason] = useState("");
   const [isGrantingCourtesy, startCourtesyTransition] = useTransition();
+
+  // Cancelamento sem faturamento — cliente não autorizou o serviço.
+  const [showCancelForm, setShowCancelForm] = useState(false);
+  const [cancelDeliveredById, setCancelDeliveredById] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, startCancelTransition] = useTransition();
 
   const paymentSlots: PaymentPanelSlot[] = PAYMENT_SLOTS.map((slot) => {
     const eligible =
@@ -329,6 +344,42 @@ export function RepairOrderWorkspace({
       setSuccess(result?.success ?? "Cortesia concedida.");
       setShowCourtesyForm(false);
       setCourtesyReason("");
+      router.refresh();
+    });
+  }
+
+  function handleCancelWithoutBilling() {
+    if (!meta) return;
+    setError(undefined);
+    setSuccess(undefined);
+
+    if (!cancelDeliveredById) {
+      setError("Selecione quem está devolvendo o aparelho.");
+      return;
+    }
+    if (cancelReason.trim().length < 3) {
+      setError("Descreva o motivo do cancelamento.");
+      return;
+    }
+
+    startCancelTransition(async () => {
+      const result = await cancelRepairOrderWithoutBillingAction(meta.id, {
+        deliveredById: cancelDeliveredById,
+        reason: cancelReason.trim(),
+      });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSuccess(result?.success ?? "OS cancelada sem faturamento.");
+      setShowCancelForm(false);
+      setCancelReason("");
+      setStatus("CANCELLED");
+      // O servidor aumentou o desconto pra zerar o total (ver
+      // `cancelRepairOrderWithoutBilling`) — sincroniza aqui também, senão um
+      // "Salvar OS" logo em seguida reenviaria o desconto antigo e desfaria o
+      // zeramento sem querer.
+      setDiscount(round2(discount + totalWithDiscount));
       router.refresh();
     });
   }
@@ -904,14 +955,18 @@ export function RepairOrderWorkspace({
                       {REPAIR_ORDER_STATUS_LABELS[value]}
                     </option>
                   ))}
-                  {/* Só aparece quando a OS já está entregue, pra continuar mostrando o valor atual no seletor — nunca selecionável de novo. */}
+                  {/* Só aparecem quando a OS já está num desses status, pra continuar mostrando o valor atual no seletor — nunca selecionáveis de novo. */}
                   {status === "DELIVERED" && (
                     <option value="DELIVERED">{REPAIR_ORDER_STATUS_LABELS.DELIVERED}</option>
+                  )}
+                  {status === "CANCELLED" && (
+                    <option value="CANCELLED">{REPAIR_ORDER_STATUS_LABELS.CANCELLED}</option>
                   )}
                 </Select>
                 {status !== "DELIVERED" && status !== "CANCELLED" && (
                   <p className="mt-1 text-xs text-slate-400 print:hidden">
-                    &quot;Entregue&quot; só através do acerto financeiro, abaixo.
+                    &quot;Entregue&quot; só através do acerto financeiro, e &quot;Cancelado&quot; só
+                    através do cancelamento sem faturamento, abaixo.
                   </p>
                 )}
                 <span
@@ -1177,6 +1232,72 @@ export function RepairOrderWorkspace({
                       )}
                     </div>
                   )}
+
+                  {canCancelWithoutBilling && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      {!showCancelForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowCancelForm(true)}
+                          className="text-xs font-medium text-red-700 hover:underline"
+                        >
+                          Cancelar OS sem faturamento
+                        </button>
+                      ) : (
+                        <div>
+                          <p className="mb-2 text-xs text-slate-500">
+                            Cliente não autorizou o serviço — a OS é cancelada, o total zerado e o
+                            comprovante sai R$ 0,00. Selecione quem está devolvendo o aparelho ao
+                            cliente, pra sempre ter um responsável registrado.
+                          </p>
+                          <Label htmlFor="cancel-delivered-by">Quem está devolvendo o aparelho</Label>
+                          <Select
+                            id="cancel-delivered-by"
+                            value={cancelDeliveredById}
+                            onChange={(e) => setCancelDeliveredById(e.target.value)}
+                          >
+                            <option value="">Selecione...</option>
+                            {sellers.map((seller) => (
+                              <option key={seller.id} value={seller.id}>
+                                {seller.name}
+                              </option>
+                            ))}
+                          </Select>
+                          <div className="mt-2">
+                            <Label htmlFor="cancel-reason">Motivo do cancelamento (obrigatório)</Label>
+                            <Textarea
+                              id="cancel-reason"
+                              rows={2}
+                              value={cancelReason}
+                              onChange={(e) => setCancelReason(e.target.value)}
+                              placeholder="Ex.: cliente não autorizou o orçamento"
+                            />
+                          </div>
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              type="button"
+                              disabled={isCancelling}
+                              onClick={handleCancelWithoutBilling}
+                              className="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-60"
+                            >
+                              {isCancelling ? "Cancelando..." : "Confirmar cancelamento"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCancelForm(false);
+                                setCancelDeliveredById("");
+                                setCancelReason("");
+                              }}
+                              className="text-xs text-slate-500 hover:underline"
+                            >
+                              Voltar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1188,13 +1309,15 @@ export function RepairOrderWorkspace({
                 >
                   Imprimir Cupom (entrada)
                 </Link>
-                {status === "DELIVERED" ? (
+                {status === "DELIVERED" || status === "CANCELLED" ? (
                   <Link
                     href={`/assistencia-tecnica/${meta.id}/cupom?tipo=entrega`}
                     target="_blank"
                     className="rounded-md border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    Imprimir Cupom (entrega)
+                    {status === "CANCELLED"
+                      ? "Imprimir Comprovante (devolução sem cobrança)"
+                      : "Imprimir Cupom (entrega)"}
                   </Link>
                 ) : (
                   <button

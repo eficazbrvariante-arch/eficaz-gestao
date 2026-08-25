@@ -22,3 +22,14 @@ export const repairOrderCourtesySchema = z.object({
   reason: z.string().trim().min(3, "Descreva o motivo da cortesia"),
 });
 export type RepairOrderCourtesyInput = z.infer<typeof repairOrderCourtesySchema>;
+
+export const cancelRepairOrderWithoutBillingSchema = z.object({
+  /** Vendedor/colaborador que está devolvendo o aparelho ao cliente — nunca
+   *  assumido como quem está logado (mesma regra de `sellerId`), pra sempre
+   *  ter um responsável registrado mesmo numa OS sem faturamento nenhum. */
+  deliveredById: z.string().trim().min(1, "Selecione quem está devolvendo o aparelho"),
+  reason: z.string().trim().min(3, "Descreva o motivo do cancelamento"),
+});
+export type CancelRepairOrderWithoutBillingInput = z.infer<
+  typeof cancelRepairOrderWithoutBillingSchema
+>;
