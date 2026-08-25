@@ -10,13 +10,16 @@ import { passwordSchema } from "@/lib/validations/customer-auth";
 import {
   createFiadoEntrySchema,
   grantStoreCreditSchema,
+  zeroStoreCreditSchema,
   type CreateFiadoEntryInput,
   type GrantStoreCreditInput,
+  type ZeroStoreCreditInput,
 } from "@/lib/validations/fiado";
 import {
   adminSetCustomerPassword,
   generateRandomPassword,
   grantManualStoreCredit,
+  zeroCustomerStoreCredit,
   mergeCustomers,
 } from "@/modules/customers/customer-service";
 import { createFiadoEntry, markFiadoEntryPaid } from "@/modules/fiado/fiado-service";
@@ -229,7 +232,11 @@ export async function markFiadoEntryPaidAction(customerId: string, entryId: stri
   return { success: true as const };
 }
 
-/** Concede crédito de loja manualmente (ex.: crédito positivo de um fiado). Só ADMIN. */
+/**
+ * Concede crédito de loja manualmente (ex.: crédito positivo de um fiado). Só
+ * ADMIN. Fica registrado (`ADJUSTED_ADD`, ver `grantManualStoreCredit`) e no
+ * histórico de auditoria — ambos visíveis só pro Admin.
+ */
 export async function grantStoreCreditAction(customerId: string, input: GrantStoreCreditInput) {
   const user = await requireUser();
   if (!canManageFiado(user.role)) {
@@ -247,6 +254,49 @@ export async function grantStoreCreditAction(customerId: string, input: GrantSto
     user.id
   );
   if (!result.ok) return { error: result.error };
+
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "customer.credit_adjust",
+    entity: "Customer",
+    entityId: customerId,
+    description: `Concedeu R$ ${parsed.data.amount} de crédito de loja para ${customer?.name ?? customerId}. Motivo: ${parsed.data.reason}`,
+  });
+
+  revalidatePath(`/clientes/${customerId}`);
+  return { success: true as const };
+}
+
+/**
+ * Zera o crédito de loja do cliente manualmente — ajuste administrativo, só
+ * ADMIN. Fica registrado (`ADJUSTED_REMOVE`, ver `zeroCustomerStoreCredit`) e
+ * no histórico de auditoria — ambos visíveis só pro Admin.
+ */
+export async function zeroStoreCreditAction(customerId: string, input: ZeroStoreCreditInput) {
+  const user = await requireUser();
+  if (!canManageFiado(user.role)) {
+    return { error: "Seu perfil não tem permissão para zerar crédito." };
+  }
+
+  const parsed = zeroStoreCreditSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const result = await zeroCustomerStoreCredit(user.tenantId, customerId, parsed.data.reason, user.id);
+  if (!result.ok) return { error: result.error };
+
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "customer.credit_adjust",
+    entity: "Customer",
+    entityId: customerId,
+    description: `Zerou o crédito de loja de ${customer?.name ?? customerId}. Motivo: ${parsed.data.reason}`,
+  });
 
   revalidatePath(`/clientes/${customerId}`);
   return { success: true as const };

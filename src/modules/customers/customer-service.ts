@@ -285,6 +285,10 @@ export type GrantStoreCreditResult = { ok: true } | { ok: false; error: string }
  * quitado a maior, cortesia). Reaproveita o mesmo saldo/extrato/forma de
  * pagamento (`STORE_CREDIT`) já usado pelo crédito gerado por cancelamento —
  * só ADMIN pode chamar isso (ver `canManageFiado`), verificado por quem chama.
+ * Tipo `ADJUSTED_ADD` (não `GRANTED`): é um ajuste administrativo manual,
+ * cujo extrato fica visível só pro Admin (ver `/clientes/[id]`) — diferente
+ * do crédito automático de um cancelamento de venda, que qualquer papel com
+ * acesso à ficha do cliente pode ver.
  */
 export async function grantManualStoreCredit(
   tenantId: string,
@@ -308,9 +312,52 @@ export async function grantManualStoreCredit(
       data: {
         tenantId,
         customerId,
-        type: "GRANTED",
+        type: "ADJUSTED_ADD",
         amount,
         userId: grantedByUserId,
+        reason,
+      },
+    }),
+  ]);
+
+  return { ok: true };
+}
+
+/**
+ * Zera o crédito de loja do cliente manualmente — ajuste administrativo, só
+ * ADMIN (ver `canManageFiado`, verificado por quem chama). Mesmo padrão de
+ * `grantManualStoreCredit`: fica registrado no extrato (`ADJUSTED_REMOVE`),
+ * visível só pro Admin.
+ */
+export async function zeroCustomerStoreCredit(
+  tenantId: string,
+  customerId: string,
+  reason: string,
+  userId: string
+): Promise<GrantStoreCreditResult> {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { id: true, creditBalance: true },
+  });
+  if (!customer) return { ok: false, error: "Cliente não encontrado." };
+
+  const currentBalance = Number(customer.creditBalance);
+  if (currentBalance <= 0) {
+    return { ok: false, error: "Este cliente não tem crédito de loja para zerar." };
+  }
+
+  await prisma.$transaction([
+    prisma.customer.update({
+      where: { id: customerId },
+      data: { creditBalance: 0 },
+    }),
+    prisma.customerCreditMovement.create({
+      data: {
+        tenantId,
+        customerId,
+        type: "ADJUSTED_REMOVE",
+        amount: currentBalance,
+        userId,
         reason,
       },
     }),

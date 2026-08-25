@@ -1184,13 +1184,18 @@ enum PaymentMethod {
   FIADO
 }
 
-/// GRANTED: crédito gerado (ex.: cancelamento de venda, ou concedido
-/// manualmente pelo administrador). REDEEMED: usado como forma de pagamento
-/// numa venda nova. O valor em `CustomerCreditMovement.amount` é sempre
-/// positivo — o sinal é implícito pelo tipo.
+/// GRANTED: crédito gerado automaticamente (cancelamento de venda). REDEEMED:
+/// usado como forma de pagamento numa venda nova. ADJUSTED_ADD/ADJUSTED_REMOVE:
+/// ajuste manual feito pelo administrador (acrescentar ou zerar/remover saldo)
+/// — visível só pro Admin (ver `/clientes/[id]`), diferente de GRANTED/REDEEMED,
+/// que fazem parte do extrato normal do cliente. O valor em
+/// `CustomerCreditMovement.amount` é sempre positivo — o sinal é implícito
+/// pelo tipo.
 enum CreditMovementType {
   GRANTED
   REDEEMED
+  ADJUSTED_ADD
+  ADJUSTED_REMOVE
 }
 
 /// PAID é um estado final (nunca mais some da lista, só muda o status).

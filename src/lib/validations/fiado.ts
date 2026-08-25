@@ -13,3 +13,8 @@ export const grantStoreCreditSchema = z.object({
   reason: z.string().trim().min(3, "Descreva o motivo do crédito"),
 });
 export type GrantStoreCreditInput = z.infer<typeof grantStoreCreditSchema>;
+
+export const zeroStoreCreditSchema = z.object({
+  reason: z.string().trim().min(3, "Descreva o motivo de zerar o crédito"),
+});
+export type ZeroStoreCreditInput = z.infer<typeof zeroStoreCreditSchema>;

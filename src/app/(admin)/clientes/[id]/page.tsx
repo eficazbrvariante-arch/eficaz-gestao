@@ -53,7 +53,17 @@ export default async function FichaClientePage({
   const CREDIT_MOVEMENT_LABELS: Record<string, string> = {
     GRANTED: "Crédito gerado",
     REDEEMED: "Usado em compra",
+    ADJUSTED_ADD: "Ajuste administrativo (crédito)",
+    ADJUSTED_REMOVE: "Ajuste administrativo (zerado)",
   };
+  // Ajuste manual do Admin (zerar/conceder fora do fluxo automático de venda)
+  // fica no extrato, mas só visível pro próprio Admin — outros papéis com
+  // acesso à ficha do cliente (Gerente/Vendedor) não veem essas linhas.
+  const visibleCreditMovements = showFiado
+    ? customer.creditMovements
+    : customer.creditMovements.filter(
+        (movement) => movement.type !== "ADJUSTED_ADD" && movement.type !== "ADJUSTED_REMOVE"
+      );
 
   return (
     <div>
@@ -158,35 +168,38 @@ export default async function FichaClientePage({
             </tr>
           </thead>
           <tbody>
-            {customer.creditMovements.map((movement) => (
-              <tr key={movement.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-4 py-3 text-slate-500">{formatDateTime(movement.createdAt)}</td>
-                <td className="px-4 py-3 text-slate-900">
-                  {CREDIT_MOVEMENT_LABELS[movement.type] ?? movement.type}
-                </td>
-                <td className="px-4 py-3 text-slate-500">
-                  {movement.sale ? (
-                    <Link href={`/vendas/${movement.saleId}`} className="hover:underline">
-                      #{movement.sale.number}
-                    </Link>
-                  ) : (
-                    "-"
-                  )}
-                </td>
-                <td className="px-4 py-3 text-slate-500">{movement.reason ?? "-"}</td>
-                <td
-                  className={
-                    movement.type === "GRANTED"
-                      ? "px-4 py-3 font-medium text-emerald-700"
-                      : "px-4 py-3 font-medium text-red-600"
-                  }
-                >
-                  {movement.type === "GRANTED" ? "+" : "-"}
-                  {formatBRL(movement.amount)}
-                </td>
-              </tr>
-            ))}
-            {customer.creditMovements.length === 0 && (
+            {visibleCreditMovements.map((movement) => {
+              const isPositive = movement.type === "GRANTED" || movement.type === "ADJUSTED_ADD";
+              return (
+                <tr key={movement.id} className="border-b border-slate-100 last:border-0">
+                  <td className="px-4 py-3 text-slate-500">{formatDateTime(movement.createdAt)}</td>
+                  <td className="px-4 py-3 text-slate-900">
+                    {CREDIT_MOVEMENT_LABELS[movement.type] ?? movement.type}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {movement.sale ? (
+                      <Link href={`/vendas/${movement.saleId}`} className="hover:underline">
+                        #{movement.sale.number}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{movement.reason ?? "-"}</td>
+                  <td
+                    className={
+                      isPositive
+                        ? "px-4 py-3 font-medium text-emerald-700"
+                        : "px-4 py-3 font-medium text-red-600"
+                    }
+                  >
+                    {isPositive ? "+" : "-"}
+                    {formatBRL(movement.amount)}
+                  </td>
+                </tr>
+              );
+            })}
+            {visibleCreditMovements.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
                   Nenhuma movimentação de crédito ainda.
@@ -203,7 +216,11 @@ export default async function FichaClientePage({
             Fiado
           </div>
           <div className="p-4">
-            <FiadoPanel customerId={customer.id} entries={fiadoRows} />
+            <FiadoPanel
+              customerId={customer.id}
+              entries={fiadoRows}
+              creditBalance={Number(customer.creditBalance)}
+            />
           </div>
         </div>
       )}

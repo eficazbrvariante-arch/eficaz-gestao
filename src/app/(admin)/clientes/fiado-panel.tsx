@@ -7,6 +7,7 @@ import {
   createFiadoEntryAction,
   grantStoreCreditAction,
   markFiadoEntryPaidAction,
+  zeroStoreCreditAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,9 +42,12 @@ const STATUS_LABEL: Record<string, string> = {
 export function FiadoPanel({
   customerId,
   entries,
+  creditBalance,
 }: {
   customerId: string;
   entries: FiadoEntryRow[];
+  /** Saldo de crédito atual do cliente — só pra habilitar/desabilitar "Zerar crédito". */
+  creditBalance: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
@@ -54,6 +58,8 @@ export function FiadoPanel({
 
   const [creditAmount, setCreditAmount] = useState("");
   const [creditReason, setCreditReason] = useState("");
+
+  const [zeroReason, setZeroReason] = useState("");
 
   function handleCreateEntry() {
     setFeedback(undefined);
@@ -92,6 +98,19 @@ export function FiadoPanel({
       setCreditAmount("");
       setCreditReason("");
       setFeedback({ type: "success", message: "Crédito de loja concedido." });
+    });
+  }
+
+  function handleZeroCredit() {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await zeroStoreCreditAction(customerId, { reason: zeroReason });
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setZeroReason("");
+      setFeedback({ type: "success", message: "Crédito de loja zerado." });
     });
   }
 
@@ -238,6 +257,35 @@ export function FiadoPanel({
               className="px-4"
             >
               Conceder
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-200 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-900">Zerar crédito de loja</h3>
+          <p className="mb-3 text-xs text-slate-500">
+            Ajuste administrativo — zera o saldo atual ({formatBRL(creditBalance)}) do cliente.
+            Fica registrado no histórico, visível só pro Admin.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="zero-credit-reason">Motivo</Label>
+              <Input
+                id="zero-credit-reason"
+                value={zeroReason}
+                onChange={(e) => setZeroReason(e.target.value)}
+                placeholder="Ex.: crédito lançado por engano"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending || creditBalance <= 0 || !zeroReason}
+              onClick={handleZeroCredit}
+              fullWidth={false}
+              className="px-4"
+            >
+              Zerar crédito
             </Button>
           </div>
         </div>
