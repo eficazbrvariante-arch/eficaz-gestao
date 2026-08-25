@@ -39,7 +39,8 @@ export type AuditAction =
   | "repair.courtesy_grant"
   | "employee_ledger.confirm_paid"
   | "employee_ledger.delete"
-  | "commission.tiers_update";
+  | "commission.tiers_update"
+  | "commission.pdv_ranking_toggle";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -73,6 +74,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "employee_ledger.confirm_paid": "Pagamento confirmado por selfie pelo colaborador",
   "employee_ledger.delete": "Lançamento de colaborador excluído",
   "commission.tiers_update": "Faixas de comissão progressiva alteradas",
+  "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
 };
 
 export type AuditEntry = {

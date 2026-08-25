@@ -93,6 +93,12 @@ model Tenant {
   /// Gerente acumulam comissão, mesmo que outro papel apareça como
   /// `Sale.sellerId`.
   defaultCommissionPercent Decimal              @default(0) @db.Decimal(5, 2)
+  /// Liga/desliga o Ranking de Comissão no rodapé do PDV — o Admin decide
+  /// quando os vendedores acompanham ao vivo (ex.: fim do expediente) e
+  /// quando fica desligado (ex.: pra não gerar expectativa/ansiedade
+  /// durante o dia). Nunca afeta o Ranking do painel administrativo, só a
+  /// versão exibida no PDV. Desligado por padrão.
+  pdvRankingEnabled        Boolean              @default(false)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
   saleSequence             Int                  @default(0)

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { requireTenant } from "@/lib/session";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { periodRange, currentMonthStartISO } from "@/lib/format";
 import { getCommissionRanking, COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "@/modules/employees/commission-service";
@@ -7,13 +7,14 @@ import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tie
 import { resolvePeriod } from "../../relatorios/period";
 import { PeriodPicker } from "../../relatorios/report-nav";
 import { RankingComissaoMatrix } from "./ranking-comissao-matrix";
+import { PdvRankingToggle } from "./pdv-ranking-toggle";
 
 export default async function RankingComissaoPage({
   searchParams,
 }: {
   searchParams: Promise<{ de?: string; ate?: string }>;
 }) {
-  const user = await requireUser();
+  const { user, tenant } = await requireTenant();
   if (!canManageEmployeeLedger(user.role)) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -54,12 +55,15 @@ export default async function RankingComissaoPage({
           </p>
         </div>
         {canEditCommission(user.role) && (
-          <Link
-            href="/colaboradores/ranking-comissao/configuracoes"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Configurações de Comissão
-          </Link>
+          <div className="flex flex-wrap items-start gap-2">
+            <Link
+              href="/colaboradores/ranking-comissao/configuracoes"
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Configurações de Comissão
+            </Link>
+            <PdvRankingToggle initialEnabled={tenant.pdvRankingEnabled} />
+          </div>
         )}
       </div>
 

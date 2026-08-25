@@ -4,7 +4,10 @@ import { requireTenant } from "@/lib/session";
 import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayISO, periodRange, currentMonthStartISO } from "@/lib/format";
+import { getCommissionRanking } from "@/modules/employees/commission-service";
+import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
+import { RankingComissaoMatrix, type RankingComissaoRow } from "../colaboradores/ranking-comissao/ranking-comissao-matrix";
 import { PdvScreen } from "./pdv-screen";
 
 // Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
@@ -53,6 +56,24 @@ export default async function PdvPage() {
 
   const birthdayAlerts = await getBirthdayAlerts(user.tenantId);
 
+  // Só busca o ranking quando o Admin ligou o botão em "Ranking de
+  // Comissão" — desligado (padrão), nenhuma consulta a mais roda aqui, pra
+  // nunca pesar na tela principal de venda. Período fixo em "hoje": é uma
+  // vitrine ao vivo do dia, diferente do painel administrativo (que olha
+  // qualquer intervalo escolhido).
+  let pdvRanking: RankingComissaoRow[] = [];
+  if (tenant.pdvRankingEnabled) {
+    const today = todayISO();
+    const { start, end } = periodRange(today, today);
+    const ranking = await getCommissionRanking(user.tenantId, { start, end });
+    const tierProgressByUser = await getSellerTierProgressByUsers(
+      user.tenantId,
+      ranking.map((row) => row.userId),
+      currentMonthStartISO()
+    );
+    pdvRanking = ranking.map((row) => ({ ...row, tierProgress: tierProgressByUser.get(row.userId) ?? null }));
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -96,6 +117,15 @@ export default async function PdvPage() {
         canFiado={canManageFiado(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
       />
+
+      {/* Rodapé, nunca a área operacional do topo — só aparece quando o
+          Admin liga o botão em "Ranking de Comissão". */}
+      {tenant.pdvRankingEnabled && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão — hoje</h2>
+          <RankingComissaoMatrix rows={pdvRanking} period={{ from: todayISO(), to: todayISO() }} />
+        </div>
+      )}
     </div>
   );
 }

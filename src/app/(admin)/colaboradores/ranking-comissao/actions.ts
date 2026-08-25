@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { canEditCommission } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import { saveTiersForMonth } from "@/modules/employees/commission-tier-service";
 import { saveCommissionTiersSchema, type SaveCommissionTiersInput } from "@/lib/validations/commission-tiers";
 import { recordAudit } from "@/modules/audit/audit-service";
@@ -58,4 +59,32 @@ export async function saveCommissionTiersAction(input: SaveCommissionTiersInput)
         ? "Faixas salvas — já valem para o mês corrente."
         : "Faixas salvas — valem a partir do próximo mês.",
   };
+}
+
+/**
+ * Liga/desliga o Ranking de Comissão no rodapé do PDV — o Admin decide na
+ * hora (ex.: desligado durante o dia pra não gerar expectativa, ligado só
+ * no fim do expediente). Nunca afeta o Ranking do painel administrativo.
+ */
+export async function setPdvRankingEnabledAction(enabled: boolean) {
+  const user = await requireUser();
+  if (!canEditCommission(user.role)) {
+    return { error: "Seu perfil não tem permissão para ligar/desligar o Ranking no PDV." };
+  }
+
+  await prisma.tenant.update({ where: { id: user.tenantId }, data: { pdvRankingEnabled: enabled } });
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name,
+    action: "commission.pdv_ranking_toggle",
+    entity: "Tenant",
+    entityId: user.tenantId,
+    description: `${user.name} ${enabled ? "ligou" : "desligou"} o Ranking de Comissão no rodapé do PDV`,
+  });
+
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
+  return { success: enabled ? "Ranking ligado no PDV." : "Ranking desligado no PDV." };
 }
