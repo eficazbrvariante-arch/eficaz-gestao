@@ -41,9 +41,8 @@ export default async function ComissaoColaboradorPage({
   return (
     <div>
       <div className="mb-6">
-        {/* Vendedor não tem acesso à lista de Colaboradores — chegou aqui
-            direto por "Minha Comissão", então esse link só faz sentido pra
-            quem gerencia (Admin/Gerente). */}
+        {/* Vendedor não tem acesso à lista de Colaboradores, então esse link
+            só faz sentido pra quem gerencia (Admin/Gerente). */}
         {canManageEmployeeLedger(user.role) && (
           <Link href="/colaboradores" className="text-sm text-text-muted hover:underline">
             ← Voltar para Colaboradores

@@ -56,11 +56,11 @@ export default async function PdvPage() {
 
   const birthdayAlerts = await getBirthdayAlerts(user.tenantId);
 
-  // Só busca o ranking quando o Admin ligou o botão em "Ranking de
-  // Comissão" — desligado (padrão), nenhuma consulta a mais roda aqui, pra
-  // nunca pesar na tela principal de venda. Período fixo em "hoje": é uma
-  // vitrine ao vivo do dia, diferente do painel administrativo (que olha
-  // qualquer intervalo escolhido).
+  // Permanente por padrão — só pula a consulta quando o Admin desligou o
+  // botão em "Ranking de Comissão" (interruptor temporário, ex.: pra não
+  // gerar expectativa/ansiedade durante o dia). Período fixo em "hoje": é
+  // uma vitrine ao vivo do dia, diferente do painel administrativo (que
+  // olha qualquer intervalo escolhido).
   let pdvRanking: RankingComissaoRow[] = [];
   if (tenant.pdvRankingEnabled) {
     const today = todayISO();
@@ -118,8 +118,8 @@ export default async function PdvPage() {
         autoPrintReceipt={tenant.autoPrintReceipt}
       />
 
-      {/* Rodapé, nunca a área operacional do topo — só aparece quando o
-          Admin liga o botão em "Ranking de Comissão". */}
+      {/* Rodapé, nunca a área operacional do topo — permanente por padrão,
+          some só se o Admin desligar o botão em "Ranking de Comissão". */}
       {tenant.pdvRankingEnabled && (
         <div className="mt-8">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão — hoje</h2>

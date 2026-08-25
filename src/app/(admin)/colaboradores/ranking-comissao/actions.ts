@@ -62,9 +62,11 @@ export async function saveCommissionTiersAction(input: SaveCommissionTiersInput)
 }
 
 /**
- * Liga/desliga o Ranking de Comissão no rodapé do PDV — o Admin decide na
- * hora (ex.: desligado durante o dia pra não gerar expectativa, ligado só
- * no fim do expediente). Nunca afeta o Ranking do painel administrativo.
+ * Liga/desliga o Ranking de Comissão no rodapé do PDV. Fica permanente
+ * (ligado por padrão, visível em todo PDV independente da conta logada) —
+ * este botão é o interruptor pro Admin desligar temporariamente quando
+ * quiser (ex.: pra não gerar expectativa durante o dia) e religar depois.
+ * Nunca afeta o Ranking do painel administrativo.
  */
 export async function setPdvRankingEnabledAction(enabled: boolean) {
   const user = await requireUser();
