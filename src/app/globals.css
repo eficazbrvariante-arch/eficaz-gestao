@@ -117,6 +117,27 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/*
+ * Correção de contraste na origem (não campo a campo): o preflight do
+ * Tailwind força `color: inherit` em input/select/textarea, então esses
+ * campos sempre herdam `--foreground` do `body` — dentro de `.eficaz-admin`
+ * isso é quase branco (tema escuro). Só que um `<input>`/`<select>` "cru"
+ * (sem classe de cor/fundo própria, ex.: os campos de data De/Até do
+ * filtro de período) sempre renderiza com o fundo NATIVO claro do
+ * navegador — texto quase branco em cima de fundo claro fica ilegível.
+ * `@layer base` garante que isso é só um "padrão de fábrica": qualquer
+ * classe Tailwind de cor (`text-*`, usada nos componentes com fundo
+ * escuro de propósito) continua vencendo normalmente, por estar na
+ * camada `utilities`, que sempre tem prioridade sobre `base`.
+ */
+@layer base {
+  .eficaz-admin input,
+  .eficaz-admin select,
+  .eficaz-admin textarea {
+    color: #171717;
+  }
+}
+
 /* QR code do site no cabeçalho do cupom: o SVG sai sem width/height fixos
    (só viewBox), então o tamanho em tela padrão fica definido aqui — a
    versão impressa tem sua própria largura, ver @media print abaixo. */
