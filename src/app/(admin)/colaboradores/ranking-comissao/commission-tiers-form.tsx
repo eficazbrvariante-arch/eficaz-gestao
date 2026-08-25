@@ -21,7 +21,14 @@ import type { EditableCommissionTier } from "@/modules/employees/commission-tier
 
 type Feedback = { type: "success" | "error"; message: string } | undefined;
 
-export function CommissionTiersForm({ initialTiers }: { initialTiers: EditableCommissionTier[] }) {
+export function CommissionTiersForm({
+  initialTiers,
+  target = "next",
+}: {
+  initialTiers: EditableCommissionTier[];
+  /** "current" = mês corrente (só a configuração inicial, uma vez); "next" = próximo mês (sempre editável). */
+  target?: "current" | "next";
+}) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
   const [simulatedSales, setSimulatedSales] = useState("20000");
@@ -34,6 +41,7 @@ export function CommissionTiersForm({ initialTiers }: { initialTiers: EditableCo
   } = useForm<SaveCommissionTiersFormValues, unknown, SaveCommissionTiersInput>({
     resolver: zodResolver(saveCommissionTiersSchema),
     defaultValues: {
+      target,
       tiers: initialTiers.map((t) => ({
         name: t.name,
         order: t.order,
@@ -172,7 +180,7 @@ export function CommissionTiersForm({ initialTiers }: { initialTiers: EditableCo
 
         <div className="mt-6">
           <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
-            {isPending ? "Salvando..." : "Salvar faixas do próximo mês"}
+            {isPending ? "Salvando..." : target === "current" ? "Salvar faixas deste mês" : "Salvar faixas do próximo mês"}
           </Button>
         </div>
       </form>

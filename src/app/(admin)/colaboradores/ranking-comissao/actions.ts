@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { canEditCommission } from "@/lib/permissions";
-import { saveTiersForNextMonth } from "@/modules/employees/commission-tier-service";
+import { saveTiersForMonth } from "@/modules/employees/commission-tier-service";
 import { saveCommissionTiersSchema, type SaveCommissionTiersInput } from "@/lib/validations/commission-tiers";
 import { recordAudit } from "@/modules/audit/audit-service";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, currentMonthStartISO, nextMonthStartISO } from "@/lib/format";
 
 /**
- * Salva as faixas de comissão progressiva do **próximo mês** — nunca o mês
- * em andamento nem qualquer mês fechado (ver `saveTiersForNextMonth`). Só
- * ADMIN (mesma trava de sempre pra decidir quanto cada um ganha).
+ * Salva as faixas de comissão progressiva — do **mês corrente** (só permitido
+ * uma vez, a primeira configuração; ver `saveTiersForMonth`) ou do **próximo
+ * mês** (sempre editável). Só ADMIN (mesma trava de sempre pra decidir
+ * quanto cada um ganha).
  */
 export async function saveCommissionTiersAction(input: SaveCommissionTiersInput) {
   const user = await requireUser();
@@ -22,10 +23,15 @@ export async function saveCommissionTiersAction(input: SaveCommissionTiersInput)
   const parsed = saveCommissionTiersSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  const { tierSetId } = await saveTiersForNextMonth(
+  const monthStartISO =
+    parsed.data.target === "current" ? currentMonthStartISO() : nextMonthStartISO(currentMonthStartISO());
+
+  const result = await saveTiersForMonth(
     { tenantId: user.tenantId, userId: user.id },
+    monthStartISO,
     parsed.data.tiers
   );
+  if ("error" in result) return { error: result.error };
 
   const summary = parsed.data.tiers
     .filter((t) => t.active)
@@ -38,10 +44,18 @@ export async function saveCommissionTiersAction(input: SaveCommissionTiersInput)
     userName: user.name,
     action: "commission.tiers_update",
     entity: "CommissionTierSet",
-    entityId: tierSetId,
-    description: `${user.name} configurou as faixas de comissão a partir do próximo mês: ${summary}`,
+    entityId: result.tierSetId,
+    description:
+      parsed.data.target === "current"
+        ? `${user.name} configurou as faixas de comissão do mês corrente (vigência imediata): ${summary}`
+        : `${user.name} configurou as faixas de comissão a partir do próximo mês: ${summary}`,
   });
 
   revalidatePath("/colaboradores/ranking-comissao/configuracoes");
-  return { success: "Faixas salvas — valem a partir do próximo mês." };
+  return {
+    success:
+      parsed.data.target === "current"
+        ? "Faixas salvas — já valem para o mês corrente."
+        : "Faixas salvas — valem a partir do próximo mês.",
+  };
 }

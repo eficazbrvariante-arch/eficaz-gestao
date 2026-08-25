@@ -16,17 +16,19 @@ function formatPercent(value: number) {
 }
 
 /**
- * Laranja (início) → dourado (progresso) → verde (meta) — uma única
+ * Laranja (início) → verde intermediário → verde forte (meta) — uma única
  * interpolação contínua, não blocos fixos, pra ficar elegante/premium em vez
- * de chamativo. `fraction` é 0..1 (quanto já andou até a faixa mais alta).
+ * de chamativo. `fraction` é 0..1 (quanto já andou até a faixa mais alta). O
+ * verde forte é o `#39ff88` do tema Matrix, pra fechar exatamente na cor de
+ * destaque já usada no resto do painel.
  */
 function tierProgressColor(fraction: number) {
   const clamped = Math.min(1, Math.max(0, fraction));
   const orange: [number, number, number] = [249, 115, 22];
-  const gold: [number, number, number] = [234, 179, 8];
-  const green: [number, number, number] = [34, 197, 94];
+  const midGreen: [number, number, number] = [74, 222, 128];
+  const strongGreen: [number, number, number] = [57, 255, 136];
   const [from, to, t] =
-    clamped < 0.5 ? [orange, gold, clamped / 0.5] : [gold, green, (clamped - 0.5) / 0.5];
+    clamped < 0.5 ? [orange, midGreen, clamped / 0.5] : [midGreen, strongGreen, (clamped - 0.5) / 0.5];
   const lerp = (a: number, b: number) => Math.round(a + (b - a) * t);
   return `rgb(${lerp(from[0], to[0])}, ${lerp(from[1], to[1])}, ${lerp(from[2], to[2])})`;
 }
@@ -68,7 +70,17 @@ function SellerDetailCard({ row }: { row: RankingComissaoRow; }) {
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Vendido no mês (elegível à faixa)</span>
+              <span>Vendido no mês (total)</span>
+              <span className="text-white">{formatBRL(tp.totalSales)}</span>
+            </div>
+            {tp.overrideSales > 0 && (
+              <div className="flex justify-between">
+                <span>— dos quais, com comissão própria (fora da faixa)</span>
+                <span className="text-white">{formatBRL(tp.overrideSales)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>Vendido elegível à faixa</span>
               <span className="text-white">{formatBRL(tp.tierEligibleSales)}</span>
             </div>
             {tp.nextTier ? (
@@ -210,7 +222,7 @@ function SellerRow({ row, rank, period }: { row: RankingComissaoRow; rank: numbe
           <div className="rounded-md bg-[#0a1a10] px-2 py-1.5">
             <p className="font-mono text-[9px] uppercase tracking-wide text-[#39ff88]/50">Vendido</p>
             <p className="font-mono text-xs font-semibold" style={{ color: barColor }}>
-              {formatBRL(tp.tierEligibleSales)}
+              {formatBRL(tp.totalSales)}
             </p>
           </div>
           {hasMultipleTiers && tp.nextTier ? (

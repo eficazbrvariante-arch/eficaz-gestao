@@ -40,6 +40,7 @@ type CommissionableItem = {
  */
 function splitOverrideAndTierEligible(items: CommissionableItem[]) {
   let tierEligibleSales = 0;
+  let overrideSales = 0;
   let overrideCommission = 0;
 
   for (const item of items) {
@@ -49,6 +50,7 @@ function splitOverrideAndTierEligible(items: CommissionableItem[]) {
       item.product.commissionPercent != null;
 
     if (hasOverride) {
+      overrideSales += itemTotal;
       overrideCommission +=
         item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null
           ? Number(item.product.commissionFixedAmount) * item.quantity
@@ -58,7 +60,7 @@ function splitOverrideAndTierEligible(items: CommissionableItem[]) {
     }
   }
 
-  return { tierEligibleSales, overrideCommission };
+  return { tierEligibleSales, overrideSales, overrideCommission };
 }
 
 /** Mesmo corte de `commission-service.ts` — nenhuma comissão (faixa ou exceção por produto) existe antes da alíquota única entrar em vigor. */
@@ -112,10 +114,12 @@ export async function getTierSetForMonth(
 
 export type SellerMonthlyCommission = {
   monthStartISO: string;
-  /** Faturamento total do vendedor no mês (todo produto, com ou sem exceção). */
+  /** Faturamento total do vendedor no mês (todo produto, com ou sem exceção) — `tierEligibleSales + overrideSales`. */
   totalSales: number;
   /** Faturamento que entra no cálculo progressivo (exclui produto com exceção própria). */
   tierEligibleSales: number;
+  /** Faturamento de produtos com exceção própria (fora das faixas) — não conta pra faixa, mas conta pro total vendido. */
+  overrideSales: number;
   /** Soma da comissão dos produtos com exceção própria (fora das faixas). */
   overrideCommission: number;
   progressive: ProgressiveCommissionResult;
@@ -154,14 +158,14 @@ export async function computeSellerMonthlyCommission(
     getTierSetForMonth(tenantId, monthStartISO),
   ]);
 
-  const totalSales = items.reduce((sum, item) => sum + Number(item.total), 0);
-  const { tierEligibleSales, overrideCommission } = splitOverrideAndTierEligible(items);
+  const { tierEligibleSales, overrideSales, overrideCommission } = splitOverrideAndTierEligible(items);
   const progressive = computeProgressiveCommission(round2(tierEligibleSales), tierData.tiers);
 
   return {
     monthStartISO,
-    totalSales: round2(totalSales),
+    totalSales: round2(tierEligibleSales + overrideSales),
     tierEligibleSales: round2(tierEligibleSales),
+    overrideSales: round2(overrideSales),
     overrideCommission: round2(overrideCommission),
     progressive,
     totalCommission: round2(overrideCommission + progressive.total),
@@ -172,8 +176,12 @@ export async function computeSellerMonthlyCommission(
 export type SellerTierProgress = TierProgress & {
   userId: string;
   monthStartISO: string;
+  /** Faturamento total do vendedor no mês (todo produto, com ou sem exceção) — `tierEligibleSales + overrideSales`. Use este pra "vendido", não `tierEligibleSales` sozinho. */
+  totalSales: number;
   /** Faturamento elegível às faixas no mês (exclui produto com exceção própria). */
   tierEligibleSales: number;
+  /** Faturamento de produtos com exceção própria (fora das faixas) — não entra na faixa, mas conta pro total vendido. */
+  overrideSales: number;
   /** Comissão de produtos com exceção própria (fora das faixas), no mês. */
   overrideCommission: number;
   /** `overrideCommission + progresso das faixas (TierProgress.total)`. */
@@ -232,13 +240,17 @@ export async function getSellerTierProgressByUsers(
   }
 
   for (const userId of userIds) {
-    const { tierEligibleSales, overrideCommission } = splitOverrideAndTierEligible(itemsByUser.get(userId) ?? []);
+    const { tierEligibleSales, overrideSales, overrideCommission } = splitOverrideAndTierEligible(
+      itemsByUser.get(userId) ?? []
+    );
     const progress = computeTierProgress(round2(tierEligibleSales), tierData.tiers);
     result.set(userId, {
       ...progress,
       userId,
       monthStartISO,
+      totalSales: round2(tierEligibleSales + overrideSales),
       tierEligibleSales: round2(tierEligibleSales),
+      overrideSales: round2(overrideSales),
       overrideCommission: round2(overrideCommission),
       totalCommission: round2(overrideCommission + progress.total),
     });
@@ -250,30 +262,28 @@ export async function getSellerTierProgressByUsers(
 export type EditableCommissionTier = CommissionTierInput & { id: string | null; active: boolean };
 
 /**
- * Faixas pra tela de "Configurações de Comissão" — sempre as do **mês
- * seguinte** (nunca o mês em andamento, pra nenhuma edição afetar cálculo já
- * em curso, e nunca um mês fechado, que já virou histórico). Se ainda não
- * existe um conjunto criado especificamente pro próximo mês, pré-preenche
- * com o que está vigente agora (inclusive o padrão implícito, se nenhuma
- * faixa foi configurada nunca) — só um ponto de partida pra editar, nada é
- * gravado até salvar.
+ * Faixas de um mês específico pra tela de "Configurações de Comissão". Se
+ * ainda não existe um conjunto criado especificamente pra esse mês,
+ * pré-preenche com o que está vigente agora (inclusive o padrão implícito,
+ * se nenhuma faixa foi configurada nunca) — só um ponto de partida pra
+ * editar, nada é gravado até salvar.
  */
-export async function getEditableTiersForNextMonth(
-  tenantId: string
+export async function getEditableTiersForMonth(
+  tenantId: string,
+  monthStartISO: string
 ): Promise<{ monthStartISO: string; tierSetId: string | null; tiers: EditableCommissionTier[] }> {
-  const nextMonth = nextMonthStartISO(currentMonthStartISO());
-  const { start: nextMonthStart } = monthRange(nextMonth);
+  const { start: monthStart } = monthRange(monthStartISO);
 
-  const explicitNextMonthSet = await prisma.commissionTierSet.findFirst({
-    where: { tenantId, validFrom: nextMonthStart },
+  const explicitSet = await prisma.commissionTierSet.findFirst({
+    where: { tenantId, validFrom: monthStart },
     include: { tiers: { orderBy: { order: "asc" } } },
   });
 
-  if (explicitNextMonthSet) {
+  if (explicitSet) {
     return {
-      monthStartISO: nextMonth,
-      tierSetId: explicitNextMonthSet.id,
-      tiers: explicitNextMonthSet.tiers.map((t) => ({
+      monthStartISO,
+      tierSetId: explicitSet.id,
+      tiers: explicitSet.tiers.map((t) => ({
         id: t.id,
         name: t.name,
         order: t.order,
@@ -285,39 +295,61 @@ export async function getEditableTiersForNextMonth(
     };
   }
 
-  const fallback = await getTierSetForMonth(tenantId, nextMonth);
+  const fallback = await getTierSetForMonth(tenantId, monthStartISO);
   return {
-    monthStartISO: nextMonth,
+    monthStartISO,
     tierSetId: null,
     tiers: fallback.tiers.map((t) => ({ ...t, id: null, active: true })),
   };
 }
 
+/** Faixas do **próximo mês** — nunca o mês em andamento, pra nenhuma edição afetar cálculo já em curso. */
+export async function getEditableTiersForNextMonth(
+  tenantId: string
+): Promise<{ monthStartISO: string; tierSetId: string | null; tiers: EditableCommissionTier[] }> {
+  return getEditableTiersForMonth(tenantId, nextMonthStartISO(currentMonthStartISO()));
+}
+
 /**
- * Salva as faixas do próximo mês (substitui a lista inteira — mesma
- * convenção de "Oferta Relâmpago"). Nunca mexe no conjunto do mês atual nem
- * de qualquer mês passado: se já existe um conjunto explícito pro próximo
- * mês, atualiza suas faixas; senão, cria um novo. Não recalcula nem afeta o
- * mês em andamento de nenhuma forma.
+ * Salva as faixas de um mês específico (substitui a lista inteira — mesma
+ * convenção de "Oferta Relâmpago"): se já existe um conjunto explícito pra
+ * esse mês, atualiza suas faixas; senão, cria um novo.
+ *
+ * Pro **mês corrente**, só permite quando ainda NÃO existe um conjunto
+ * explícito configurado pra ele — é a configuração inicial (única vez;
+ * pedido explícito do usuário pra valer imediatamente, não só a partir do
+ * próximo mês). A partir do momento em que o mês corrente ganha um conjunto
+ * próprio, ele passa a contar como "mês fechado" pra fins de edição — só o
+ * próximo mês continua editável dali em diante, preservando a garantia de
+ * nunca mudar retroativamente uma comissão que já está em curso.
  */
-export async function saveTiersForNextMonth(
+export async function saveTiersForMonth(
   ctx: { tenantId: string; userId: string },
+  monthStartISO: string,
   tiers: Omit<EditableCommissionTier, "id">[]
-): Promise<{ tierSetId: string }> {
-  const nextMonth = nextMonthStartISO(currentMonthStartISO());
-  const { start: nextMonthStart } = monthRange(nextMonth);
+): Promise<{ tierSetId: string } | { error: string }> {
+  const { start: monthStart } = monthRange(monthStartISO);
+  const isCurrentMonth = monthStartISO === currentMonthStartISO();
 
   const existing = await prisma.commissionTierSet.findFirst({
-    where: { tenantId: ctx.tenantId, validFrom: nextMonthStart },
+    where: { tenantId: ctx.tenantId, validFrom: monthStart },
     select: { id: true },
   });
+
+  if (isCurrentMonth && !existing) {
+    // Primeira configuração do mês corrente — permitida uma vez só; ver doc acima.
+  } else if (isCurrentMonth && existing) {
+    return { error: "As faixas deste mês já foram configuradas e não podem mais ser alteradas retroativamente." };
+  } else if (monthStartISO !== nextMonthStartISO(currentMonthStartISO())) {
+    return { error: "Só é possível configurar o mês corrente (uma vez) ou o próximo mês." };
+  }
 
   const tierSetId = await prisma.$transaction(async (tx) => {
     const setId =
       existing?.id ??
       (
         await tx.commissionTierSet.create({
-          data: { tenantId: ctx.tenantId, validFrom: nextMonthStart, createdById: ctx.userId },
+          data: { tenantId: ctx.tenantId, validFrom: monthStart, createdById: ctx.userId },
         })
       ).id;
 
@@ -338,4 +370,12 @@ export async function saveTiersForNextMonth(
   });
 
   return { tierSetId };
+}
+
+/** Salva as faixas do próximo mês — atalho de `saveTiersForMonth` já resolvendo qual mês é "o próximo". */
+export async function saveTiersForNextMonth(
+  ctx: { tenantId: string; userId: string },
+  tiers: Omit<EditableCommissionTier, "id">[]
+): Promise<{ tierSetId: string } | { error: string }> {
+  return saveTiersForMonth(ctx, nextMonthStartISO(currentMonthStartISO()), tiers);
 }

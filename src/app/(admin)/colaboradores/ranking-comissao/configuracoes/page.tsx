@@ -2,7 +2,11 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { canEditCommission } from "@/lib/permissions";
 import { currentMonthStartISO, formatBRL } from "@/lib/format";
-import { getTierSetForMonth, getEditableTiersForNextMonth } from "@/modules/employees/commission-tier-service";
+import {
+  getTierSetForMonth,
+  getEditableTiersForMonth,
+  getEditableTiersForNextMonth,
+} from "@/modules/employees/commission-tier-service";
 import { CommissionTiersForm } from "../commission-tiers-form";
 
 export default async function ConfiguracoesComissaoPage() {
@@ -15,10 +19,16 @@ export default async function ConfiguracoesComissaoPage() {
     );
   }
 
-  const [currentMonth, nextMonth] = await Promise.all([
+  const [currentMonth, currentMonthEditable, nextMonth] = await Promise.all([
     getTierSetForMonth(user.tenantId, currentMonthStartISO()),
+    getEditableTiersForMonth(user.tenantId, currentMonthStartISO()),
     getEditableTiersForNextMonth(user.tenantId),
   ]);
+  // Mês corrente já tem um conjunto próprio configurado (mostra só leitura)
+  // ou ainda está no padrão implícito (permite configurar uma única vez,
+  // valendo imediatamente — ver `saveTiersForMonth`).
+  const currentMonthAlreadySet = currentMonth.tierSetId !== null;
+  const [currentMonthYear, currentMonthNumber] = currentMonthEditable.monthStartISO.split("-");
   const [nextMonthYear, nextMonthNumber] = nextMonth.monthStartISO.split("-");
 
   return (
@@ -34,24 +44,38 @@ export default async function ConfiguracoesComissaoPage() {
         </p>
       </div>
 
-      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-slate-900">Faixas deste mês</h2>
-        <p className="mb-3 text-xs text-slate-900">
-          Já em vigor, não editável — qualquer mudança vale só a partir do próximo mês, pra nunca
-          mudar uma comissão que já está sendo calculada.
-        </p>
-        <div className="space-y-1 text-sm text-slate-900">
-          {currentMonth.tiers.map((tier) => (
-            <div key={tier.name} className="flex justify-between">
-              <span>{tier.name}</span>
-              <span>
-                {formatBRL(tier.minAmount)} {tier.maxAmount === null ? "sem teto" : `a ${formatBRL(tier.maxAmount)}`} —{" "}
-                <strong>{tier.percent}%</strong>
-              </span>
-            </div>
-          ))}
+      {currentMonthAlreadySet ? (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900">Faixas deste mês</h2>
+          <p className="mb-3 text-xs text-slate-900">
+            Já em vigor, não editável — qualquer mudança vale só a partir do próximo mês, pra nunca
+            mudar uma comissão que já está sendo calculada.
+          </p>
+          <div className="space-y-1 text-sm text-slate-900">
+            {currentMonth.tiers.map((tier) => (
+              <div key={tier.name} className="flex justify-between">
+                <span>{tier.name}</span>
+                <span>
+                  {formatBRL(tier.minAmount)} {tier.maxAmount === null ? "sem teto" : `a ${formatBRL(tier.maxAmount)}`} —{" "}
+                  <strong>{tier.percent}%</strong>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold text-foreground">
+            Configurar faixas deste mês ({currentMonthNumber}/{currentMonthYear})
+          </h2>
+          <p className="mb-4 text-sm text-text-muted">
+            Ainda não configurado (usando a alíquota padrão do tenant). Essa é a configuração
+            inicial: só pode ser feita uma vez e vale imediatamente para o mês corrente — depois de
+            salva, só o próximo mês fica editável.
+          </p>
+          <CommissionTiersForm initialTiers={currentMonthEditable.tiers} target="current" />
+        </div>
+      )}
 
       <h2 className="mb-1 text-sm font-semibold text-foreground">
         Faixas a partir de {nextMonthNumber}/{nextMonthYear}

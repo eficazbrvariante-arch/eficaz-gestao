@@ -22,7 +22,13 @@ const commissionTierFormSchema = z.object({
 });
 
 export const saveCommissionTiersSchema = z
-  .object({ tiers: z.array(commissionTierFormSchema).min(1, "Configure pelo menos uma faixa") })
+  .object({
+    tiers: z.array(commissionTierFormSchema).min(1, "Configure pelo menos uma faixa"),
+    // "current" só é aceito pelo servidor uma única vez por tenant (primeira
+    // configuração do mês corrente, pedido explícito do usuário pra valer
+    // imediatamente) — depois disso o servidor recusa (ver `saveTiersForMonth`).
+    target: z.enum(["current", "next"]).default("next"),
+  })
   .superRefine((data, ctx) => {
     const active = [...data.tiers]
       .filter((t) => t.active)
