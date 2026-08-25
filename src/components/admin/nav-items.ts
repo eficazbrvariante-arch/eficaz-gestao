@@ -54,6 +54,15 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
     visibleTo: canManageEmployeeLedger,
   },
+  {
+    // Vendedor não vê "Ranking de Comissão" (isso ficou fechado só pra
+    // Admin/Gerente, que enxergam a lista inteira) — este item é a versão
+    // dele próprio: sua faixa, progresso e comissão, nunca a dos colegas.
+    label: "Minha Comissão",
+    href: "/minha-comissao",
+    available: true,
+    visibleTo: (role) => role === "SELLER",
+  },
   { label: "Relatórios", href: "/relatorios", available: true, visibleTo: canViewReports },
   { label: "Analytics", href: "/analytics", available: true, visibleTo: canViewReports },
   { label: "Usuários", href: "/usuarios", available: true, visibleTo: canManageSettings },
