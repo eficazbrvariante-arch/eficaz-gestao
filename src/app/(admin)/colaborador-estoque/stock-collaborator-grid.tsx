@@ -70,7 +70,7 @@ export function StockCollaboratorGrid({ products: initialProducts }: { products:
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar produto pelo nome..."
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
         />
         <BarcodeScannerField onScanned={(value) => setSearch(value)} />
       </div>
