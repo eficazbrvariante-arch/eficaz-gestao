@@ -1,15 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { signOut } from "@/lib/auth";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   canCloseCashRegisterDirectly,
+  canEditClosedCashRegister,
   canFinalizeCashRegisterReview,
   canManageCashRegister,
   canMoveCash,
 } from "@/lib/permissions";
 import {
+  editClosedCashRegister,
   finalizeCashRegisterReview,
   getCashSummary,
   getOpenCashRegister,
@@ -20,11 +23,13 @@ import {
   closeCashSchema,
   submitCashForReviewSchema,
   finalizeCashReviewSchema,
+  editCashRegisterSchema,
   cashMovementSchema,
   type OpenCashInput,
   type CloseCashInput,
   type SubmitCashForReviewInput,
   type FinalizeCashReviewInput,
+  type EditCashRegisterInput,
   type CashMovementInput,
 } from "@/lib/validations/cash";
 
@@ -95,7 +100,10 @@ export async function closeCashRegisterAction(input: CloseCashInput) {
   });
 
   revalidateCashPages();
-  return { success: "Caixa fechado." };
+  // Desloga quem fechou o caixa na hora — o terminal físico é compartilhado
+  // entre turnos, então o próximo a usar precisa logar com o próprio usuário,
+  // não continuar na sessão de quem acabou de fechar.
+  await signOut({ redirectTo: "/login" });
 }
 
 /**
@@ -122,7 +130,9 @@ export async function submitCashRegisterForReviewAction(input: SubmitCashForRevi
   if (!result.ok) return { error: result.error };
 
   revalidateCashPages();
-  return { success: "Contagem enviada. O Administrador finaliza o fechamento depois de revisar." };
+  // Mesmo motivo do fechamento direto: terminal compartilhado, próximo turno
+  // precisa logar com o próprio usuário.
+  await signOut({ redirectTo: "/login" });
 }
 
 /** Só ADMIN — finaliza de vez um caixa enviado pra revisão. */
@@ -141,6 +151,27 @@ export async function finalizeCashRegisterReviewAction(input: FinalizeCashReview
   revalidatePath("/caixa/historico");
   revalidatePath(`/caixa/historico/${parsed.data.registerId}`);
   return { success: "Fechamento finalizado." };
+}
+
+/** Só ADMIN — corrige os valores conferidos de um caixa já fechado. */
+export async function editCashRegisterAction(input: EditCashRegisterInput) {
+  const user = await requireUser();
+  if (!canEditClosedCashRegister(user.role)) {
+    return { error: "Seu perfil não tem permissão para editar um caixa já fechado." };
+  }
+
+  const parsed = editCashRegisterSchema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  const result = await editClosedCashRegister(
+    { tenantId: user.tenantId, userId: user.id, userName: user.name ?? user.email ?? "Usuário" },
+    parsed.data
+  );
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/caixa/historico");
+  revalidatePath(`/caixa/historico/${parsed.data.registerId}`);
+  return { success: "Caixa atualizado." };
 }
 
 export async function createCashMovementAction(input: CashMovementInput) {

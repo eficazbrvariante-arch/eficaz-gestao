@@ -2,9 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canFinalizeCashRegisterReview, canManageCashRegister, canViewReports } from "@/lib/permissions";
+import {
+  canEditClosedCashRegister,
+  canFinalizeCashRegisterReview,
+  canManageCashRegister,
+  canViewReports,
+} from "@/lib/permissions";
 import { formatBRL, formatDateTime, type DecimalLike } from "@/lib/format";
-import { FinalizeReviewForm } from "../../cash-forms";
+import { FinalizeReviewForm, ClosedRegisterPanel, type ClosedRegisterEntry } from "../../cash-forms";
+import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
+import type { CashDifferenceEntry } from "@/lib/cash-diagnosis";
 
 /** Cartão estático (fechamento já finalizado, ou sem permissão de finalizar) de uma forma que não passa pela gaveta: esperado, o que veio de fato e a diferença. */
 function ExpectedCountedCard({
@@ -72,9 +79,58 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
     register.countedAmount !== null && register.expectedAmount !== null
       ? Number(register.countedAmount) - Number(register.expectedAmount)
       : null;
+  const debitDifference =
+    register.countedDebitAmount !== null && register.expectedDebitAmount !== null
+      ? Number(register.countedDebitAmount) - Number(register.expectedDebitAmount)
+      : null;
+  const creditDifference =
+    register.countedCreditAmount !== null && register.expectedCreditAmount !== null
+      ? Number(register.countedCreditAmount) - Number(register.expectedCreditAmount)
+      : null;
+  const pixDifference =
+    register.countedPixAmount !== null && register.expectedPixAmount !== null
+      ? Number(register.countedPixAmount) - Number(register.expectedPixAmount)
+      : null;
+
+  const diagnosisEntries: CashDifferenceEntry[] = [
+    { label: "Dinheiro", difference: cashDifference },
+    { label: "Débito", difference: debitDifference },
+    { label: "Crédito", difference: creditDifference },
+    { label: "Pix", difference: pixDifference },
+  ].filter((e): e is CashDifferenceEntry => e.difference !== null);
 
   const canSeeAmounts = canViewReports(user.role);
   const canFinalize = canFinalizeCashRegisterReview(user.role) && register.status === "PENDING_REVIEW";
+
+  const closedEntries: ClosedRegisterEntry[] | null =
+    register.status === "CLOSED"
+      ? [
+          {
+            key: "countedAmount",
+            label: "Dinheiro",
+            expected: Number(register.expectedAmount ?? 0),
+            counted: Number(register.countedAmount ?? 0),
+          },
+          {
+            key: "countedDebitAmount",
+            label: "Débito",
+            expected: Number(register.expectedDebitAmount ?? 0),
+            counted: Number(register.countedDebitAmount ?? 0),
+          },
+          {
+            key: "countedCreditAmount",
+            label: "Crédito",
+            expected: Number(register.expectedCreditAmount ?? 0),
+            counted: Number(register.countedCreditAmount ?? 0),
+          },
+          {
+            key: "countedPixAmount",
+            label: "Pix",
+            expected: Number(register.expectedPixAmount ?? 0),
+            counted: Number(register.countedPixAmount ?? 0),
+          },
+        ]
+      : null;
 
   return (
     <div>
@@ -87,13 +143,26 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
         </h1>
         <p className="text-sm text-text-muted">
           Aberto por {register.openedBy.name}
-          {register.reviewSubmittedBy && (
-            <> · contagem enviada por {register.reviewSubmittedBy.name}</>
+          {register.reviewSubmittedBy && register.reviewSubmittedAt && (
+            <>
+              {" "}
+              · contagem enviada por {register.reviewSubmittedBy.name} em{" "}
+              {formatDateTime(register.reviewSubmittedAt)}
+            </>
           )}
         </p>
       </div>
 
-      {canSeeAmounts && (
+      {canSeeAmounts && closedEntries && (
+        <ClosedRegisterPanel
+          registerId={register.id}
+          entries={closedEntries}
+          notes={register.notes}
+          canEdit={canEditClosedCashRegister(user.role)}
+        />
+      )}
+
+      {canSeeAmounts && !closedEntries && (
         <>
           {/* Mesmo formato de card da tela de fechamento no PDV/loja — pra
               o Admin conferir forma por forma, "teve mais, teve menos",
@@ -158,6 +227,7 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
                   counted={register.countedPixAmount}
                 />
               </div>
+              <CashDiagnosisCard entries={diagnosisEntries} />
             </>
           )}
         </>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatBRL, formatDateTime } from "@/lib/format";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -201,6 +202,76 @@ export async function finalizeCashRegisterReview(
       countedCreditAmount: input.countedCreditAmount,
       countedPixAmount: input.countedPixAmount,
       notes: input.notes || register.notes,
+    },
+  });
+
+  return { ok: true };
+}
+
+export type EditClosedCashRegisterResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Corrige os valores conferidos de um caixa já fechado (só ADMIN, ver
+ * `canEditClosedCashRegister`) — ex.: uma venda foi lançada na forma de
+ * pagamento errada e só apareceu depois, no diagnóstico de diferenças. Os
+ * valores "esperado" de cada forma não mudam (continuam o que o sistema
+ * calculou na hora do fechamento). Cada campo alterado vira uma linha
+ * automática no fim das observações, pra manter rastro de que o caixa foi
+ * editado depois de fechado — sem precisar de uma tabela de auditoria nova.
+ */
+export async function editClosedCashRegister(
+  ctx: { tenantId: string; userId: string; userName: string },
+  input: {
+    registerId: string;
+    countedAmount: number;
+    countedDebitAmount: number;
+    countedCreditAmount: number;
+    countedPixAmount: number;
+    notes?: string;
+  }
+): Promise<EditClosedCashRegisterResult> {
+  const register = await prisma.cashRegister.findFirst({
+    where: { id: input.registerId, tenantId: ctx.tenantId, status: "CLOSED" },
+  });
+  if (!register) return { ok: false, error: "Caixa fechado não encontrado." };
+
+  const changes: string[] = [];
+  const trackChange = (label: string, before: number | null, after: number) => {
+    if (before !== null && Math.abs(Number(before) - after) < 0.005) return;
+    changes.push(`${label} ${before !== null ? formatBRL(before) : "-"} → ${formatBRL(after)}`);
+  };
+  trackChange("dinheiro contado", register.countedAmount ? Number(register.countedAmount) : null, input.countedAmount);
+  trackChange(
+    "débito conferido",
+    register.countedDebitAmount ? Number(register.countedDebitAmount) : null,
+    input.countedDebitAmount
+  );
+  trackChange(
+    "crédito conferido",
+    register.countedCreditAmount ? Number(register.countedCreditAmount) : null,
+    input.countedCreditAmount
+  );
+  trackChange(
+    "Pix conferido",
+    register.countedPixAmount ? Number(register.countedPixAmount) : null,
+    input.countedPixAmount
+  );
+
+  const baseNotes = input.notes || register.notes || "";
+  const auditLine =
+    changes.length > 0
+      ? `Editado por ${ctx.userName} em ${formatDateTime(new Date())}: ${changes.join("; ")}.`
+      : null;
+  const notes = auditLine ? `${baseNotes ? `${baseNotes}\n\n` : ""}${auditLine}` : baseNotes || null;
+
+  await prisma.cashRegister.update({
+    where: { id: register.id },
+    data: {
+      countedAmount: input.countedAmount,
+      countedDebitAmount: input.countedDebitAmount,
+      countedCreditAmount: input.countedCreditAmount,
+      countedPixAmount: input.countedPixAmount,
+      notes,
     },
   });
 

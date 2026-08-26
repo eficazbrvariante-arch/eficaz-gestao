@@ -25,6 +25,7 @@ import {
   closeCashRegisterAction,
   submitCashRegisterForReviewAction,
   finalizeCashRegisterReviewAction,
+  editCashRegisterAction,
   createCashMovementAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,12 @@ import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
 import { formatBRL } from "@/lib/format";
+import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
+import {
+  editCashRegisterSchema,
+  type EditCashRegisterFormValues,
+  type EditCashRegisterInput,
+} from "@/lib/validations/cash";
 
 type Feedback = { type: "success" | "error"; message: string } | undefined;
 
@@ -285,9 +292,10 @@ export function SubmitCashForReviewForm() {
       return;
     }
     startTransition(async () => {
+      // Sem sucesso explícito: a action já desloga (redireciona pra /login)
+      // assim que a contagem é aceita — só sobra feedback pra tratar erro.
       const result = await submitCashRegisterForReviewAction(parsed.data);
       if (result?.error) setFeedback({ type: "error", message: result.error });
-      else setFeedback({ type: "success", message: result?.success ?? "Contagem enviada." });
     });
   };
 
@@ -323,6 +331,183 @@ export function SubmitCashForReviewForm() {
       <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
         {isPending ? "Enviando..." : "Enviar contagem para revisão"}
       </Button>
+    </form>
+  );
+}
+
+export type ClosedRegisterEntry = {
+  key: "countedAmount" | "countedDebitAmount" | "countedCreditAmount" | "countedPixAmount";
+  label: string;
+  expected: number;
+  counted: number;
+};
+
+function ReadOnlyClosedCard({ label, expected, counted }: { label: string; expected: number; counted: number }) {
+  const difference = counted - expected;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-900">{label} esperado</p>
+      <p className="mt-2 text-xl font-semibold text-slate-900">{formatBRL(expected)}</p>
+      <div className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm">
+        <span className="text-slate-600">Veio de fato</span>
+        <span className="font-medium text-slate-900">{formatBRL(counted)}</span>
+      </div>
+      <div className="mt-1 flex justify-between text-sm font-medium">
+        <span className="text-slate-600">Diferença</span>
+        <span
+          className={
+            Math.abs(difference) < 0.005
+              ? "text-slate-900"
+              : difference > 0
+                ? "text-emerald-700"
+                : "text-red-600"
+          }
+        >
+          {Math.abs(difference) < 0.005 ? formatBRL(0) : `${difference > 0 ? "+" : ""}${formatBRL(difference)}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tela de revisão de um caixa já fechado: por padrão só mostra (dinheiro,
+ * débito, crédito, Pix — esperado x veio de fato — e o diagnóstico de
+ * diferenças entre formas). Se `canEdit` (só ADMIN, ver
+ * `canEditClosedCashRegister`), aparece um botão "Editar valores" que troca
+ * pra um formulário com os quatro campos e observações — pra corrigir um
+ * lançamento incorreto encontrado depois do fechamento (ex.: venda na forma
+ * de pagamento errada).
+ */
+export function ClosedRegisterPanel({
+  registerId,
+  entries,
+  notes,
+  canEdit,
+}: {
+  registerId: string;
+  entries: ClosedRegisterEntry[];
+  notes: string | null;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [isEditing, setIsEditing] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [isPending, startTransition] = useTransition();
+
+  const defaultValues = {
+    registerId,
+    countedAmount: entries.find((e) => e.key === "countedAmount")?.counted ?? 0,
+    countedDebitAmount: entries.find((e) => e.key === "countedDebitAmount")?.counted ?? 0,
+    countedCreditAmount: entries.find((e) => e.key === "countedCreditAmount")?.counted ?? 0,
+    countedPixAmount: entries.find((e) => e.key === "countedPixAmount")?.counted ?? 0,
+    notes: notes ?? "",
+  };
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    formState: { errors },
+  } = useForm<EditCashRegisterFormValues, unknown, EditCashRegisterInput>({
+    resolver: zodResolver(editCashRegisterSchema),
+    defaultValues,
+  });
+
+  const watched = useWatch({ control });
+  const liveEntries: ClosedRegisterEntry[] = entries.map((e) => ({
+    ...e,
+    counted: Number(watched[e.key] ?? e.counted),
+  }));
+
+  const onSubmit = (data: EditCashRegisterInput) => {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await editCashRegisterAction(data);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setIsEditing(false);
+      router.refresh();
+    });
+  };
+
+  if (!isEditing) {
+    return (
+      <>
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+          {entries.map((e) => (
+            <ReadOnlyClosedCard key={e.key} label={e.label} expected={e.expected} counted={e.counted} />
+          ))}
+        </div>
+        <CashDiagnosisCard
+          entries={entries.map((e) => ({ label: e.label, difference: e.counted - e.expected }))}
+        />
+        {canEdit && (
+          <Button
+            type="button"
+            variant="secondary"
+            fullWidth={false}
+            className="mb-6 px-6"
+            onClick={() => setIsEditing(true)}
+          >
+            Editar valores
+          </Button>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        {entries.map((e) => (
+          <ExpectedWithCountedCard
+            key={e.key}
+            label={`${e.label} esperado`}
+            expected={e.expected}
+            counted={Number(watched[e.key] ?? e.counted)}
+            inputId={e.key}
+            registerField={
+              <>
+                <Input id={e.key} type="number" step="0.01" {...register(e.key)} />
+                <FieldError message={errors[e.key]?.message} />
+              </>
+            }
+          />
+        ))}
+      </div>
+
+      <CashDiagnosisCard
+        entries={liveEntries.map((e) => ({ label: e.label, difference: e.counted - e.expected }))}
+      />
+
+      <div className="mb-6">
+        <Label htmlFor="notes">Observações</Label>
+        <Input id="notes" {...register("notes")} />
+      </div>
+
+      <div className="flex gap-3">
+        <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
+          {isPending ? "Salvando..." : "Salvar alterações"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth={false}
+          className="px-6"
+          onClick={() => {
+            reset(defaultValues);
+            setIsEditing(false);
+          }}
+        >
+          Cancelar
+        </Button>
+      </div>
     </form>
   );
 }

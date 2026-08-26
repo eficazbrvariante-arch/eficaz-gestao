@@ -100,6 +100,15 @@ export function canFinalizeCashRegisterReview(role: UserRole) {
   return role === "ADMIN";
 }
 
+/**
+ * Corrigir os valores conferidos de um caixa já fechado (dinheiro, débito,
+ * crédito, Pix e observações) — mesmo raciocínio de `canEditSale`: reescrever
+ * um fato já fechado fica restrito a quem responde pela empresa.
+ */
+export function canEditClosedCashRegister(role: UserRole) {
+  return role === "ADMIN";
+}
+
 /** Registrar sangria e suprimento. */
 export function canMoveCash(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";

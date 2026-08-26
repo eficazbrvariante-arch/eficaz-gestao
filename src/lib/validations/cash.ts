@@ -50,6 +50,24 @@ export const finalizeCashReviewSchema = z.object({
 export type FinalizeCashReviewInput = z.infer<typeof finalizeCashReviewSchema>;
 export type FinalizeCashReviewFormValues = z.input<typeof finalizeCashReviewSchema>;
 
+/**
+ * Edição de um caixa já fechado (só ADMIN, ver `canEditClosedCashRegister`) —
+ * corrige o valor conferido de cada forma e as observações, caso um erro de
+ * lançamento só apareça depois (ex.: venda registrada na forma de pagamento
+ * errada). O valor "esperado" de cada forma continua calculado pelo sistema,
+ * não é editável aqui.
+ */
+export const editCashRegisterSchema = z.object({
+  registerId: z.string().trim().min(1),
+  countedAmount: money,
+  countedDebitAmount: money,
+  countedCreditAmount: money,
+  countedPixAmount: money,
+  notes: z.string().trim().optional().or(z.literal("")),
+});
+export type EditCashRegisterInput = z.infer<typeof editCashRegisterSchema>;
+export type EditCashRegisterFormValues = z.input<typeof editCashRegisterSchema>;
+
 export const cashMovementSchema = z.object({
   type: z.enum(["WITHDRAWAL", "SUPPLY"]),
   amount: z.coerce.number().positive("Informe um valor maior que zero"),
