@@ -58,18 +58,22 @@ export default async function PdvPage() {
 
   // Permanente por padrão — só pula a consulta quando o Admin desligou o
   // botão em "Ranking de Comissão" (interruptor temporário, ex.: pra não
-  // gerar expectativa/ansiedade durante o dia). Período fixo em "hoje": é
-  // uma vitrine ao vivo do dia, diferente do painel administrativo (que
-  // olha qualquer intervalo escolhido).
+  // gerar expectativa/ansiedade durante o dia). Período fixo do dia 1 do
+  // mês até hoje: é uma vitrine ao vivo do mês corrente, diferente do
+  // painel administrativo (que olha qualquer intervalo escolhido). Nunca
+  // rotula como "hoje" — o valor acumulado do mês é bem maior que o de um
+  // dia só, e rotular errado passa a impressão de que o dia teve um volume
+  // fora do normal.
   let pdvRanking: RankingComissaoRow[] = [];
+  const monthStart = currentMonthStartISO();
+  const today = todayISO();
   if (tenant.pdvRankingEnabled) {
-    const today = todayISO();
-    const { start, end } = periodRange(today, today);
+    const { start, end } = periodRange(monthStart, today);
     const ranking = await getCommissionRanking(user.tenantId, { start, end });
     const tierProgressByUser = await getSellerTierProgressByUsers(
       user.tenantId,
       ranking.map((row) => row.userId),
-      currentMonthStartISO()
+      monthStart
     );
     pdvRanking = ranking.map((row) => ({ ...row, tierProgress: tierProgressByUser.get(row.userId) ?? null }));
   }
@@ -122,8 +126,8 @@ export default async function PdvPage() {
           some só se o Admin desligar o botão em "Ranking de Comissão". */}
       {tenant.pdvRankingEnabled && (
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão — hoje</h2>
-          <RankingComissaoMatrix rows={pdvRanking} period={{ from: todayISO(), to: todayISO() }} />
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão de venda do mês</h2>
+          <RankingComissaoMatrix rows={pdvRanking} period={{ from: monthStart, to: today }} />
         </div>
       )}
     </div>
