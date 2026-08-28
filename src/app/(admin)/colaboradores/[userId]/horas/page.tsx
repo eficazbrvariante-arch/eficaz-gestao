@@ -65,6 +65,7 @@ export default async function HorasColaboradorPage({
         totalMinutes={preview.totalMinutes}
         amount={preview.amount}
         hasIncompleteDays={preview.hasIncompleteDays}
+        hasOpenToday={preview.hasOpenToday}
         from={period.from}
         to={period.to}
         effectiveFrom={preview.effectiveFrom}

@@ -41,6 +41,12 @@ export type DayWorkedMinutes = {
    *  andamento (isso só é normal em `date === hoje`). `workedMinutes` vem
    *  zerado quando `true`, nunca extrapolado até agora. */
   incomplete: boolean;
+  /** `true` quando o dia ainda não tem "saída" batida — em `date === hoje`
+   *  isso é normal (turno em andamento, `workedMinutes` extrapolado até
+   *  agora); num dia passado, `open` também fica `true` mas junto com
+   *  `incomplete`. Usado pra bloquear registrar pagamento com o dia de hoje
+   *  ainda em aberto (ver `hasOpenToday`). */
+  open: boolean;
 };
 
 /**
@@ -66,8 +72,8 @@ export function sumWorkedMinutesByDay(
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, dayEntries]) => {
       const sorted = [...dayEntries].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      const { workedMinutes, incomplete } = computeWorkedMinutesForDay(sorted, date === todayKey, now);
-      return { date, workedMinutes, incomplete };
+      const { workedMinutes, incomplete, open } = computeWorkedMinutesForDay(sorted, date === todayKey, now);
+      return { date, workedMinutes, incomplete, open };
     });
 }
 
@@ -82,6 +88,15 @@ export type HourlyPaymentPreview = {
    *  "saída") — o total já exclui esses dias, mas registrar o pagamento
    *  assim mesmo pagaria a menos sem avisar; bloqueado até corrigir. */
   hasIncompleteDays: boolean;
+  /** `true` quando o dia de hoje está dentro do período e ainda sem "saída"
+   *  batida — turno em andamento. Bloqueia o registro (ver
+   *  `registerHourlyPayment`): registrar agora congelaria o dia de hoje como
+   *  já coberto, e as horas trabalhadas depois deste momento nunca mais
+   *  entrariam em nenhum pagamento futuro (`coveredThrough` é por dia
+   *  inteiro, não por horário). Bug real: pagamento registrado às 17:21 com
+   *  o colaborador ainda trabalhando "comeu" as horas até a saída, batida só
+   *  às 18:40. */
+  hasOpenToday: boolean;
   /** Início realmente usado no cálculo — pode ser depois do `period.from`
    *  pedido, se parte do período já tinha pagamento registrado (ver
    *  `clampPeriodToUnpaid`). Igual a `period.from` quando nada foi ajustado. */
@@ -139,6 +154,7 @@ export async function computeHourlyPaymentPreview(
       totalHours: 0,
       amount: 0,
       hasIncompleteDays: false,
+      hasOpenToday: false,
       effectiveFrom: period.to,
       coveredThrough,
       fullyCovered: true,
@@ -152,11 +168,13 @@ export async function computeHourlyPaymentPreview(
   ]);
 
   const hourlyRate = Number(user?.hourlyRate ?? 0);
-  const days = sumWorkedMinutesByDay(entries);
+  const now = new Date();
+  const days = sumWorkedMinutesByDay(entries, now);
   const totalMinutes = days.reduce((sum, day) => sum + day.workedMinutes, 0);
   const totalHours = round2(totalMinutes / 60);
   const amount = round2(totalHours * hourlyRate);
   const hasIncompleteDays = days.some((day) => day.incomplete);
+  const hasOpenToday = days.some((day) => day.open && day.date === todayISO(now));
 
   return {
     hourlyRate,
@@ -165,6 +183,7 @@ export async function computeHourlyPaymentPreview(
     totalHours,
     amount,
     hasIncompleteDays,
+    hasOpenToday,
     effectiveFrom: effectivePeriod.from,
     coveredThrough,
     fullyCovered: false,
@@ -205,6 +224,13 @@ export async function registerHourlyPayment(
       ok: false,
       error:
         "Tem dia com marcação incompleta no período (falta bater saída) — corrija no Ponto antes de registrar o pagamento.",
+    };
+  }
+  if (preview.hasOpenToday) {
+    return {
+      ok: false,
+      error:
+        "O expediente de hoje ainda está aberto (colaborador não bateu a saída) — espere ele bater a saída antes de registrar. Registrando agora, as horas trabalhadas depois deste momento nunca entrariam em nenhum pagamento futuro.",
     };
   }
 

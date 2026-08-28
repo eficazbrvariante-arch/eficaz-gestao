@@ -20,6 +20,7 @@ export function HorasPanel({
   totalMinutes,
   amount,
   hasIncompleteDays,
+  hasOpenToday,
   from,
   to,
   effectiveFrom,
@@ -37,6 +38,11 @@ export function HorasPanel({
   /** Algum dia do período tem marcação sem "saída" — total já exclui esses
    *  dias, mas registrar assim mesmo pagaria a menos sem avisar. */
   hasIncompleteDays: boolean;
+  /** `true` quando hoje está no período e ainda sem "saída" batida —
+   *  registrar agora congelaria o dia de hoje como já coberto e as horas
+   *  trabalhadas depois deste momento nunca mais entrariam em nenhum
+   *  pagamento futuro. Bloqueia o botão de registrar. */
+  hasOpenToday: boolean;
   from: string;
   to: string;
   /** Início realmente usado no cálculo — depois de `from` quando parte do
@@ -204,9 +210,17 @@ export function HorasPanel({
         </p>
       )}
 
+      {hasOpenToday && (
+        <p className="text-sm text-red-600">
+          O expediente de hoje ainda está aberto (sem saída batida) — espere o colaborador bater a
+          saída antes de registrar. Registrando agora, as horas trabalhadas depois deste momento
+          nunca entrariam em nenhum pagamento futuro.
+        </p>
+      )}
+
       <Button
         type="button"
-        disabled={isPending || totalWithTransport <= 0 || hasIncompleteDays}
+        disabled={isPending || totalWithTransport <= 0 || hasIncompleteDays || hasOpenToday}
         onClick={handleRegister}
         fullWidth={false}
         className="px-4"

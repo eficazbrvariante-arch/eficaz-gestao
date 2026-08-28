@@ -26,7 +26,7 @@ describe("sumWorkedMinutesByDay", () => {
       entry("CLOCK_OUT", "2026-08-16T18:00:00-03:00"),
     ];
     expect(sumWorkedMinutesByDay(entries)).toEqual([
-      { date: "2026-08-16", workedMinutes: 540, incomplete: false },
+      { date: "2026-08-16", workedMinutes: 540, incomplete: false, open: false },
     ]);
   });
 
@@ -38,8 +38,8 @@ describe("sumWorkedMinutesByDay", () => {
       entry("CLOCK_OUT", "2026-08-16T17:00:00-03:00"),
     ];
     expect(sumWorkedMinutesByDay(entries)).toEqual([
-      { date: "2026-08-16", workedMinutes: 540, incomplete: false },
-      { date: "2026-08-17", workedMinutes: 240, incomplete: false },
+      { date: "2026-08-16", workedMinutes: 540, incomplete: false, open: false },
+      { date: "2026-08-17", workedMinutes: 240, incomplete: false, open: false },
     ]);
   });
 
@@ -54,17 +54,21 @@ describe("sumWorkedMinutesByDay", () => {
     const entries = [entry("CLOCK_IN", "2026-08-12T08:00:00-03:00")];
     const now = new Date("2026-08-17T15:00:00-03:00");
     expect(sumWorkedMinutesByDay(entries, now)).toEqual([
-      { date: "2026-08-12", workedMinutes: 0, incomplete: true },
+      { date: "2026-08-12", workedMinutes: 0, incomplete: true, open: true },
     ]);
   });
 
-  it("dia de HOJE sem saída batida: conta normalmente até agora, não é incompleto", () => {
+  it("dia de HOJE sem saída batida: conta normalmente até agora, não é incompleto, mas fica `open`", () => {
     // Turno em andamento — comportamento correto e esperado, só o dia
     // corrente pode ficar "aberto" sem virar um alerta de marcação faltando.
+    // `open: true` aqui é o que `computeHourlyPaymentPreview` usa pra montar
+    // `hasOpenToday` e bloquear o registro do pagamento (ver
+    // `hourly-payment-service.ts`) — bug real: pagamento registrado com o
+    // turno de hoje ainda aberto "comeu" as horas trabalhadas depois disso.
     const entries = [entry("CLOCK_IN", "2026-08-17T08:00:00-03:00")];
     const now = new Date("2026-08-17T10:30:00-03:00");
     expect(sumWorkedMinutesByDay(entries, now)).toEqual([
-      { date: "2026-08-17", workedMinutes: 150, incomplete: false },
+      { date: "2026-08-17", workedMinutes: 150, incomplete: false, open: true },
     ]);
   });
 
@@ -78,9 +82,9 @@ describe("sumWorkedMinutesByDay", () => {
     ];
     const now = new Date("2026-08-17T09:00:00-03:00");
     expect(sumWorkedMinutesByDay(entries, now)).toEqual([
-      { date: "2026-08-15", workedMinutes: 240, incomplete: false },
-      { date: "2026-08-16", workedMinutes: 0, incomplete: true },
-      { date: "2026-08-17", workedMinutes: 60, incomplete: false },
+      { date: "2026-08-15", workedMinutes: 240, incomplete: false, open: false },
+      { date: "2026-08-16", workedMinutes: 0, incomplete: true, open: true },
+      { date: "2026-08-17", workedMinutes: 60, incomplete: false, open: true },
     ]);
   });
 });
