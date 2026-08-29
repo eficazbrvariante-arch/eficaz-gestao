@@ -50,8 +50,7 @@ export default async function RankingComissaoPage({
         <div>
           <h1 className="text-xl font-semibold text-foreground">Ranking de Comissão</h1>
           <p className="text-sm text-text-muted">
-            Comissão efetiva de cada vendedor no período — quanto do que vendeu virou comissão, do
-            maior pro menor.
+            Comissão acumulada de cada vendedor no período, do maior pro menor valor em R$.
           </p>
         </div>
         {canEditCommission(user.role) && (

@@ -6,9 +6,8 @@ const MEDAL_BY_RANK: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" 
 /**
  * Versão compacta do Ranking de Comissão pro topo do PDV — visível pra
  * qualquer perfil que opere o caixa, como incentivo do time. Rankeia por
- * valor de comissão em R$ (quem ganhou mais até agora), não pela comissão
- * efetiva em % (essa é a métrica da versão completa, restrita a
- * Admin/Gerente em `/colaboradores/ranking-comissao`) — e nunca mostra
+ * valor de comissão em R$ (quem ganhou mais até agora, mesmo critério da
+ * versão completa em `/colaboradores/ranking-comissao`) e nunca mostra
  * quanto cada um vendeu, só quanto vai receber.
  */
 export function CommissionRankingTicker({ rows }: { rows: CommissionRankingRow[] }) {

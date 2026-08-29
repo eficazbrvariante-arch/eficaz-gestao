@@ -180,12 +180,14 @@ export type CommissionRankingRow = {
 };
 
 /**
- * Ranking de vendedores pela comissão efetiva (comissão recebida ÷ total
- * vendido). Com a alíquota geral valendo pra todo o catálogo, o percentual
- * de cada vendedor tende a ficar igual à alíquota configurada — só varia se
- * o mix de produtos vendidos incluir algum item com percentual/valor fixo
- * personalizado (exceção configurada no cadastro do produto). Tanto o total
- * vendido quanto a comissão nunca contam venda anterior a
+ * Ranking de vendedores por comissão acumulada em R$ (quem ganhou mais no
+ * período), do maior pro menor. Também calcula `percent` (comissão ÷ total
+ * vendido) — com a alíquota geral valendo pra todo o catálogo, esse
+ * percentual tende a ficar igual à alíquota configurada, só variando se o
+ * mix de produtos vendidos incluir algum item com percentual/valor fixo
+ * personalizado (exceção configurada no cadastro do produto); usado só como
+ * detalhe informativo (ex.: no card de detalhamento), não pra ordenar. Tanto
+ * o total vendido quanto a comissão nunca contam venda anterior a
  * `COMMISSION_POLICY_EFFECTIVE_AT` — o ranking não tem história antes disso,
  * mesmo que o período pedido comece antes. Só entram vendedores com pelo
  * menos uma venda concluída (dentro dessa janela) no período informado
@@ -232,5 +234,5 @@ export async function getCommissionRanking(
       };
     })
     .filter((row) => row.totalSales > 0)
-    .sort((a, b) => b.percent - a.percent);
+    .sort((a, b) => b.totalCommission - a.totalCommission);
 }
