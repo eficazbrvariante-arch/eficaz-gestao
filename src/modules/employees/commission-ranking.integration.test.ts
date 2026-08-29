@@ -2,10 +2,14 @@
  * Testes de integração do Ranking de Comissão por faixas progressivas —
  * cobrem os cenários pedidos que dependem de banco de verdade (filtro por
  * período, venda cancelada, ausência de duplicidade, atualização após nova
- * venda, consistência entre Ranking e o motor de comissão do colaborador).
- * Os limites exatos das faixas (1,5%/2%/2,8%, mudança automática, centavos)
- * já são cobertos por `src/lib/commission-tiers.test.ts` (função pura,
- * sem banco) — aqui o foco é o caminho real via `createSale`/`cancelSale`.
+ * venda, consistência entre Ranking/histórico do colaborador e o motor de
+ * faixas). Ranking (`getCommissionRanking`) e histórico do colaborador
+ * (`getSellerCommissionHistory`) usam o mesmo motor marginal por faixa de
+ * `getMonthlySaleCommissionsByUsers` — não existe mais um cálculo por
+ * alíquota fixa separado. Os limites exatos das faixas (1,5%/2%/2,8%,
+ * mudança automática, centavos) já são cobertos por
+ * `src/lib/commission-tiers.test.ts` (função pura, sem banco) — aqui o foco
+ * é o caminho real via `createSale`/`cancelSale`.
  *
  * Fixture própria (não usa `qa-multitenant-seed.mts`/`qa-fixtures.ts`): esse
  * script roda com seu PRÓPRIO `pg.Pool`, separado do singleton de
@@ -18,7 +22,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createSale, cancelSale } from "@/modules/sales/sale-service";
-import { getCommissionRanking } from "@/modules/employees/commission-service";
+import { getCommissionRanking, getSellerCommissionHistory } from "@/modules/employees/commission-service";
 import { getSellerTierProgressByUsers, saveTiersForMonth } from "@/modules/employees/commission-tier-service";
 import { currentMonthStartISO, periodRange, todayISO, addDaysISO } from "@/lib/format";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
@@ -283,7 +287,24 @@ describe("Ranking de Comissão — faixas progressivas (integração)", () => {
     expect(after.totalCommission).toBeGreaterThan(before.totalCommission);
   });
 
-  it("10) consistência: total vendido no mês bate entre o Ranking (período = mês corrente) e o motor de faixas", async () => {
+  it("9b) histórico do colaborador: soma das comissões venda a venda bate com o total do mês (atribuição marginal correta)", async () => {
+    const tierProgress = (await getSellerTierProgressByUsers(tenantId, [sellerId], monthStartISO)).get(sellerId)!;
+    const history = await getSellerCommissionHistory(tenantId, sellerId, {
+      start: new Date(`${monthStartISO}T00:00:00-03:00`),
+      end: new Date(),
+    });
+
+    // Nenhuma exceção de produto neste teste — a soma das comissões
+    // atribuídas venda a venda (cálculo marginal, ordem cronológica) tem que
+    // fechar exatamente com o total do mês calculado pelas faixas de uma vez
+    // só. Se a atribuição por venda estivesse errada (ex.: ordem trocada),
+    // o total ainda podia bater por coincidência — por isso os testes 1/2/3b
+    // já conferem o incremento por venda individualmente.
+    expect(round2(history.totalCommission)).toBe(round2(tierProgress.totalCommission));
+    expect(history.sales.length).toBeGreaterThan(0);
+  });
+
+  it("10) consistência: vendido e comissão do mês batem entre o Ranking e o motor de faixas", async () => {
     const { start, end } = { start: new Date(`${monthStartISO}T00:00:00-03:00`), end: new Date() };
     const ranking = await getCommissionRanking(tenantId, { start, end });
     const sellerRanking = ranking.find((r) => r.userId === sellerId);
@@ -292,11 +313,12 @@ describe("Ranking de Comissão — faixas progressivas (integração)", () => {
     )!;
 
     expect(sellerRanking).toBeDefined();
-    // Produto QA não tem exceção de comissão própria — vendido total do
-    // Ranking (motor antigo, por período) deve bater com o vendido total
-    // do motor de faixas (mês inteiro), já que os dois olham exatamente a
-    // mesma janela de tempo aqui.
+    // Produto QA não tem exceção de comissão própria — vendido e comissão
+    // total do Ranking (período = mês corrente) devem bater exatamente com
+    // o motor de faixas (mês inteiro), já que os dois usam o mesmo cálculo
+    // marginal por faixa e olham exatamente a mesma janela de tempo aqui.
     expect(round2(sellerRanking!.totalSales)).toBe(round2(tierProgress.totalSales));
+    expect(round2(sellerRanking!.totalCommission)).toBe(round2(tierProgress.totalCommission));
   });
 });
 

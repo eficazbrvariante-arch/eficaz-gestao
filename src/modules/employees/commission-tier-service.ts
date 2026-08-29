@@ -7,7 +7,7 @@ import {
   type ProgressiveCommissionResult,
   type TierProgress,
 } from "@/lib/commission-tiers";
-import { COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "./commission-service";
+import { COMMISSION_POLICY_EFFECTIVE_AT } from "./commission-policy";
 
 export { computeProgressiveCommission, computeTierProgress } from "@/lib/commission-tiers";
 export type {
@@ -32,11 +32,26 @@ type CommissionableItem = {
 };
 
 /**
+ * Comissão de um item por exceção própria de produto
+ * (`Product.commissionFixedAmount`/`commissionPercent`) — `null` quando o
+ * produto não tem exceção (comissiona pela faixa progressiva do vendedor).
+ */
+function productOverrideCommission(item: CommissionableItem): number | null {
+  const { product, total, quantity } = item;
+  if (product.commissionType === "FIXED" && product.commissionFixedAmount != null) {
+    return Number(product.commissionFixedAmount) * quantity;
+  }
+  if (product.commissionPercent != null) {
+    return (Number(total) * Number(product.commissionPercent)) / 100;
+  }
+  return null;
+}
+
+/**
  * Separa o faturamento de um vendedor entre "elegível às faixas" e "exceção
- * por produto" (`Product.commissionPercent`/`commissionFixedAmount`, que
- * soma comissão à parte, fora do cálculo progressivo) — função central única
- * usada tanto pro cálculo mensal de um vendedor quanto pro lote do ranking,
- * pra não duplicar essa regra em dois lugares.
+ * por produto" (que soma comissão à parte, fora do cálculo progressivo) —
+ * função central única usada tanto pro cálculo mensal de um vendedor quanto
+ * pro lote do ranking, pra não duplicar essa regra em dois lugares.
  */
 function splitOverrideAndTierEligible(items: CommissionableItem[]) {
   let tierEligibleSales = 0;
@@ -44,27 +59,17 @@ function splitOverrideAndTierEligible(items: CommissionableItem[]) {
   let overrideCommission = 0;
 
   for (const item of items) {
-    const itemTotal = Number(item.total);
-    const hasOverride =
-      (item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null) ||
-      item.product.commissionPercent != null;
-
-    if (hasOverride) {
-      overrideSales += itemTotal;
-      overrideCommission +=
-        item.product.commissionType === "FIXED" && item.product.commissionFixedAmount != null
-          ? Number(item.product.commissionFixedAmount) * item.quantity
-          : (itemTotal * Number(item.product.commissionPercent)) / 100;
+    const override = productOverrideCommission(item);
+    if (override !== null) {
+      overrideSales += Number(item.total);
+      overrideCommission += override;
     } else {
-      tierEligibleSales += itemTotal;
+      tierEligibleSales += Number(item.total);
     }
   }
 
   return { tierEligibleSales, overrideSales, overrideCommission };
 }
-
-/** Mesmo corte de `commission-service.ts` — nenhuma comissão (faixa ou exceção por produto) existe antes da alíquota única entrar em vigor. */
-const COMMISSION_POLICY_EFFECTIVE_AT = new Date(`${COMMISSION_POLICY_EFFECTIVE_AT_ISO}T00:00:00-03:00`);
 
 /**
  * Faixas vigentes pro mês pedido: o `CommissionTierSet` mais recente com
@@ -110,6 +115,95 @@ export async function getTierSetForMonth(
       { name: "Padrão", order: 0, minAmount: 0, maxAmount: null, percent: Number(tenant.defaultCommissionPercent) },
     ],
   };
+}
+
+export type MonthlySaleCommission = { createdAt: Date; commission: number };
+
+/**
+ * Comissão de cada venda de vários vendedores num mês só, calculada
+ * marginal/progressivamente: percorre os itens em ordem cronológica por
+ * vendedor, mantém o faturamento elegível acumulado, e cada item comissiona
+ * só a fatia do acumulado que ele empurra pra frente — mesma regra de
+ * `computeProgressiveCommission` (a comissão de uma venda é
+ * `progressivo(acumulado depois) − progressivo(acumulado antes)`), só que
+ * atribuída venda a venda em vez de fechada no total do mês. Item com
+ * exceção própria de produto soma direto, fora da faixa, igual a
+ * `computeSellerMonthlyCommission`.
+ *
+ * Base de `getCommissionTotalsByUsers`/`getSellerCommissionHistory`
+ * (`commission-service.ts`) — pra elas nunca duplicarem a regra da faixa, e
+ * pra Ranking/histórico/total acumulado sempre baterem entre si.
+ */
+export async function getMonthlySaleCommissionsByUsers(
+  tenantId: string,
+  userIds: string[],
+  monthStartISO: string
+): Promise<Map<string, Map<string, MonthlySaleCommission>>> {
+  const result = new Map<string, Map<string, MonthlySaleCommission>>();
+  if (userIds.length === 0) return result;
+
+  const { start, end } = monthRange(monthStartISO);
+  const effectiveStart = start < COMMISSION_POLICY_EFFECTIVE_AT ? COMMISSION_POLICY_EFFECTIVE_AT : start;
+  if (effectiveStart >= end) return result;
+
+  const [items, tierData] = await Promise.all([
+    prisma.saleItem.findMany({
+      where: {
+        sale: {
+          tenantId,
+          sellerId: { in: userIds },
+          status: "COMPLETED",
+          createdAt: { gte: effectiveStart, lt: end },
+        },
+      },
+      select: {
+        saleId: true,
+        total: true,
+        quantity: true,
+        product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
+        sale: { select: { sellerId: true, createdAt: true } },
+      },
+      orderBy: { sale: { createdAt: "asc" } },
+    }),
+    getTierSetForMonth(tenantId, monthStartISO),
+  ]);
+
+  const itemsByUser = new Map<string, typeof items>();
+  for (const item of items) {
+    const sellerId = item.sale.sellerId;
+    const list = itemsByUser.get(sellerId);
+    if (list) list.push(item);
+    else itemsByUser.set(sellerId, [item]);
+  }
+
+  for (const [sellerId, sellerItems] of itemsByUser) {
+    const bySale = new Map<string, MonthlySaleCommission>();
+    let cumulative = 0;
+    let cumulativeCommission = 0;
+
+    for (const item of sellerItems) {
+      const override = productOverrideCommission(item);
+      let commission: number;
+      if (override !== null) {
+        commission = override;
+      } else {
+        cumulative = round2(cumulative + Number(item.total));
+        const newCumulativeCommission = computeProgressiveCommission(cumulative, tierData.tiers).total;
+        commission = round2(newCumulativeCommission - cumulativeCommission);
+        cumulativeCommission = newCumulativeCommission;
+      }
+
+      const existing = bySale.get(item.saleId);
+      bySale.set(item.saleId, {
+        createdAt: item.sale.createdAt,
+        commission: round2((existing?.commission ?? 0) + commission),
+      });
+    }
+
+    result.set(sellerId, bySale);
+  }
+
+  return result;
 }
 
 export type SellerMonthlyCommission = {

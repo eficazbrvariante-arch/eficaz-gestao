@@ -1,18 +1,13 @@
 import { prisma } from "@/lib/prisma";
+import { todayISO, startOfMonthISO, nextMonthStartISO } from "@/lib/format";
+import { COMMISSION_POLICY_EFFECTIVE_AT_ISO, COMMISSION_POLICY_EFFECTIVE_AT } from "./commission-policy";
+import { getMonthlySaleCommissionsByUsers } from "./commission-tier-service";
+
+export { COMMISSION_POLICY_EFFECTIVE_AT_ISO };
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
-
-/**
- * A alíquota única de 2% (e suas exceções por produto) só passou a valer a
- * partir desta data — pedido explícito do usuário pra não retroagir: venda
- * anterior a isso nunca gera comissão, mesmo que o período pedido comece
- * antes. Não existe "história" de comissão/ranking anterior a este dia —
- * por isso também é o início padrão do Ranking de Comissão.
- */
-export const COMMISSION_POLICY_EFFECTIVE_AT_ISO = "2026-08-21";
-const COMMISSION_POLICY_EFFECTIVE_AT = new Date(`${COMMISSION_POLICY_EFFECTIVE_AT_ISO}T00:00:00-03:00`);
 
 /** `createdAt` efetivo pra consultas de comissão — nunca abre antes da data acima, mesmo sem `range` (total acumulado). */
 function effectiveCreatedAtFilter(range?: { start: Date; end: Date }) {
@@ -23,37 +18,32 @@ function effectiveCreatedAtFilter(range?: { start: Date; end: Date }) {
   return range ? { gte, lt: range.end } : { gte };
 }
 
-/**
- * Comissão de um item — todo o catálogo entra por padrão, na alíquota geral
- * (`Tenant.defaultCommissionPercent`). `commissionPercent`/`commissionType`
- * no produto são só uma exceção opcional: se o Admin configurar um
- * percentual (ou um valor fixo por unidade) específico naquele produto, ele
- * vale no lugar do padrão — `commissionEnabled` não é mais checado aqui
- * (antes precisava marcar produto por produto; agora comissiona sempre,
- * exceto quando alguém personaliza o valor).
- */
-function itemCommission(
-  itemTotal: number,
-  quantity: number,
-  product: {
-    commissionType: "PERCENT" | "FIXED";
-    commissionPercent: unknown;
-    commissionFixedAmount: unknown;
-  },
-  defaultCommissionPercent: number
-) {
-  if (product.commissionType === "FIXED" && product.commissionFixedAmount != null) {
-    return Number(product.commissionFixedAmount) * quantity;
+/** Primeiro dia (`YYYY-MM-01`) do mês de uma data qualquer, no fuso da loja. */
+function monthStartISOFor(date: Date) {
+  return startOfMonthISO(todayISO(date));
+}
+
+/** Meses (`YYYY-MM-01`) que um intervalo `[start, end)` toca, em ordem — faixa é conceito mensal, o motor de `commission-tier-service` calcula um mês por vez. */
+function enumerateMonthStartsISO(start: Date, end: Date): string[] {
+  if (start >= end) return [];
+  const months: string[] = [];
+  const lastMonth = monthStartISOFor(new Date(end.getTime() - 1));
+  let cursor = monthStartISOFor(start);
+  while (cursor <= lastMonth) {
+    months.push(cursor);
+    cursor = nextMonthStartISO(cursor);
   }
-  const percent = product.commissionPercent != null ? Number(product.commissionPercent) : defaultCommissionPercent;
-  return (itemTotal * percent) / 100;
+  return months;
 }
 
 /**
- * Comissão por vendedor — todas as vendas concluídas, ou só as de um
- * período (`range`) quando informado. Usada tanto pro total acumulado
- * (card do colaborador, sem `range`) quanto pro Ranking de Comissão (com
- * `range` do dia). Nunca considera venda anterior a
+ * Comissão por vendedor — todas as vendas concluídas, ou só as de um período
+ * (`range`) quando informado. Usada tanto pro total acumulado (card do
+ * colaborador, sem `range`) quanto pro Ranking de Comissão (com `range` do
+ * período escolhido). Calcula pelo motor de faixa progressiva
+ * (`getMonthlySaleCommissionsByUsers`, em `commission-tier-service.ts`) —
+ * cada venda comissiona pela faixa que o vendedor ocupava naquele mês, mês a
+ * mês, nunca por uma alíquota única fixa. Nunca considera venda anterior a
  * `COMMISSION_POLICY_EFFECTIVE_AT`, mesmo pedindo o total acumulado desde
  * sempre.
  */
@@ -65,33 +55,22 @@ export async function getCommissionTotalsByUsers(
   const totals = new Map<string, number>();
   if (userIds.length === 0) return totals;
 
-  const tenant = await prisma.tenant.findUniqueOrThrow({
-    where: { id: tenantId },
-    select: { defaultCommissionPercent: true },
-  });
-  const defaultPercent = Number(tenant.defaultCommissionPercent);
+  const windowStart =
+    range && range.start.getTime() > COMMISSION_POLICY_EFFECTIVE_AT.getTime()
+      ? range.start
+      : COMMISSION_POLICY_EFFECTIVE_AT;
+  const windowEnd = range?.end ?? new Date();
+  if (windowStart >= windowEnd) return totals;
 
-  const items = await prisma.saleItem.findMany({
-    where: {
-      sale: {
-        tenantId,
-        sellerId: { in: userIds },
-        status: "COMPLETED",
-        createdAt: effectiveCreatedAtFilter(range),
-      },
-    },
-    select: {
-      total: true,
-      quantity: true,
-      product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
-      sale: { select: { sellerId: true } },
-    },
-  });
-
-  for (const item of items) {
-    const commission = itemCommission(Number(item.total), item.quantity, item.product, defaultPercent);
-    const sellerId = item.sale.sellerId;
-    totals.set(sellerId, round2((totals.get(sellerId) ?? 0) + commission));
+  for (const monthStartISO of enumerateMonthStartsISO(windowStart, windowEnd)) {
+    const bySeller = await getMonthlySaleCommissionsByUsers(tenantId, userIds, monthStartISO);
+    for (const [userId, saleMap] of bySeller) {
+      let sum = totals.get(userId) ?? 0;
+      for (const { createdAt, commission } of saleMap.values()) {
+        if (createdAt >= windowStart && createdAt < windowEnd) sum += commission;
+      }
+      totals.set(userId, round2(sum));
+    }
   }
 
   return totals;
@@ -105,16 +84,18 @@ export type SellerCommissionSaleRow = {
   commission: number;
 };
 
-/** Histórico de vendas de um vendedor, com a comissão calculada em cada uma. */
+/**
+ * Histórico de vendas de um vendedor, com a comissão calculada em cada uma
+ * pela faixa progressiva do mês daquela venda (ver `getCommissionTotalsByUsers`).
+ */
 export async function getSellerCommissionHistory(
   tenantId: string,
   userId: string,
   /** Período opcional (inclusivo) pra filtrar as vendas consideradas — ver `periodRange`. */
   range?: { start: Date; end: Date }
 ): Promise<{ sellerName: string; sales: SellerCommissionSaleRow[]; totalCommission: number }> {
-  const [seller, tenant, sales] = await Promise.all([
+  const [seller, sales] = await Promise.all([
     prisma.user.findFirstOrThrow({ where: { id: userId, tenantId }, select: { name: true } }),
-    prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { defaultCommissionPercent: true } }),
     prisma.sale.findMany({
       where: {
         tenantId,
@@ -122,42 +103,37 @@ export async function getSellerCommissionHistory(
         status: "COMPLETED",
         ...(range ? { createdAt: { gte: range.start, lt: range.end } } : {}),
       },
-      select: {
-        id: true,
-        number: true,
-        createdAt: true,
-        total: true,
-        items: {
-          select: {
-            total: true,
-            quantity: true,
-            product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
-          },
-        },
-      },
+      select: { id: true, number: true, createdAt: true, total: true },
       orderBy: { createdAt: "desc" },
     }),
   ]);
-  const defaultPercent = Number(tenant.defaultCommissionPercent);
 
-  const rows: SellerCommissionSaleRow[] = sales.map((sale) => {
-    // Venda continua listada (é histórico de verdade, útil pra comparar) —
-    // só não gera comissão se for anterior à alíquota única entrar em vigor.
-    const commission =
-      sale.createdAt < COMMISSION_POLICY_EFFECTIVE_AT
-        ? 0
-        : sale.items.reduce(
-            (sum, item) => sum + itemCommission(Number(item.total), item.quantity, item.product, defaultPercent),
-            0
-          );
-    return {
-      saleId: sale.id,
-      number: sale.number,
-      createdAt: sale.createdAt,
-      total: Number(sale.total),
-      commission: round2(commission),
-    };
-  });
+  const windowStart =
+    range && range.start.getTime() > COMMISSION_POLICY_EFFECTIVE_AT.getTime()
+      ? range.start
+      : COMMISSION_POLICY_EFFECTIVE_AT;
+  const windowEnd = range?.end ?? new Date();
+
+  // Venda continua listada (é histórico de verdade, útil pra comparar) — só
+  // não entra no mapa (fica 0) se for anterior à comissão entrar em vigor.
+  const commissionBySale = new Map<string, number>();
+  if (windowStart < windowEnd) {
+    for (const monthStartISO of enumerateMonthStartsISO(windowStart, windowEnd)) {
+      const saleMap = (await getMonthlySaleCommissionsByUsers(tenantId, [userId], monthStartISO)).get(userId);
+      if (!saleMap) continue;
+      for (const [saleId, { commission }] of saleMap) {
+        commissionBySale.set(saleId, round2((commissionBySale.get(saleId) ?? 0) + commission));
+      }
+    }
+  }
+
+  const rows: SellerCommissionSaleRow[] = sales.map((sale) => ({
+    saleId: sale.id,
+    number: sale.number,
+    createdAt: sale.createdAt,
+    total: Number(sale.total),
+    commission: commissionBySale.get(sale.id) ?? 0,
+  }));
 
   return {
     sellerName: seller.name,
@@ -166,6 +142,7 @@ export async function getSellerCommissionHistory(
   };
 }
 
+/** Alíquota-base usada quando nenhuma faixa foi configurada ainda (ver `getTierSetForMonth`) — não é mais usada diretamente no cálculo por venda. */
 export async function setDefaultCommissionPercent(tenantId: string, percent: number) {
   await prisma.tenant.update({ where: { id: tenantId }, data: { defaultCommissionPercent: percent } });
 }
@@ -181,17 +158,14 @@ export type CommissionRankingRow = {
 
 /**
  * Ranking de vendedores por comissão acumulada em R$ (quem ganhou mais no
- * período), do maior pro menor. Também calcula `percent` (comissão ÷ total
- * vendido) — com a alíquota geral valendo pra todo o catálogo, esse
- * percentual tende a ficar igual à alíquota configurada, só variando se o
- * mix de produtos vendidos incluir algum item com percentual/valor fixo
- * personalizado (exceção configurada no cadastro do produto); usado só como
- * detalhe informativo (ex.: no card de detalhamento), não pra ordenar. Tanto
- * o total vendido quanto a comissão nunca contam venda anterior a
- * `COMMISSION_POLICY_EFFECTIVE_AT` — o ranking não tem história antes disso,
- * mesmo que o período pedido comece antes. Só entram vendedores com pelo
- * menos uma venda concluída (dentro dessa janela) no período informado
- * (padrão "hoje" — ver `resolvePeriod` na página).
+ * período, pela faixa progressiva de cada mês — ver `getCommissionTotalsByUsers`),
+ * do maior pro menor. Também calcula `percent` (comissão ÷ total vendido) —
+ * só um detalhe informativo (ex.: no card de detalhamento), não usado pra
+ * ordenar. Tanto o total vendido quanto a comissão nunca contam venda
+ * anterior a `COMMISSION_POLICY_EFFECTIVE_AT` — o ranking não tem história
+ * antes disso, mesmo que o período pedido comece antes. Só entram
+ * vendedores com pelo menos uma venda concluída (dentro dessa janela) no
+ * período informado (padrão "hoje" — ver `resolvePeriod` na página).
  */
 export async function getCommissionRanking(
   tenantId: string,
