@@ -22,6 +22,7 @@ import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
+import { CashMovementModal } from "./cash-movement-modal";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
 import type { ProtecaoEficazRedemptionCredential } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import {
@@ -52,6 +53,9 @@ type CustomerOption = {
   document: string | null;
   phone: string | null;
   creditBalance: number;
+  eficazNumber: string | null;
+  creditoEficazAvailableAmount: number;
+  creditoEficazBlocked: boolean;
 };
 
 function round2(value: number) {
@@ -70,6 +74,7 @@ export function PdvScreen({
   canDiscount,
   canDiscountFreely,
   canFiado,
+  canMoveCash,
   autoPrintReceipt,
 }: {
   canDiscount: boolean;
@@ -77,6 +82,8 @@ export function PdvScreen({
   canDiscountFreely: boolean;
   /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
   canFiado: boolean;
+  /** Só ADMIN/Gerente — registrar sangria/suprimento sem sair do PDV (ver `canMoveCash`). */
+  canMoveCash: boolean;
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
    *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */
   autoPrintReceipt: boolean;
@@ -105,6 +112,7 @@ export function PdvScreen({
   const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [cashReceived, setCashReceived] = useState<number | "">("");
   const [fiadoDueDate, setFiadoDueDate] = useState("");
+  const [creditoEficazPin, setCreditoEficazPin] = useState("");
 
   // Vendedor da venda: nunca inferido de quem operou o caixa — é sempre
   // escolhido explicitamente aqui, e revalidado no servidor em
@@ -113,6 +121,7 @@ export function PdvScreen({
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
+  const [cashMovementModalOpen, setCashMovementModalOpen] = useState(false);
 
   // Benefício de Convênio Corporativo — nunca escolhido/digitado como valor
   // pelo vendedor, só o resultado já validado do QR (ver `ConvenioModal`).
@@ -332,6 +341,7 @@ export function PdvScreen({
   const cashPortion = round2(amounts.cash || 0);
   const storeCreditPortion = round2(amounts.store_credit || 0);
   const fiadoPortion = round2(amounts.fiado || 0);
+  const creditoEficazPortion = round2(amounts.credito_eficaz || 0);
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
 
@@ -341,7 +351,9 @@ export function PdvScreen({
         ? !!customer && customer.creditBalance > 0
         : slot.key === "fiado"
           ? canFiado && !!customer
-          : true;
+          : slot.key === "credito_eficaz"
+            ? !!customer && customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked
+            : true;
     return {
       key: slot.key,
       label: slot.label,
@@ -351,7 +363,11 @@ export function PdvScreen({
           ? "Cliente sem crédito de loja disponível"
           : slot.key === "fiado"
             ? "Selecione um cliente elegível para fiado"
-            : undefined,
+            : slot.key === "credito_eficaz"
+              ? customer?.creditoEficazBlocked
+                ? "Crédito Eficaz bloqueado para este cliente"
+                : "Cliente sem Crédito Eficaz disponível"
+              : undefined,
     };
   });
 
@@ -525,6 +541,14 @@ export function PdvScreen({
       setError("Informe a data prevista de pagamento do fiado.");
       return;
     }
+    if (creditoEficazPortion > 0 && !customer) {
+      setError("Selecione um cliente para usar o Crédito Eficaz.");
+      return;
+    }
+    if (creditoEficazPortion > 0 && !/^\d{4}$/.test(creditoEficazPin)) {
+      setError("Informe o PIN de 4 dígitos do Crédito Eficaz.");
+      return;
+    }
     if (protecaoEficazRedemption && !protecaoEficazRedemptionReady) {
       setError(
         peliculaUnits === 0
@@ -550,6 +574,7 @@ export function PdvScreen({
         })),
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
+        creditoEficazPin: creditoEficazPortion > 0 ? creditoEficazPin : undefined,
         convenioMemberId: convenioMember?.member.id ?? "",
         protecaoEficazOptedIn,
         protecaoEficazRedemptionSaleNumber: protecaoEficazRedemption?.saleNumber,
@@ -580,6 +605,7 @@ export function PdvScreen({
         setAmounts(EMPTY_PAYMENT_AMOUNTS);
         setCashReceived("");
         setFiadoDueDate("");
+        setCreditoEficazPin("");
         setConvenioMember(null);
         setSellerId(null);
         setSellerName(null);
@@ -921,11 +947,20 @@ export function PdvScreen({
                   <p className="text-base font-bold text-black">{customer.name}</p>
                   <p className="text-xs text-slate-500">
                     {customer.document ?? customer.phone ?? "sem documento"}
+                    {customer.eficazNumber ? ` · ${customer.eficazNumber}` : ""}
                   </p>
                   {customer.creditBalance > 0 && (
                     <p className="text-xs font-medium text-emerald-700">
-                      Crédito disponível: {formatBRL(customer.creditBalance)}
+                      Crédito de loja disponível: {formatBRL(customer.creditBalance)}
                     </p>
+                  )}
+                  {customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked && (
+                    <p className="text-xs font-medium text-emerald-700">
+                      Crédito Eficaz disponível: {formatBRL(customer.creditoEficazAvailableAmount)}
+                    </p>
+                  )}
+                  {customer.creditoEficazBlocked && (
+                    <p className="text-xs font-medium text-danger">Crédito Eficaz bloqueado</p>
                   )}
                 </div>
                 <button
@@ -934,10 +969,12 @@ export function PdvScreen({
                     setCustomer(null);
                     setAmounts((current) => ({
                       ...current,
-                      cash: round2(current.cash + current.store_credit + current.fiado),
+                      cash: round2(current.cash + current.store_credit + current.fiado + current.credito_eficaz),
                       store_credit: 0,
                       fiado: 0,
+                      credito_eficaz: 0,
                     }));
+                    setCreditoEficazPin("");
                   }}
                   className="text-xs text-red-600 hover:underline"
                 >
@@ -958,7 +995,7 @@ export function PdvScreen({
                         searchCustomers();
                       }
                     }}
-                    placeholder="Nome, CPF/CNPJ ou telefone"
+                    placeholder="Nome, CPF/CNPJ, telefone ou Número Eficaz"
                     className="min-w-0 flex-1"
                   />
                   <Button
@@ -1015,6 +1052,19 @@ export function PdvScreen({
               </Button>
             )}
           </div>
+
+          {canMoveCash && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <Label className="mb-1 text-sm font-bold text-black">Caixa</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setCashMovementModalOpen(true)}
+              >
+                Sangria / Suprimento
+              </Button>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <Label className="mb-1 text-sm font-bold text-black">Convênio corporativo</Label>
@@ -1177,6 +1227,22 @@ export function PdvScreen({
               </div>
             )}
 
+            {creditoEficazPortion > 0 && (
+              <div className="mb-3 rounded-md bg-warning/10 p-3">
+                <Label htmlFor="credito-eficaz-pin">PIN do Crédito Eficaz (peça ao cliente)</Label>
+                <input
+                  id="credito-eficaz-pin"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  disabled={!sellerId}
+                  value={creditoEficazPin}
+                  onChange={(e) => setCreditoEficazPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  className="h-9 w-28 rounded border border-border bg-surface px-2 text-sm tracking-widest text-foreground disabled:bg-surface-hover"
+                />
+              </div>
+            )}
+
             {cashPortion > 0 && (
               <div className="mb-3 rounded-md bg-surface-hover p-3">
                 <Label htmlFor="cash-received" className="mb-1">
@@ -1251,6 +1317,13 @@ export function PdvScreen({
           setProtecaoEficazRedemptionModalOpen(false);
         }}
       />
+
+      {canMoveCash && (
+        <CashMovementModal
+          open={cashMovementModalOpen}
+          onClose={() => setCashMovementModalOpen(false)}
+        />
+      )}
 
       </div>
     </div>

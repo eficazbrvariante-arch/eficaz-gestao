@@ -9,6 +9,12 @@ import {
 } from "@/lib/seller-discount-rules";
 import { revalidateConvenioMember } from "@/modules/convenios/convenio-redemption-service";
 import { resolveProtecaoEficazRedemption } from "@/modules/protecao-eficaz/protecao-eficaz-service";
+import {
+  verifyCreditoEficazPin,
+  computeCreditoEficazDueDate,
+  recordCreditoEficazUsageInTx,
+  reverseCreditoEficazUsageInTx,
+} from "@/modules/credito-eficaz/credito-eficaz-service";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -347,6 +353,30 @@ export async function createSale(
     }
   }
 
+  // Crédito Eficaz: elegibilidade (cliente + PIN) checada aqui, fora da
+  // transação — não é dado financeiro, só autorização. O que realmente
+  // impede duas vendas gastarem o mesmo limite é o débito atômico dentro da
+  // transação (`recordCreditoEficazUsageInTx`), nunca esta checagem prévia.
+  const creditoEficazAmount = round2(
+    input.payments.filter((p) => p.method === "CREDITO_EFICAZ").reduce((sum, p) => sum + p.amount, 0)
+  );
+  if (creditoEficazAmount > 0) {
+    if (!customerId) {
+      return { ok: false, error: "Selecione um cliente para usar o Crédito Eficaz." };
+    }
+    if (!input.creditoEficazPin) {
+      return { ok: false, error: "Informe o PIN do Crédito Eficaz." };
+    }
+    const pinValid = await verifyCreditoEficazPin(ctx.tenantId, customerId, input.creditoEficazPin);
+    if (!pinValid) {
+      return { ok: false, error: "PIN do Crédito Eficaz incorreto." };
+    }
+  }
+  const creditoEficazDueDate =
+    creditoEficazAmount > 0 && customerId
+      ? await computeCreditoEficazDueDate(ctx.tenantId, customerId)
+      : null;
+
   try {
     const sale = await prisma.$transaction(async (tx) => {
       // Incremento atômico garante numeração única mesmo com vendas simultâneas.
@@ -466,6 +496,18 @@ export async function createSale(
         );
       }
 
+      if (creditoEficazAmount > 0 && customerId && creditoEficazDueDate) {
+        const usage = await recordCreditoEficazUsageInTx(tx, {
+          tenantId: ctx.tenantId,
+          customerId,
+          saleId: created.id,
+          amount: creditoEficazAmount,
+          dueDate: creditoEficazDueDate,
+          operatorId: ctx.operatorId,
+        });
+        if (!usage.ok) throw new Error(usage.error);
+      }
+
       if (convenioMember) {
         await tx.convenioRedemption.create({
           data: {
@@ -498,7 +540,7 @@ export async function createSale(
 
     return { ok: true, saleId: sale.id, number: sale.number, changeAmount };
   } catch (error) {
-    if (protecaoEficazRedemptionRegistrationId && error instanceof Error) {
+    if ((protecaoEficazRedemptionRegistrationId || creditoEficazAmount > 0) && error instanceof Error) {
       return { ok: false, error: error.message };
     }
     return { ok: false, error: "Não foi possível registrar a venda. Tente novamente." };
@@ -635,6 +677,12 @@ export async function cancelSale(
         where: { saleId: sale.id, reversedAt: null },
         data: { reversedAt: new Date(), reversedReason: `Venda #${sale.number} cancelada` },
       });
+
+      // Devolve o limite de Crédito Eficaz usado nesta venda (se houver) e
+      // marca a obrigação como cancelada — sempre, independente de
+      // `skipCredit` (que só afeta o crédito de loja de consumidor final,
+      // nunca a devolução de um débito que já aconteceu).
+      await reverseCreditoEficazUsageInTx(tx, tenantId, sale.id);
     });
 
     return { ok: true };

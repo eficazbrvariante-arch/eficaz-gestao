@@ -11,6 +11,7 @@ export function ImageUploadField({
   uploadUrl = "/api/produtos/upload",
   clientPayload,
   maxSizeBytes = 5 * 1024 * 1024,
+  access = "public",
 }: {
   value?: string;
   onChange: (url: string) => void;
@@ -19,6 +20,13 @@ export function ImageUploadField({
   uploadUrl?: string;
   /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
   clientPayload?: string;
+  /**
+   * `'private'` pra documento sensível sem URL pública (ver Crédito Eficaz)
+   * — `onChange` recebe o pathname (não dá pra exibir via `<img src>` sem
+   * passar por uma rota autenticada, então o preview fica só local/genérico
+   * depois do envio). Default `'public'` preserva todo chamador existente.
+   */
+  access?: "public" | "private";
   /**
    * Precisa bater com o `maximumSizeInBytes` real da rota de upload (ver
    * arquivo de rota correspondente) — checado aqui ANTES de tentar enviar,
@@ -51,18 +59,26 @@ export function ImageUploadField({
     setIsUploading(true);
     try {
       const blob = await upload(file.name, file, {
-        access: "public",
+        access,
         handleUploadUrl: uploadUrl,
         contentType: file.type,
         clientPayload,
       });
-      onChange(blob.url);
-      setPreview(blob.url);
+      if (access === "private") {
+        // Blob privado não carrega via <img src> sem passar por uma rota
+        // autenticada — mantém só o preview local (object URL) já mostrado
+        // acima, não tenta trocar pela URL remota.
+        onChange(blob.pathname);
+      } else {
+        onChange(blob.url);
+        setPreview(blob.url);
+        URL.revokeObjectURL(objectUrl);
+      }
     } catch {
       setError("Não foi possível enviar a imagem. Tente novamente.");
       setPreview(value);
-    } finally {
       URL.revokeObjectURL(objectUrl);
+    } finally {
       setIsUploading(false);
     }
   };

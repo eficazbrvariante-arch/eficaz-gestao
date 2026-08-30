@@ -1,6 +1,7 @@
 import type { UserRole } from "@/generated/prisma/enums";
 import {
   canManageConvenios,
+  canManageCreditoEficaz,
   canManageEmployeeLedger,
   canManageFlashDeals,
   canManageProducts,
@@ -74,6 +75,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/protecao-eficaz",
     available: true,
     visibleTo: canManageProtecaoEficaz,
+  },
+  {
+    label: "Crédito Eficaz",
+    href: "/credito-eficaz",
+    available: true,
+    visibleTo: canManageCreditoEficaz,
   },
   { label: "Dispositivos", href: "/dispositivos", available: true, visibleTo: canManageSettings },
   {

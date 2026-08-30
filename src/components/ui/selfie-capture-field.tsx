@@ -23,6 +23,7 @@ export function SelfieCaptureField({
   uploadUrl = "/api/ponto/upload",
   clientPayload,
   maxSizeBytes = 3 * 1024 * 1024,
+  access = "public",
 }: {
   onCaptured: (url: string) => void;
   onWaive?: (reason: string) => void;
@@ -32,6 +33,14 @@ export function SelfieCaptureField({
   uploadUrl?: string;
   /** Repassado ao endpoint de upload como `clientPayload` (ver `/api/convenios/upload`). */
   clientPayload?: string;
+  /**
+   * `'private'` pra documento sensível sem URL pública (ver Crédito Eficaz) —
+   * o valor devolvido em `onCaptured` continua sendo `blob.url`/pathname, só
+   * que ilegível sem `get(..., { access: 'private' })` do lado servidor.
+   * Default `'public'` preserva o comportamento de todo chamador existente
+   * (Ponto, cadastro de Convênio).
+   */
+  access?: "public" | "private";
   /**
    * Precisa bater com o `maximumSizeInBytes` real da rota de upload — só se
    * aplica ao fallback de arquivo (a captura ao vivo já sai pequena, sempre
@@ -232,12 +241,12 @@ export function SelfieCaptureField({
     setError(undefined);
     try {
       const blob = await upload(`selfie-${Date.now()}.jpg`, capturedBlob, {
-        access: "public",
+        access,
         handleUploadUrl: uploadUrl,
         contentType: capturedBlob.type || "image/jpeg",
         clientPayload,
       });
-      onCaptured(blob.url);
+      onCaptured(access === "private" ? blob.pathname : blob.url);
     } catch {
       setError("Não foi possível enviar a selfie. Tente novamente.");
     } finally {

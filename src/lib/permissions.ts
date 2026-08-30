@@ -287,3 +287,25 @@ export function canManageConvenios(role: UserRole) {
 export function canManageProtecaoEficaz(role: UserRole) {
   return role === "ADMIN";
 }
+
+/**
+ * Crédito Eficaz (Protótipo 1) — aprovar/recusar/pedir informação numa
+ * solicitação, definir ou alterar limite, bloquear/desbloquear o uso,
+ * registrar pagamento manual e resetar o PIN de confirmação. Só ADMIN, mesmo
+ * critério de `canManageFiado`/`canManageProtecaoEficaz`: é concessão de
+ * crédito/dinheiro da empresa, nunca decisão de Gerente sozinho.
+ */
+export function canManageCreditoEficaz(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
+ * Ver os documentos sensíveis de uma solicitação de Crédito Eficaz
+ * (documento de identificação, comprovante de residência, selfie) —
+ * permissão própria (mesma regra de `canManageCreditoEficaz` hoje, ADMIN
+ * só) pra deixar explícito no código o princípio do menor privilégio: o
+ * colaborador do balcão nunca precisa ver isso, só quem decide o crédito.
+ */
+export function canViewCreditoEficazDocuments(role: UserRole) {
+  return role === "ADMIN";
+}

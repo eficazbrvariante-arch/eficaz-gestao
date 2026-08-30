@@ -1,4 +1,4 @@
-export type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
+export type PaymentMethod = "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO" | "CREDITO_EFICAZ";
 
 export type PaymentSlotKey =
   | "cash"
@@ -7,7 +7,8 @@ export type PaymentSlotKey =
   | "pix_key"
   | "pix_machine"
   | "store_credit"
-  | "fiado";
+  | "fiado"
+  | "credito_eficaz";
 
 /**
  * Formas de pagamento disponíveis pra vendas novas do PDV e pro acerto
@@ -27,6 +28,7 @@ export const PAYMENT_SLOTS: { key: PaymentSlotKey; label: string; method: Paymen
   { key: "pix_machine", label: "PIX Maquininha", method: "PIX" },
   { key: "store_credit", label: "Crédito de loja", method: "STORE_CREDIT" },
   { key: "fiado", label: "Fiado", method: "FIADO" },
+  { key: "credito_eficaz", label: "Crédito Eficaz", method: "CREDITO_EFICAZ" },
 ];
 
 export type PaymentAmounts = Record<PaymentSlotKey, number>;
@@ -39,6 +41,7 @@ export const EMPTY_PAYMENT_AMOUNTS: PaymentAmounts = {
   pix_machine: 0,
   store_credit: 0,
   fiado: 0,
+  credito_eficaz: 0,
 };
 
 function round2(value: number) {

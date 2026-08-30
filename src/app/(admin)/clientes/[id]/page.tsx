@@ -2,13 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canManageFiado, canMergeCustomers } from "@/lib/permissions";
+import { canManageFiado, canManageCreditoEficaz, canMergeCustomers } from "@/lib/permissions";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { CustomerForm } from "../customer-form";
 import { ResetCustomerPasswordPanel } from "../reset-password-panel";
 import { FiadoPanel } from "../fiado-panel";
 import { MergeCustomerPanel } from "../merge-customer-panel";
+import { CreditoEficazPanel } from "../credito-eficaz-panel";
+import { getCustomerCreditSummary, listCustomerUsages } from "@/modules/credito-eficaz/credito-eficaz-service";
 
 export default async function FichaClientePage({
   params,
@@ -37,7 +39,25 @@ export default async function FichaClientePage({
 
   const showFiado = canManageFiado(user.role);
   const showMerge = canMergeCustomers(user.role);
+  const canSeeCreditoEficaz = canManageCreditoEficaz(user.role);
   const fiadoEntries = showFiado ? await listFiadoEntriesByCustomer(user.tenantId, customer.id) : [];
+
+  const creditoEficazSummary = canSeeCreditoEficaz
+    ? await getCustomerCreditSummary(user.tenantId, customer.id)
+    : null;
+  const showCreditoEficaz = !!creditoEficazSummary && creditoEficazSummary.limitAmount > 0;
+  const creditoEficazUsages = showCreditoEficaz
+    ? (await listCustomerUsages(user.tenantId, customer.id)).map((usage) => ({
+        id: usage.id,
+        saleId: usage.saleId,
+        amount: Number(usage.amount),
+        status: usage.status,
+        dueDate: usage.dueDate,
+        createdAt: usage.createdAt,
+        saleNumber: usage.sale?.number ?? null,
+        paidAmount: usage.payments.reduce((sum, p) => sum + Number(p.amount), 0),
+      }))
+    : [];
   const fiadoRows = fiadoEntries.map((entry) => ({
     id: entry.id,
     amount: Number(entry.amount),
@@ -220,6 +240,21 @@ export default async function FichaClientePage({
               customerId={customer.id}
               entries={fiadoRows}
               creditBalance={Number(customer.creditBalance)}
+            />
+          </div>
+        </div>
+      )}
+
+      {showCreditoEficaz && creditoEficazSummary && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+            Crédito Eficaz
+          </div>
+          <div className="p-4">
+            <CreditoEficazPanel
+              customerId={customer.id}
+              summary={creditoEficazSummary}
+              usages={creditoEficazUsages}
             />
           </div>
         </div>

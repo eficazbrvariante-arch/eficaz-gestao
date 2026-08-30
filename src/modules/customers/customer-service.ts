@@ -21,6 +21,22 @@ const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_USERNAME = 5;
 const MAX_ATTEMPTS_PER_IP = 20;
 
+/**
+ * Próximo "Número Eficaz" (`EF-000001`) do tenant — incrementa
+ * `Tenant.customerSequence` atomicamente dentro da MESMA transação que cria
+ * o cliente (mesmo padrão de `Sale.number`/`Tenant.saleSequence` em
+ * `sale-service.ts`), pra nunca duas criações simultâneas saírem com o
+ * mesmo número.
+ */
+export async function nextEficazNumber(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
+  const tenant = await tx.tenant.update({
+    where: { id: tenantId },
+    data: { customerSequence: { increment: 1 } },
+    select: { customerSequence: true },
+  });
+  return `EF-${String(tenant.customerSequence).padStart(6, "0")}`;
+}
+
 /** Saldo de crédito de loja do cliente — usado na própria "Minha conta" da loja online. */
 export async function getCustomerCreditBalance(tenantId: string, customerId: string): Promise<number> {
   const customer = await prisma.customer.findFirst({
@@ -78,10 +94,12 @@ export async function registerCustomer(
 ) {
   const username = normalizeUsername(data.username);
   const passwordHash = await bcrypt.hash(data.password, PASSWORD_COST);
+  const eficazNumber = await nextEficazNumber(tx, tenantId);
 
   return tx.customer.create({
     data: {
       tenantId,
+      eficazNumber,
       username,
       passwordHash,
       name: data.name,
@@ -407,6 +425,19 @@ export async function mergeCustomers(
     };
   }
 
+  // Cliente com limite de Crédito Eficaz já concedido (aprovado e/ou usado)
+  // não pode ser mesclado automaticamente: reatribuir só o histórico
+  // (`CreditoEficazApplication`/`Usage`/`LimitChange`) seria fácil, mas
+  // decidir o que fazer com limite/saldo/bloqueio de dois cadastros de
+  // crédito ativo é decisão de negócio, não algo pra inferir sozinho aqui.
+  if (Number(keep.creditoEficazLimitAmount) > 0 || Number(merge.creditoEficazLimitAmount) > 0) {
+    return {
+      ok: false,
+      error:
+        "Um dos cadastros já tem Crédito Eficaz aprovado — resolva o limite/saldo manualmente antes de mesclar.",
+    };
+  }
+
   const creditTransferred = Number(merge.creditBalance);
   const loginTransferred = !keep.username && merge.username !== null;
 
@@ -438,6 +469,18 @@ export async function mergeCustomers(
       await tx.repairOrder.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
       await tx.whatsAppContact.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
       await tx.customerSession.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      // Histórico de Crédito Eficaz do absorvido (só chega aqui sem limite
+      // ativo, já bloqueado acima) — reatribui em vez de deixar cascatear
+      // no delete de `mergeId`, mesmo espírito do fiado/crédito de loja.
+      await tx.creditoEficazApplication.updateMany({
+        where: { customerId: mergeId },
+        data: { customerId: keepId },
+      });
+      await tx.creditoEficazUsage.updateMany({ where: { customerId: mergeId }, data: { customerId: keepId } });
+      await tx.creditoEficazLimitChange.updateMany({
+        where: { customerId: mergeId },
+        data: { customerId: keepId },
+      });
 
       const keepLastPurchase = keep.lastPurchaseAt;
       const mergeLastPurchase = merge.lastPurchaseAt;

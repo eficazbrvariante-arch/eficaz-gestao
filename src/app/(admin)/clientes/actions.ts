@@ -21,6 +21,7 @@ import {
   grantManualStoreCredit,
   zeroCustomerStoreCredit,
   mergeCustomers,
+  nextEficazNumber,
 } from "@/modules/customers/customer-service";
 import { createFiadoEntry, markFiadoEntryPaid } from "@/modules/fiado/fiado-service";
 import { buildWhatsappLink } from "@/lib/whatsapp";
@@ -54,8 +55,11 @@ export async function createCustomerAction(input: CustomerInput) {
   const parsed = customerSchema.safeParse(input);
   if (!parsed.success) return { error: "Dados inválidos." };
 
-  await prisma.customer.create({
-    data: { tenantId: user.tenantId, ...normalize(parsed.data) },
+  await prisma.$transaction(async (tx) => {
+    const eficazNumber = await nextEficazNumber(tx, user.tenantId);
+    await tx.customer.create({
+      data: { tenantId: user.tenantId, eficazNumber, ...normalize(parsed.data) },
+    });
   });
 
   revalidatePath("/clientes");
@@ -180,14 +184,28 @@ export async function searchCustomersAction(query: string) {
         { name: { contains: term, mode: "insensitive" } },
         { document: { contains: term, mode: "insensitive" } },
         { phone: { contains: term, mode: "insensitive" } },
+        { eficazNumber: { contains: term, mode: "insensitive" } },
       ],
     },
-    select: { id: true, name: true, document: true, phone: true, creditBalance: true },
+    select: {
+      id: true,
+      name: true,
+      document: true,
+      phone: true,
+      creditBalance: true,
+      eficazNumber: true,
+      creditoEficazAvailableAmount: true,
+      creditoEficazBlocked: true,
+    },
     orderBy: { name: "asc" },
     take: 10,
   });
 
-  return customers.map((c) => ({ ...c, creditBalance: Number(c.creditBalance) }));
+  return customers.map((c) => ({
+    ...c,
+    creditBalance: Number(c.creditBalance),
+    creditoEficazAvailableAmount: Number(c.creditoEficazAvailableAmount),
+  }));
 }
 
 /** Lança um fiado manual (fora do PDV, ex.: produto entregue sem passar pela venda). Só ADMIN. */

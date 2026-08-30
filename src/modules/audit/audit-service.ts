@@ -42,7 +42,15 @@ export type AuditAction =
   | "employee_ledger.confirm_paid"
   | "employee_ledger.delete"
   | "commission.tiers_update"
-  | "commission.pdv_ranking_toggle";
+  | "commission.pdv_ranking_toggle"
+  | "credito_eficaz.approve"
+  | "credito_eficaz.reject"
+  | "credito_eficaz.info_request"
+  | "credito_eficaz.limit_change"
+  | "credito_eficaz.block"
+  | "credito_eficaz.unblock"
+  | "credito_eficaz.payment"
+  | "credito_eficaz.pin_reset";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -79,6 +87,14 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "employee_ledger.delete": "Lançamento de colaborador excluído",
   "commission.tiers_update": "Faixas de comissão progressiva alteradas",
   "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
+  "credito_eficaz.approve": "Solicitação de Crédito Eficaz aprovada",
+  "credito_eficaz.reject": "Solicitação de Crédito Eficaz recusada",
+  "credito_eficaz.info_request": "Informação adicional solicitada em pedido de Crédito Eficaz",
+  "credito_eficaz.limit_change": "Limite de Crédito Eficaz alterado",
+  "credito_eficaz.block": "Crédito Eficaz bloqueado",
+  "credito_eficaz.unblock": "Crédito Eficaz desbloqueado",
+  "credito_eficaz.payment": "Pagamento de Crédito Eficaz registrado",
+  "credito_eficaz.pin_reset": "PIN de Crédito Eficaz redefinido pelo Admin",
 };
 
 export type AuditEntry = {

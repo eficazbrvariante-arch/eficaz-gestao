@@ -14,6 +14,11 @@ import { LogoutButton } from "./logout-button";
 import { ReviewForm } from "./review-form";
 import { ChangePasswordForm } from "./change-password-form";
 import { ProtecaoEficazSection } from "./protecao-eficaz-form";
+import { CreditoEficazSection } from "./credito-eficaz-section";
+import {
+  getCustomerCreditSummary,
+  listCustomerApplications,
+} from "@/modules/credito-eficaz/credito-eficaz-service";
 
 export default async function CustomerAccountPage({
   params,
@@ -30,15 +35,25 @@ export default async function CustomerAccountPage({
     redirect(`${base}/conta/entrar?returnTo=${encodeURIComponent(`${base}/conta`)}`);
   }
 
-  const [orders, reviewableProducts, creditBalance, fiadoEntries, convenioBenefit, protecaoEficazRegistrations] =
-    await Promise.all([
-      listCustomerOrders(store.id, session.customerId),
-      listReviewableProducts(store.id, session.customerId),
-      getCustomerCreditBalance(store.id, session.customerId),
-      listFiadoEntriesByCustomer(store.id, session.customerId),
-      getCustomerConvenioBenefit(session.customerId),
-      listCustomerProtecaoEficaz(store.id, session.customerId),
-    ]);
+  const [
+    orders,
+    reviewableProducts,
+    creditBalance,
+    fiadoEntries,
+    convenioBenefit,
+    protecaoEficazRegistrations,
+    creditoEficazSummary,
+    creditoEficazApplications,
+  ] = await Promise.all([
+    listCustomerOrders(store.id, session.customerId),
+    listReviewableProducts(store.id, session.customerId),
+    getCustomerCreditBalance(store.id, session.customerId),
+    listFiadoEntriesByCustomer(store.id, session.customerId),
+    getCustomerConvenioBenefit(session.customerId),
+    listCustomerProtecaoEficaz(store.id, session.customerId),
+    getCustomerCreditSummary(store.id, session.customerId),
+    listCustomerApplications(store.id, session.customerId),
+  ]);
   const pendingFiado = fiadoEntries.filter((entry) => entry.status === "PENDING");
 
   return (
@@ -98,6 +113,12 @@ export default async function CustomerAccountPage({
       )}
 
       <ProtecaoEficazSection subdomain={subdomain} registrations={protecaoEficazRegistrations} />
+
+      <CreditoEficazSection
+        subdomain={subdomain}
+        summary={creditoEficazSummary}
+        latestApplication={creditoEficazApplications[0] ?? null}
+      />
 
       {(pendingFiado.length > 0 || creditBalance > 0) && (
         <div className="mb-8 rounded-xl border border-slate-200 p-4">

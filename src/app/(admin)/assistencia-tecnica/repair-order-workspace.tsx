@@ -20,6 +20,22 @@ import {
   toPaymentEntries,
   type PaymentAmounts,
 } from "@/lib/payment-slots";
+
+/**
+ * Formas aceitas no acerto financeiro da Assistência Técnica — Crédito
+ * Eficaz ainda não chegou aqui (só no PDV, ver `credito_eficaz` desabilitado
+ * acima em `paymentSlots`); filtra fora pra bater com o schema mais estrito
+ * de `repair-payment.ts`, que nunca teve esse método adicionado.
+ */
+type RepairPaymentEntry = {
+  method: "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
+  amount: number;
+};
+function toRepairPaymentEntries(amounts: PaymentAmounts): RepairPaymentEntry[] {
+  return toPaymentEntries(amounts).filter(
+    (entry): entry is RepairPaymentEntry => entry.method !== "CREDITO_EFICAZ"
+  );
+}
 import { searchCustomersAction } from "../clientes/actions";
 import { listActiveSellersAction, type PdvSellerOption } from "../pdv/actions";
 import {
@@ -239,7 +255,9 @@ export function RepairOrderWorkspace({
         ? !!customer && customer.creditBalance > 0
         : slot.key === "fiado"
           ? canFiado && !!customer
-          : true;
+          : slot.key === "credito_eficaz"
+            ? false
+            : true;
     return {
       key: slot.key,
       label: slot.label,
@@ -249,7 +267,9 @@ export function RepairOrderWorkspace({
           ? "Cliente sem crédito de loja disponível"
           : slot.key === "fiado"
             ? "Selecione um cliente elegível para fiado"
-            : undefined,
+            : slot.key === "credito_eficaz"
+              ? "Crédito Eficaz ainda não disponível na Assistência Técnica"
+              : undefined,
     };
   });
 
@@ -274,7 +294,7 @@ export function RepairOrderWorkspace({
 
     startReceivePaymentTransition(async () => {
       const result = await receiveRepairOrderPaymentAction(meta.id, {
-        payments: toPaymentEntries(paymentAmounts),
+        payments: toRepairPaymentEntries(paymentAmounts),
         fiadoDueDate: paymentHasFiado ? paymentFiadoDueDate : undefined,
       });
       if (result?.error) {
@@ -309,7 +329,7 @@ export function RepairOrderWorkspace({
 
     startDeliverTransition(async () => {
       const result = await deliverRepairOrderAction(meta.id, {
-        payments: financials.balance > 0.005 ? toPaymentEntries(deliveryAmounts) : [],
+        payments: financials.balance > 0.005 ? toRepairPaymentEntries(deliveryAmounts) : [],
         fiadoDueDate: deliveryHasFiado ? deliveryFiadoDueDate : undefined,
       });
       if (result?.error) {

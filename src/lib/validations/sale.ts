@@ -9,7 +9,7 @@ export const saleItemSchema = z.object({
 });
 
 export const salePaymentSchema = z.object({
-  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT", "STORE_CREDIT", "FIADO"]),
+  method: z.enum(["CASH", "PIX", "DEBIT", "CREDIT", "STORE_CREDIT", "FIADO", "CREDITO_EFICAZ"]),
   amount: z.coerce.number().positive(),
 });
 
@@ -34,6 +34,10 @@ export const createSaleSchema = z.object({
    *  com method "FIADO" (checado em `createSale`, não aqui: o valor mínimo
    *  válido depende de haver ou não parcela em fiado). `YYYY-MM-DD`. */
   fiadoDueDate: z.string().trim().optional().or(z.literal("")),
+  /** PIN de 4 dígitos do cliente — exigido só quando há pagamento com method
+   *  "CREDITO_EFICAZ" (checado em `createSale`). Nunca substitui a checagem
+   *  de saldo/bloqueio, só autoriza o uso. */
+  creditoEficazPin: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().optional().or(z.literal("")),
   /** Colaborador de Convênio Corporativo já validado no PDV (ver
    *  `validateConvenioCredentialAction`) — revalidado de novo aqui dentro de

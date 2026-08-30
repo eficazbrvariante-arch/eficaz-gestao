@@ -290,6 +290,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CREDIT: "Cartão de Crédito",
   STORE_CREDIT: "Crédito de loja",
   FIADO: "Fiado",
+  CREDITO_EFICAZ: "Crédito Eficaz",
 };
 
 function formatBRL(value: number) {

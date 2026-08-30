@@ -104,6 +104,10 @@ model Tenant {
   saleSequence             Int                  @default(0)
   orderSequence            Int                  @default(0)
   repairOrderSequence      Int                  @default(0)
+  /// Numeração do "Número Eficaz" (`EF-000001`, ver `Customer.eficazNumber`)
+  /// — mesmo padrão dos contadores acima, incrementado atomicamente na
+  /// transação que cria o cliente.
+  customerSequence         Int                  @default(0)
   /// Reservado para jornada/escala/tolerância de atraso/banco de horas
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
@@ -138,6 +142,12 @@ model Tenant {
   convenioRedemptions         ConvenioRedemption[]
   convenioProductDiscounts    ConvenioProductDiscount[]
   protecaoEficazRegistrations ProtecaoEficaz[]
+  creditoEficazApplications   CreditoEficazApplication[]
+  creditoEficazDocuments      CreditoEficazDocument[]
+  creditoEficazLimitChanges   CreditoEficazLimitChange[]
+  creditoEficazUsages         CreditoEficazUsage[]
+  creditoEficazPayments       CreditoEficazPayment[]
+  creditoEficazBillings       CreditoEficazBilling[]
   devices                     Device[]
   visitorSessions             VisitorSession[]
   analyticsEvents             AnalyticsEvent[]
@@ -252,6 +262,10 @@ model User {
   devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
   protecaoEficazReviewed       ProtecaoEficaz[]         @relation("ProtecaoEficazReviewedBy")
   protecaoEficazRedeemed       ProtecaoEficaz[]         @relation("ProtecaoEficazRedeemedBy")
+  creditoEficazApplicationsReviewed CreditoEficazApplication[] @relation("CreditoEficazApplicationReviewedBy")
+  creditoEficazLimitChangesMade     CreditoEficazLimitChange[] @relation("CreditoEficazLimitChangeBy")
+  creditoEficazUsagesOperated       CreditoEficazUsage[]       @relation("CreditoEficazUsageOperator")
+  creditoEficazPaymentsRegistered   CreditoEficazPayment[]     @relation("CreditoEficazPaymentRegisteredBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -707,6 +721,39 @@ model Customer {
   /// automático por documento). Define se mostra o card do convênio e a
   /// vitrine de desconto no painel do cliente.
   convenioMemberId    String?   @unique
+  /// "Número Eficaz" (`EF-000001`) — identificador interno do cliente,
+  /// único POR EMPRESA (mesma convenção de `Sale.number`; cada tenant
+  /// numera a partir de 1, não é global), gerado a partir de
+  /// `Tenant.customerSequence` na criação. Nullable só até a migration de
+  /// backfill numerar os clientes existentes; todo cliente novo já nasce
+  /// com um. É só um IDENTIFICADOR (busca rápida no balcão) — nunca
+  /// autoriza sozinho uma compra a crédito (ver
+  /// `creditoEficazAvailableAmount`/`...Blocked`).
+  eficazNumber        String?
+  /// Teto do Crédito Eficaz definido manualmente pelo Admin na aprovação
+  /// (ver `CreditoEficazApplication`) — só muda por ação explícita,
+  /// histórico completo em `CreditoEficazLimitChange`.
+  creditoEficazLimitAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  /// Saldo disponível de verdade do Crédito Eficaz — é este campo que é
+  /// debitado/creditado atomicamente a cada venda/pagamento/estorno (mesmo
+  /// espírito de `creditBalance`, mas nunca confundir os dois: um é crédito
+  /// de loja tipo vale-compra, o outro é linha de crédito com limite e
+  /// obrigação). "Usado" é sempre `creditoEficazLimitAmount -
+  /// creditoEficazAvailableAmount`, nunca um campo próprio (evita os dois
+  /// números saírem de sincronia).
+  creditoEficazAvailableAmount Decimal  @default(0) @db.Decimal(12, 2)
+  /// Bloqueio manual (Admin) ou automático (atraso) do uso do Crédito
+  /// Eficaz — nunca apaga limite/saldo/histórico, só impede novo uso.
+  /// Sempre reversível (ver `canManageCreditoEficaz`).
+  creditoEficazBlocked         Boolean  @default(false)
+  creditoEficazBlockedReason   String?
+  /// PIN de 4 dígitos definido pelo cliente no aceite dos termos, usado só
+  /// pra confirmar o uso do Crédito Eficaz no PDV (hash SHA-256, nunca o
+  /// valor em claro — mesmo padrão de `resetToken`). Não é biometria nem
+  /// substitui identificação: é só o fator de confirmação deste Protótipo 1,
+  /// trocável depois por outro método sem mudar o resto da arquitetura.
+  creditoEficazPinHash         String?
+  creditoEficazPinSetAt        DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -721,8 +768,12 @@ model Customer {
   reviews                     ProductReview[]
   whatsAppContacts            WhatsAppContact[]
   protecaoEficazRegistrations ProtecaoEficaz[]
+  creditoEficazApplications   CreditoEficazApplication[]
+  creditoEficazLimitChanges   CreditoEficazLimitChange[]
+  creditoEficazUsages         CreditoEficazUsage[]
 
   @@unique([tenantId, username])
+  @@unique([tenantId, eficazNumber])
   @@index([tenantId, name])
   @@map("customers")
 }
@@ -1024,6 +1075,9 @@ model CashMovement {
   type           CashMovementType
   amount         Decimal          @db.Decimal(12, 2)
   description    String?
+  /// Foto da nota/comprovante da compra paga com o dinheiro do caixa
+  /// (sangria) ou do depósito de origem do suprimento — opcional.
+  receiptPhotoUrl String?
   userId         String
   createdAt      DateTime         @default(now())
 
@@ -1100,6 +1154,7 @@ model Sale {
   fiadoEntries       FiadoEntry[]
   itemDefects        SaleItemDefect[]
   convenioRedemption ConvenioRedemption?
+  creditoEficazUsage CreditoEficazUsage?
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -1182,6 +1237,12 @@ enum PaymentMethod {
   /// pendente. Só disponível pra quem pode conceder fiado (ver
   /// `canManageFiado`) e com cliente selecionado na venda.
   FIADO
+  /// Linha de crédito própria da loja (Protótipo 1) — só disponível com
+  /// cliente identificado, Crédito Eficaz aprovado, não bloqueado, limite
+  /// disponível suficiente e PIN confirmado. Gera um `CreditoEficazUsage`
+  /// vinculado à venda. Distinto de `STORE_CREDIT` (vale-compra) e `FIADO`
+  /// (sem limite/aprovação formal) — ver `Customer.creditoEficaz*`.
+  CREDITO_EFICAZ
 }
 
 /// GRANTED: crédito gerado automaticamente (cancelamento de venda). REDEEMED:
@@ -2080,4 +2141,212 @@ model ProtecaoEficaz {
   @@unique([tenantId, saleNumber])
   @@index([tenantId, status])
   @@map("protecao_eficaz")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 11 — Crédito Eficaz (Protótipo 1)
+// ---------------------------------------------------------------------------
+//
+// Linha de crédito própria da loja, vinculada ao cadastro do cliente.
+// Filosofia do Protótipo 1: nada automático — toda aprovação, limite,
+// bloqueio e pagamento é decisão manual de um ADMIN (`canManageCreditoEficaz`
+// em `src/lib/permissions.ts`). Sem score, sem IA, sem biometria facial.
+//
+// O saldo vivo (`Customer.creditoEficazAvailableAmount`) é debitado de forma
+// atômica dentro da transação de `createSale` — nunca um SELECT seguido de
+// UPDATE cego (esse é o bug real que já existe em `STORE_CREDIT`, não
+// repetido aqui): o `UPDATE` já carrega a condição `available >= amount` no
+// próprio `WHERE`, e duas vendas concorrentes nunca conseguem as duas
+// passar (mesmo padrão de `ProtecaoEficaz.redeemedAt` + checagem de
+// `count`).
+
+/// DRAFT: cliente começou mas não enviou. UNDER_REVIEW: enviada, aguardando
+/// decisão do Admin. APPROVED: virou limite ativo em `Customer` (ver
+/// `approvedLimitAmount`). INFO_REQUESTED: Admin pediu complemento antes de
+/// decidir. REJECTED/BLOCKED: terminais, sempre com `decisionNote`
+/// explicando o motivo.
+enum CreditoEficazApplicationStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  INFO_REQUESTED
+  REJECTED
+  BLOCKED
+}
+
+enum CreditoEficazDocumentType {
+  ID_DOCUMENT
+  RESIDENCE_PROOF
+  SELFIE
+}
+
+/// PAID é estado final. "Vencida" não é um valor guardado — calculada a
+/// partir de OPEN + `dueDate` no passado, mesmo padrão de `FiadoStatus`.
+enum CreditoEficazUsageStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+/// Solicitação de Crédito Eficaz — reaproveita nome/documento/telefone/
+/// endereço já existentes em `Customer`; só pede o que falta pra análise.
+/// Termos mostrados numa versão vigente (`termsVersion`), aceite gravado
+/// como timestamp (nunca alterado depois — mesmo padrão de
+/// `ProtecaoEficaz.termsAcceptedAt`). Uma aprovação define
+/// `approvedLimitAmount` aqui E copia pra `Customer.creditoEficazLimitAmount`/
+/// `...AvailableAmount` (histórico da decisão fica nos dois lugares: aqui o
+/// "porquê", em `CreditoEficazLimitChange` toda mudança de limite depois).
+model CreditoEficazApplication {
+  id                  String                         @id @default(cuid())
+  tenantId            String
+  customerId          String
+  status              CreditoEficazApplicationStatus @default(DRAFT)
+  occupation          String?
+  income              Decimal?                       @db.Decimal(12, 2)
+  /// Dia do mês (1-28, evita problema de mês curto) preferido pro
+  /// vencimento das obrigações deste cliente.
+  bestDueDay          Int?
+  additionalNotes     String?
+  termsVersion        String?
+  termsAcceptedAt     DateTime?
+  submittedAt         DateTime?
+  decisionNote        String?
+  approvedLimitAmount Decimal?                       @db.Decimal(12, 2)
+  reviewedById        String?
+  reviewedAt          DateTime?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reviewedBy User?                   @relation("CreditoEficazApplicationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  documents  CreditoEficazDocument[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("credito_eficaz_applications")
+}
+
+/// Documento/selfie de uma solicitação — só o pathname PRIVADO do blob
+/// (`access: 'private'`), nunca a URL pública. Servido exclusivamente por
+/// `/api/credito-eficaz/documentos/[id]`, atrás de
+/// `canViewCreditoEficazDocuments` (ADMIN só — princípio do menor
+/// privilégio: colaborador de balcão nunca vê isto). Reenvio cria linha
+/// nova, nunca sobrescreve — nada some silenciosamente.
+model CreditoEficazDocument {
+  id            String                    @id @default(cuid())
+  tenantId      String
+  applicationId String
+  type          CreditoEficazDocumentType
+  blobPathname  String
+  uploadedAt    DateTime                  @default(now())
+
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application CreditoEficazApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, applicationId])
+  @@map("credito_eficaz_documents")
+}
+
+/// Histórico de toda definição/alteração de limite — a aprovação inicial
+/// também gera uma linha aqui (`previousLimit = 0`). Nunca é apagado;
+/// qualquer mudança futura de limite precisa passar por aqui antes de tocar
+/// `Customer.creditoEficazLimitAmount`.
+model CreditoEficazLimitChange {
+  id            String   @id @default(cuid())
+  tenantId      String
+  customerId    String
+  previousLimit Decimal  @db.Decimal(12, 2)
+  newLimit      Decimal  @db.Decimal(12, 2)
+  note          String?
+  changedById   String
+  createdAt     DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  changedBy User     @relation("CreditoEficazLimitChangeBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, customerId, createdAt])
+  @@map("credito_eficaz_limit_changes")
+}
+
+/// A obrigação gerada por uma venda paga com Crédito Eficaz — nunca apagada
+/// (estorno marca `CANCELLED` e devolve `availableAfter` ao cliente, não
+/// remove a linha). `availableBefore`/`availableAfter` são o snapshot do
+/// saldo do cliente no momento exato desta venda, pra auditoria não
+/// depender de reconstruir o histórico depois.
+model CreditoEficazUsage {
+  id              String                    @id @default(cuid())
+  tenantId        String
+  customerId      String
+  saleId          String                    @unique
+  amount          Decimal                   @db.Decimal(12, 2)
+  availableBefore Decimal                   @db.Decimal(12, 2)
+  availableAfter  Decimal                   @db.Decimal(12, 2)
+  dueDate         DateTime
+  status          CreditoEficazUsageStatus  @default(OPEN)
+  /// Quem operava o caixa no momento (pode ser diferente do vendedor da
+  /// venda) — mesmo campo/motivo de `FiadoEntry.createdById`.
+  operatorId      String
+  createdAt       DateTime                  @default(now())
+
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale     Sale                   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  operator User                   @relation("CreditoEficazUsageOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  payments CreditoEficazPayment[]
+  billings CreditoEficazBilling[]
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, status, dueDate])
+  @@map("credito_eficaz_usages")
+}
+
+/// Pagamento manual (Protótipo 1) contra uma obrigação — suporta parcial:
+/// a obrigação só vira PAID quando a soma dos pagamentos atinge o valor
+/// (ver `credito-eficaz-service.ts`). Nunca apagado; um pagamento lançado
+/// errado se corrige com um novo registro, não com exclusão.
+model CreditoEficazPayment {
+  id             String   @id @default(cuid())
+  tenantId       String
+  usageId        String
+  amount         Decimal  @db.Decimal(12, 2)
+  paidAt         DateTime
+  method         String
+  registeredById String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usage        CreditoEficazUsage @relation(fields: [usageId], references: [id], onDelete: Cascade)
+  registeredBy User               @relation("CreditoEficazPaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, usageId])
+  @@map("credito_eficaz_payments")
+}
+
+/// Estrutura preparada para uma futura integração de cobrança (Pix/boleto
+/// via provedor financeiro externo) — o Protótipo 1 NUNCA cria/consome isto
+/// de verdade: nenhum provedor real, nenhum boleto/QR Code inventado,
+/// nenhum endpoint de webhook. Ver a interface `BillingProvider` em
+/// `src/modules/credito-eficaz/billing-provider.ts` (hoje só uma
+/// implementação manual/no-op).
+model CreditoEficazBilling {
+  id                String    @id @default(cuid())
+  tenantId          String
+  usageId           String
+  amount            Decimal   @db.Decimal(12, 2)
+  dueDate           DateTime
+  status            String    @default("PENDING")
+  provider          String    @default("MANUAL")
+  externalId        String?
+  method            String?
+  reconciliationRef String?
+  createdAt         DateTime  @default(now())
+  paidAt            DateTime?
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usage  CreditoEficazUsage @relation(fields: [usageId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, usageId])
+  @@map("credito_eficaz_billings")
 }
