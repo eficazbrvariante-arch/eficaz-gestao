@@ -78,6 +78,18 @@ export const editSaleSchema = z.object({
 });
 export type EditSaleInput = z.infer<typeof editSaleSchema>;
 
+/** Só as formas sem efeito colateral no cadastro do cliente — crédito de
+ *  loja, fiado e Crédito Eficaz ficam de fora (ver `editSalePaymentMethods`). */
+export const editableSalePaymentMethodSchema = z.enum(["CASH", "PIX", "DEBIT", "CREDIT"]);
+export const editSalePaymentSchema = z.object({
+  paymentId: z.string().trim().min(1),
+  method: editableSalePaymentMethodSchema,
+});
+export const editSalePaymentsSchema = z.object({
+  edits: z.array(editSalePaymentSchema).min(1, "Corrija ao menos uma forma de pagamento"),
+});
+export type EditSalePaymentsInput = z.infer<typeof editSalePaymentsSchema>;
+
 export const findSaleByNumberSchema = z.object({
   number: z.coerce.number().int().positive("Informe um número de cupom válido"),
 });

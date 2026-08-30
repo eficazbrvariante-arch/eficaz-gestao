@@ -74,6 +74,12 @@ export default async function ComprovantePage({
     discount: Number(item.discount),
   }));
 
+  const editablePayments = sale.payments.map((payment) => ({
+    id: payment.id,
+    method: payment.method,
+    amount: Number(payment.amount),
+  }));
+
   return (
     <div>
       <div className="mb-4 print:hidden">
@@ -89,6 +95,7 @@ export default async function ComprovantePage({
           openCancelForm={cancelar === "1"}
           items={isCancelled ? [] : defectItems}
           editableItems={editableItems}
+          editablePayments={editablePayments}
         />
       </div>
 

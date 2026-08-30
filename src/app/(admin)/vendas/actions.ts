@@ -4,16 +4,18 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canCancelSale, canEditSale } from "@/lib/permissions";
-import { cancelSale, editSaleItems, reportSaleItemDefect } from "@/modules/sales/sale-service";
+import { cancelSale, editSaleItems, editSalePaymentMethods, reportSaleItemDefect } from "@/modules/sales/sale-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import { formatBRL } from "@/lib/format";
 import {
   cancelSaleSchema,
   editSaleSchema,
+  editSalePaymentsSchema,
   findSaleByNumberSchema,
   reportSaleItemDefectSchema,
   type CancelSaleInput,
   type EditSaleInput,
+  type EditSalePaymentsInput,
   type FindSaleByNumberInput,
   type ReportSaleItemDefectInput,
 } from "@/lib/validations/sale";
@@ -106,6 +108,41 @@ export async function editSaleAction(saleId: string, input: EditSaleInput) {
   revalidatePath("/vendas");
 
   return { success: "Venda corrigida." };
+}
+
+export async function editSalePaymentMethodAction(saleId: string, input: EditSalePaymentsInput) {
+  const user = await requireUser();
+  if (!canEditSale(user.role)) {
+    return { error: "Seu perfil não tem permissão para editar vendas." };
+  }
+
+  const parsed = editSalePaymentsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Informe as formas de pagamento corrigidas." };
+  }
+
+  const result = await editSalePaymentMethods(user.tenantId, saleId, parsed.data.edits);
+  if (!result.ok) return { error: result.error };
+
+  const sale = await prisma.sale.findUnique({ where: { id: saleId }, select: { number: true } });
+  const description = result.changes
+    .map((c) => `${formatBRL(c.amount)}: ${c.before} → ${c.after}`)
+    .join("; ");
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "sale.payment_method_edit",
+    entity: "Sale",
+    entityId: saleId,
+    description: `Corrigiu a forma de pagamento da venda #${sale?.number} — ${description}.`,
+  });
+
+  revalidatePath(`/vendas/${saleId}`);
+  revalidatePath("/vendas");
+  revalidatePath("/caixa");
+
+  return { success: "Forma de pagamento corrigida." };
 }
 
 export async function reportSaleItemDefectAction(saleId: string, input: ReportSaleItemDefectInput) {

@@ -10,7 +10,12 @@ import {
   type CancelSaleInput,
   type CancelSaleFormValues,
 } from "@/lib/validations/sale";
-import { cancelSaleAction, editSaleAction, reportSaleItemDefectAction } from "../actions";
+import {
+  cancelSaleAction,
+  editSaleAction,
+  editSalePaymentMethodAction,
+  reportSaleItemDefectAction,
+} from "../actions";
 import { searchCustomersAction } from "../../clientes/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +41,27 @@ export type EditableSaleItem = {
   quantity: number;
   unitPrice: number;
   discount: number;
+};
+
+export type EditableSalePayment = {
+  id: string;
+  method: string;
+  amount: number;
+};
+
+/** Só essas trocam entre si numa correção — as demais têm efeito real no
+ *  cadastro do cliente (crédito de loja, fiado, Crédito Eficaz) e exigem
+ *  cancelamento/estorno, não correção. */
+const EDITABLE_PAYMENT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de Débito",
+  CREDIT: "Cartão de Crédito",
+  STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
+  CREDITO_EFICAZ: "Crédito Eficaz",
 };
 
 /** Tolerância pra comparar o total corrigido com o original (ruído de ponto flutuante). */
@@ -69,6 +95,7 @@ export function SaleActions({
   openCancelForm = false,
   items,
   editableItems,
+  editablePayments,
 }: {
   saleId: string;
   saleTotal: number;
@@ -87,6 +114,8 @@ export function SaleActions({
   items: SaleItemDefectOption[];
   /** Itens da venda pra corrigir preço/desconto — sem produto/quantidade, isso não muda. */
   editableItems: EditableSaleItem[];
+  /** Pagamentos da venda pra corrigir a forma — o valor de cada um não muda. */
+  editablePayments: EditableSalePayment[];
 }) {
   const [showCancel, setShowCancel] = useState(openCancelForm && canCancel && !isCancelled);
   const [serverError, setServerError] = useState<string>();
@@ -113,6 +142,8 @@ export function SaleActions({
       editableItems.map((item) => ({ unitPrice: String(item.unitPrice), discount: String(item.discount) }))
     );
     setEditError(undefined);
+    setPaymentMethodValues(Object.fromEntries(editablePayments.map((p) => [p.id, p.method])));
+    setPaymentMethodError(undefined);
     setShowEdit(true);
   }
 
@@ -132,6 +163,31 @@ export function SaleActions({
       });
       if (result?.error) {
         setEditError(result.error);
+        return;
+      }
+      setShowEdit(false);
+    });
+  }
+
+  const [paymentMethodValues, setPaymentMethodValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(editablePayments.map((p) => [p.id, p.method]))
+  );
+  const [paymentMethodError, setPaymentMethodError] = useState<string>();
+  const [isEditingPaymentMethod, startEditPaymentMethodTransition] = useTransition();
+
+  function submitPaymentMethodEdit() {
+    setPaymentMethodError(undefined);
+    const edits = editablePayments
+      .filter((p) => paymentMethodValues[p.id] && paymentMethodValues[p.id] !== p.method)
+      .map((p) => ({ paymentId: p.id, method: paymentMethodValues[p.id] as "CASH" | "PIX" | "DEBIT" | "CREDIT" }));
+    if (edits.length === 0) {
+      setPaymentMethodError("Nenhuma alteração informada.");
+      return;
+    }
+    startEditPaymentMethodTransition(async () => {
+      const result = await editSalePaymentMethodAction(saleId, { edits });
+      if (result?.error) {
+        setPaymentMethodError(result.error);
         return;
       }
       setShowEdit(false);
@@ -366,6 +422,61 @@ export function SaleActions({
           >
             {isEditing ? "Salvando..." : "Salvar correção"}
           </Button>
+
+          {editablePayments.length > 0 && (
+            <div className="mt-4 border-t border-amber-200 pt-4">
+              <p className="mb-3 text-sm text-amber-900">
+                Corrija a forma de pagamento — o valor de cada pagamento não muda, só como ele é
+                classificado.
+              </p>
+              <FormBanner message={paymentMethodError} variant="error" />
+
+              <div className="mb-3 space-y-2">
+                {editablePayments.map((payment) => {
+                  const editable = (EDITABLE_PAYMENT_METHODS as readonly string[]).includes(payment.method);
+                  return (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-white p-3"
+                    >
+                      <span className="text-sm font-medium text-slate-900">
+                        {formatBRL(payment.amount)}
+                      </span>
+                      {editable ? (
+                        <Select
+                          value={paymentMethodValues[payment.id] ?? payment.method}
+                          onChange={(e) =>
+                            setPaymentMethodValues((prev) => ({ ...prev, [payment.id]: e.target.value }))
+                          }
+                          className="h-9 w-48"
+                        >
+                          {EDITABLE_PAYMENT_METHODS.map((method) => (
+                            <option key={method} value={method}>
+                              {PAYMENT_METHOD_LABELS[method]}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-slate-500">
+                          {PAYMENT_METHOD_LABELS[payment.method]} — não pode ser corrigido por aqui
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Button
+                type="button"
+                disabled={isEditingPaymentMethod}
+                fullWidth={false}
+                onClick={submitPaymentMethodEdit}
+                className="bg-amber-600 px-4 hover:bg-amber-700"
+              >
+                {isEditingPaymentMethod ? "Salvando..." : "Salvar forma de pagamento"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

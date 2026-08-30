@@ -806,6 +806,94 @@ export async function editSaleItems(
   }
 }
 
+/** Formas sem efeito colateral no cadastro do cliente — as únicas que dá pra
+ *  trocar entre si numa correção. Crédito de loja, Fiado e Crédito Eficaz
+ *  ficam de fora de propósito: cada uma tem uma obrigação/débito real por
+ *  trás (saldo do cliente, `FiadoEntry`, limite do Crédito Eficaz) que uma
+ *  troca simples de método não desfaria nem recriaria — nesses casos o
+ *  caminho é cancelamento/estorno, não correção. */
+const EDITABLE_PAYMENT_METHODS = new Set(["CASH", "PIX", "DEBIT", "CREDIT"]);
+
+export type EditSalePaymentInput = { paymentId: string; method: "CASH" | "PIX" | "DEBIT" | "CREDIT" };
+export type EditSalePaymentChange = { before: string; after: string; amount: number };
+export type EditSalePaymentsResult =
+  | { ok: true; changes: EditSalePaymentChange[] }
+  | { ok: false; error: string };
+
+/**
+ * Corrige a forma de pagamento de um ou mais pagamentos já registrados —
+ * nunca o valor (o total recebido pela venda não muda, só como ele é
+ * classificado). Mesmo espírito de `editSaleItems`: fato histórico sendo
+ * corrigido, não uma nova cobrança. Bloqueada se o caixa da venda já fechou
+ * (mesmo motivo de `editSaleItems`: não mudar um relatório já conferido) ou
+ * se algum pagamento envolvido usa (antes ou depois) uma forma com efeito
+ * colateral no cadastro do cliente.
+ */
+export async function editSalePaymentMethods(
+  tenantId: string,
+  saleId: string,
+  edits: EditSalePaymentInput[]
+): Promise<EditSalePaymentsResult> {
+  const sale = await prisma.sale.findFirst({
+    where: { id: saleId, tenantId },
+    include: { payments: true, cashRegister: { select: { status: true } } },
+  });
+  if (!sale) return { ok: false, error: "Venda não encontrada." };
+  if (sale.status === "CANCELLED") {
+    return { ok: false, error: "Venda cancelada não pode ser editada." };
+  }
+  if (sale.cashRegister.status !== "OPEN") {
+    return { ok: false, error: "O caixa desta venda já foi fechado — não é possível editar." };
+  }
+
+  const paymentById = new Map(sale.payments.map((p) => [p.id, p]));
+  const changes: { paymentId: string; before: string; after: string; amount: number }[] = [];
+
+  for (const edit of edits) {
+    const payment = paymentById.get(edit.paymentId);
+    if (!payment) return { ok: false, error: "Pagamento não encontrado nesta venda." };
+    if (!EDITABLE_PAYMENT_METHODS.has(payment.method)) {
+      return {
+        ok: false,
+        error: `O pagamento em "${PAYMENT_METHOD_LABELS[payment.method]}" tem efeito no cadastro do cliente e não pode ser corrigido por aqui.`,
+      };
+    }
+    if (!EDITABLE_PAYMENT_METHODS.has(edit.method)) {
+      return { ok: false, error: "Forma de pagamento inválida para correção." };
+    }
+    if (payment.method === edit.method) continue;
+    changes.push({
+      paymentId: payment.id,
+      before: PAYMENT_METHOD_LABELS[payment.method],
+      after: PAYMENT_METHOD_LABELS[edit.method],
+      amount: Number(payment.amount),
+    });
+  }
+
+  if (changes.length === 0) return { ok: false, error: "Nenhuma alteração informada." };
+
+  try {
+    await prisma.$transaction(
+      changes.map((change) =>
+        prisma.payment.update({ where: { id: change.paymentId }, data: { method: edits.find((e) => e.paymentId === change.paymentId)!.method } })
+      )
+    );
+    return { ok: true, changes: changes.map(({ before, after, amount }) => ({ before, after, amount })) };
+  } catch {
+    return { ok: false, error: "Não foi possível salvar a correção. Tente novamente." };
+  }
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de Débito",
+  CREDIT: "Cartão de Crédito",
+  STORE_CREDIT: "Crédito de loja",
+  FIADO: "Fiado",
+  CREDITO_EFICAZ: "Crédito Eficaz",
+};
+
 export type ReportSaleItemDefectResult = { ok: true } | { ok: false; error: string };
 
 /**
