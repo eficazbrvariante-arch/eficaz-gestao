@@ -20,13 +20,20 @@ import type { CustomerCreditSummary } from "@/modules/credito-eficaz/credito-efi
 
 export type CreditoEficazUsageRow = {
   id: string;
-  saleId: string;
+  /** `null` quando a origem é um financiamento de OS (Adendo), não uma venda do PDV. */
+  saleId: string | null;
   amount: number;
   status: "OPEN" | "PAID" | "CANCELLED";
   dueDate: Date;
   createdAt: Date;
   saleNumber: number | null;
   paidAmount: number;
+  /** Cada pagamento registrado contra esta obrigação — usado só pra calcular pontualidade (Adendo). */
+  paymentDates: Date[];
+  /** Preenchidos só numa parcela de financiamento de OS (Adendo) — ex.: "2 de 3". */
+  installmentNumber: number | null;
+  installmentCount: number | null;
+  repairOrderNumber: number | null;
 };
 
 export function CreditoEficazPanel({
@@ -108,6 +115,17 @@ export function CreditoEficazPanel({
     );
   }
 
+  const totalOperated = usages.reduce((sum, u) => sum + u.amount, 0);
+  const totalPaid = usages.reduce((sum, u) => sum + u.paidAmount, 0);
+  let paidOnTime = 0;
+  let paidLate = 0;
+  for (const usage of usages) {
+    for (const paidAt of usage.paymentDates) {
+      if (paidAt <= usage.dueDate) paidOnTime += 1;
+      else paidLate += 1;
+    }
+  }
+
   return (
     <div className="space-y-4">
       <FormBanner message={feedback?.message} variant={feedback?.type} />
@@ -136,11 +154,32 @@ export function CreditoEficazPanel({
         <p className="text-sm text-red-600">Motivo do bloqueio: {summary.blockedReason}</p>
       )}
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs text-slate-500">Total já utilizado</p>
+          <p className="font-semibold text-slate-900">{formatBRL(totalOperated)}</p>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs text-slate-500">Total pago</p>
+          <p className="font-semibold text-emerald-700">{formatBRL(totalPaid)}</p>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs text-slate-500">Operações</p>
+          <p className="font-semibold text-slate-900">{usages.length}</p>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs text-slate-500">Pontualidade</p>
+          <p className="font-semibold text-slate-900">
+            {paidOnTime} no prazo · {paidLate} com atraso
+          </p>
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="px-3 py-2 font-medium">Venda</th>
+              <th className="px-3 py-2 font-medium">Origem</th>
               <th className="px-3 py-2 font-medium">Data</th>
               <th className="px-3 py-2 font-medium">Vencimento</th>
               <th className="px-3 py-2 font-medium">Valor</th>
@@ -155,10 +194,17 @@ export function CreditoEficazPanel({
               return (
                 <tr key={usage.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-2 text-slate-500">
-                    {usage.saleNumber ? (
+                    {usage.saleId && usage.saleNumber ? (
                       <Link href={`/vendas/${usage.saleId}`} className="hover:underline">
-                        #{usage.saleNumber}
+                        Venda #{usage.saleNumber}
                       </Link>
+                    ) : usage.repairOrderNumber ? (
+                      <span>
+                        OS #{usage.repairOrderNumber}
+                        {usage.installmentNumber && usage.installmentCount
+                          ? ` — parcela ${usage.installmentNumber}/${usage.installmentCount}`
+                          : ""}
+                      </span>
                     ) : (
                       "-"
                     )}

@@ -13,12 +13,16 @@ import {
   setCreditoEficazLimitSchema,
   blockCreditoEficazSchema,
   registerCreditoEficazPaymentSchema,
+  setCreditoEficazExposureLimitSchema,
+  setCreditoEficazMaxInstallmentsSchema,
   type ApproveCreditoEficazApplicationInput,
   type RejectCreditoEficazApplicationInput,
   type RequestCreditoEficazInfoInput,
   type SetCreditoEficazLimitInput,
   type BlockCreditoEficazInput,
   type RegisterCreditoEficazPaymentInput,
+  type SetCreditoEficazExposureLimitFormValues,
+  type SetCreditoEficazMaxInstallmentsInput,
 } from "@/lib/validations/credito-eficaz";
 import {
   approveApplication,
@@ -29,6 +33,9 @@ import {
   unblockCustomerCredit,
   adminResetCreditoEficazPin,
   registerManualPayment,
+  setCreditoEficazExposureLimit,
+  setCreditoEficazPaused,
+  setCreditoEficazMaxInstallments,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
 
 const PERMISSION_ERROR = "Seu perfil não tem permissão para gerenciar o Crédito Eficaz.";
@@ -50,7 +57,8 @@ export async function approveApplicationAction(applicationId: string, input: App
     applicationId,
     user.id,
     parsed.data.limitAmount,
-    parsed.data.note || null
+    parsed.data.note || null,
+    parsed.data.wave || null
   );
   if (!result.ok) return { error: result.error };
 
@@ -272,4 +280,77 @@ export async function registerCreditoEficazPaymentAction(
 
   revalidatePath(`/clientes/${customerId}`);
   return { success: "Pagamento registrado." };
+}
+
+export async function setCreditoEficazExposureLimitAction(input: SetCreditoEficazExposureLimitFormValues) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = setCreditoEficazExposureLimitSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const result = await setCreditoEficazExposureLimit(user.tenantId, parsed.data.limit);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.exposure_limit_change",
+    entity: "Tenant",
+    entityId: user.tenantId,
+    description:
+      parsed.data.limit == null
+        ? "Removeu o teto global do Crédito Eficaz (sem teto configurado)."
+        : `Definiu o teto global do Crédito Eficaz em ${formatBRL(parsed.data.limit)}.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  return { success: "Teto global atualizado." };
+}
+
+export async function setCreditoEficazPausedAction(paused: boolean) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const result = await setCreditoEficazPaused(user.tenantId, paused);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.pause_toggle",
+    entity: "Tenant",
+    entityId: user.tenantId,
+    description: `${paused ? "Pausou" : "Despausou"} novas utilizações do Crédito Eficaz.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  revalidatePath("/pdv");
+  return { success: paused ? "Crédito Eficaz pausado." : "Crédito Eficaz despausado." };
+}
+
+export async function setCreditoEficazMaxInstallmentsAction(input: SetCreditoEficazMaxInstallmentsInput) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = setCreditoEficazMaxInstallmentsSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const result = await setCreditoEficazMaxInstallments(user.tenantId, parsed.data.maxInstallments);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.max_installments_change",
+    entity: "Tenant",
+    entityId: user.tenantId,
+    description: `Definiu o máximo de ${parsed.data.maxInstallments} parcela(s) pro financiamento de OS com Crédito Eficaz.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  return { success: "Configuração de parcelas atualizada." };
 }

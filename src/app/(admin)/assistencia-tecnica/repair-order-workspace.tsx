@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
 import { MixedPaymentPanel, type PaymentPanelSlot } from "@/components/payments/mixed-payment-panel";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatDate } from "@/lib/format";
 import {
   PAYMENT_SLOTS,
   EMPTY_PAYMENT_AMOUNTS,
@@ -21,21 +21,6 @@ import {
   type PaymentAmounts,
 } from "@/lib/payment-slots";
 
-/**
- * Formas aceitas no acerto financeiro da Assistência Técnica — Crédito
- * Eficaz ainda não chegou aqui (só no PDV, ver `credito_eficaz` desabilitado
- * acima em `paymentSlots`); filtra fora pra bater com o schema mais estrito
- * de `repair-payment.ts`, que nunca teve esse método adicionado.
- */
-type RepairPaymentEntry = {
-  method: "CASH" | "PIX" | "DEBIT" | "CREDIT" | "STORE_CREDIT" | "FIADO";
-  amount: number;
-};
-function toRepairPaymentEntries(amounts: PaymentAmounts): RepairPaymentEntry[] {
-  return toPaymentEntries(amounts).filter(
-    (entry): entry is RepairPaymentEntry => entry.method !== "CREDITO_EFICAZ"
-  );
-}
 import { searchCustomersAction } from "../clientes/actions";
 import { listActiveSellersAction, type PdvSellerOption } from "../pdv/actions";
 import {
@@ -62,6 +47,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CREDIT: "Cartão de Crédito",
   STORE_CREDIT: "Crédito de loja",
   FIADO: "Fiado",
+  CREDITO_EFICAZ: "Crédito Eficaz",
 };
 
 /** Status escolhíveis livremente no seletor — "Entregue" só acontece pelo
@@ -86,6 +72,8 @@ type CustomerOption = {
   document: string | null;
   phone: string | null;
   creditBalance: number;
+  creditoEficazAvailableAmount: number;
+  creditoEficazBlocked: boolean;
 };
 
 type HistoryEvent = { id: string; message: string; createdAt: string };
@@ -101,6 +89,20 @@ export type RepairOrderFinancialsView = {
     amount: number;
     createdAt: string;
     createdByName: string;
+  }[];
+};
+
+/** Parcelas de um financiamento de Crédito Eficaz já registrado nesta OS. */
+export type CreditoEficazFinancingView = {
+  installments: {
+    id: string;
+    installmentNumber: number | null;
+    installmentCount: number | null;
+    amount: number;
+    paidAmount: number;
+    dueDate: string;
+    status: "OPEN" | "PAID" | "CANCELLED";
+    overdue: boolean;
   }[];
 };
 
@@ -161,6 +163,8 @@ export function RepairOrderWorkspace({
   canGrantCourtesy,
   canCancelWithoutBilling,
   warrantyOriginal,
+  creditoEficazMaxInstallments = 3,
+  creditoEficazFinancing = null,
 }: {
   defaults: RepairOrderDefaults;
   meta?: RepairOrderMeta;
@@ -178,6 +182,12 @@ export function RepairOrderWorkspace({
   canCancelWithoutBilling: boolean;
   /** Só na criação, vindo de "Acionar garantia" numa OS já entregue. */
   warrantyOriginal?: WarrantyOriginalInfo;
+  /** Máximo de parcelas ao financiar o saldo com Crédito Eficaz — só importa
+   *  com a OS já salva (pagamento não existe na criação), por isso opcional
+   *  com valor padrão nas telas de criação, que nunca renderizam o painel. */
+  creditoEficazMaxInstallments?: number;
+  /** Presente só quando esta OS já tem um financiamento de Crédito Eficaz registrado. */
+  creditoEficazFinancing?: CreditoEficazFinancingView | null;
 }) {
   const router = useRouter();
   const isEditing = Boolean(meta);
@@ -230,12 +240,18 @@ export function RepairOrderWorkspace({
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentAmounts, setPaymentAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [paymentFiadoDueDate, setPaymentFiadoDueDate] = useState("");
+  const [paymentCreditoEficazPin, setPaymentCreditoEficazPin] = useState("");
+  const [paymentCreditoEficazInstallments, setPaymentCreditoEficazInstallments] = useState(1);
+  const [paymentCreditoEficazWouldBeLost, setPaymentCreditoEficazWouldBeLost] = useState(false);
   const [isReceivingPayment, startReceivePaymentTransition] = useTransition();
 
   // Acerto financeiro da entrega.
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
   const [deliveryAmounts, setDeliveryAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [deliveryFiadoDueDate, setDeliveryFiadoDueDate] = useState("");
+  const [deliveryCreditoEficazPin, setDeliveryCreditoEficazPin] = useState("");
+  const [deliveryCreditoEficazInstallments, setDeliveryCreditoEficazInstallments] = useState(1);
+  const [deliveryCreditoEficazWouldBeLost, setDeliveryCreditoEficazWouldBeLost] = useState(false);
   const [isDelivering, startDeliverTransition] = useTransition();
 
   // Cortesia administrativa.
@@ -256,7 +272,7 @@ export function RepairOrderWorkspace({
         : slot.key === "fiado"
           ? canFiado && !!customer
           : slot.key === "credito_eficaz"
-            ? false
+            ? !!customer && customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked
             : true;
     return {
       key: slot.key,
@@ -268,15 +284,19 @@ export function RepairOrderWorkspace({
           : slot.key === "fiado"
             ? "Selecione um cliente elegível para fiado"
             : slot.key === "credito_eficaz"
-              ? "Crédito Eficaz ainda não disponível na Assistência Técnica"
+              ? customer?.creditoEficazBlocked
+                ? "Crédito Eficaz bloqueado para este cliente"
+                : "Cliente sem Crédito Eficaz disponível"
               : undefined,
     };
   });
 
   const paymentEntered = sumPaymentAmounts(paymentAmounts);
   const paymentHasFiado = (paymentAmounts.fiado || 0) > 0;
+  const paymentHasCreditoEficaz = (paymentAmounts.credito_eficaz || 0) > 0;
   const deliveryEntered = sumPaymentAmounts(deliveryAmounts);
   const deliveryHasFiado = (deliveryAmounts.fiado || 0) > 0;
+  const deliveryHasCreditoEficaz = (deliveryAmounts.credito_eficaz || 0) > 0;
 
   function handleReceivePayment() {
     if (!meta) return;
@@ -291,11 +311,18 @@ export function RepairOrderWorkspace({
       setError("Informe a data prevista de pagamento do fiado.");
       return;
     }
+    if (paymentHasCreditoEficaz && !/^\d{4}$/.test(paymentCreditoEficazPin)) {
+      setError("Informe o PIN de 4 dígitos do Crédito Eficaz.");
+      return;
+    }
 
     startReceivePaymentTransition(async () => {
       const result = await receiveRepairOrderPaymentAction(meta.id, {
-        payments: toRepairPaymentEntries(paymentAmounts),
+        payments: toPaymentEntries(paymentAmounts),
         fiadoDueDate: paymentHasFiado ? paymentFiadoDueDate : undefined,
+        creditoEficazPin: paymentHasCreditoEficaz ? paymentCreditoEficazPin : undefined,
+        creditoEficazInstallments: paymentHasCreditoEficaz ? paymentCreditoEficazInstallments : undefined,
+        creditoEficazWouldBeLost: paymentHasCreditoEficaz ? paymentCreditoEficazWouldBeLost : undefined,
       });
       if (result?.error) {
         setError(result.error);
@@ -305,6 +332,9 @@ export function RepairOrderWorkspace({
       setShowPaymentForm(false);
       setPaymentAmounts(EMPTY_PAYMENT_AMOUNTS);
       setPaymentFiadoDueDate("");
+      setPaymentCreditoEficazPin("");
+      setPaymentCreditoEficazInstallments(1);
+      setPaymentCreditoEficazWouldBeLost(false);
       router.refresh();
     });
   }
@@ -325,12 +355,19 @@ export function RepairOrderWorkspace({
         setError("Informe a data prevista de pagamento do fiado.");
         return;
       }
+      if (deliveryHasCreditoEficaz && !/^\d{4}$/.test(deliveryCreditoEficazPin)) {
+        setError("Informe o PIN de 4 dígitos do Crédito Eficaz.");
+        return;
+      }
     }
 
     startDeliverTransition(async () => {
       const result = await deliverRepairOrderAction(meta.id, {
-        payments: financials.balance > 0.005 ? toRepairPaymentEntries(deliveryAmounts) : [],
+        payments: financials.balance > 0.005 ? toPaymentEntries(deliveryAmounts) : [],
         fiadoDueDate: deliveryHasFiado ? deliveryFiadoDueDate : undefined,
+        creditoEficazPin: deliveryHasCreditoEficaz ? deliveryCreditoEficazPin : undefined,
+        creditoEficazInstallments: deliveryHasCreditoEficaz ? deliveryCreditoEficazInstallments : undefined,
+        creditoEficazWouldBeLost: deliveryHasCreditoEficaz ? deliveryCreditoEficazWouldBeLost : undefined,
       });
       if (result?.error) {
         setError(result.error);
@@ -340,6 +377,9 @@ export function RepairOrderWorkspace({
       setShowDeliveryForm(false);
       setDeliveryAmounts(EMPTY_PAYMENT_AMOUNTS);
       setDeliveryFiadoDueDate("");
+      setDeliveryCreditoEficazPin("");
+      setDeliveryCreditoEficazInstallments(1);
+      setDeliveryCreditoEficazWouldBeLost(false);
       setStatus("DELIVERED");
       router.refresh();
     });
@@ -1032,6 +1072,47 @@ export function RepairOrderWorkspace({
                 </div>
               </div>
 
+              {creditoEficazFinancing && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+                  <p className="mb-2 text-sm font-semibold text-slate-900">Financiado com Crédito Eficaz</p>
+                  <div className="space-y-1 text-sm">
+                    {creditoEficazFinancing.installments.map((installment) => (
+                      <div key={installment.id} className="flex items-center justify-between gap-2">
+                        <span className="text-slate-600">
+                          {installment.installmentNumber && installment.installmentCount
+                            ? `Parcela ${installment.installmentNumber}/${installment.installmentCount}`
+                            : "Parcela"}{" "}
+                          — venc. {formatDate(new Date(installment.dueDate))}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900">{formatBRL(installment.amount)}</span>
+                          <span
+                            className={clsx(
+                              "rounded px-2 py-0.5 text-xs",
+                              installment.status === "PAID"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : installment.status === "CANCELLED"
+                                  ? "bg-slate-100 text-slate-500"
+                                  : installment.overdue
+                                    ? "bg-red-50 text-red-700"
+                                    : "bg-amber-50 text-amber-700"
+                            )}
+                          >
+                            {installment.status === "PAID"
+                              ? "Pago"
+                              : installment.status === "CANCELLED"
+                                ? "Cancelado (estornado)"
+                                : installment.overdue
+                                  ? "Vencido"
+                                  : "Em aberto"}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {financials && (
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
                   <p className="mb-2 text-sm font-semibold text-slate-900">Financeiro da OS</p>
@@ -1099,6 +1180,47 @@ export function RepairOrderWorkspace({
                                 onChange={(e) => setPaymentFiadoDueDate(e.target.value)}
                                 className="h-8 w-full rounded border border-border bg-surface px-2 text-sm text-foreground"
                               />
+                            </div>
+                          )}
+                          {paymentHasCreditoEficaz && (
+                            <div className="mt-2 space-y-2 rounded-md bg-warning/10 p-2">
+                              <div>
+                                <Label htmlFor="payment-credito-eficaz-pin">PIN do Crédito Eficaz (peça ao cliente)</Label>
+                                <input
+                                  id="payment-credito-eficaz-pin"
+                                  type="password"
+                                  inputMode="numeric"
+                                  maxLength={4}
+                                  value={paymentCreditoEficazPin}
+                                  onChange={(e) =>
+                                    setPaymentCreditoEficazPin(e.target.value.replace(/\D/g, "").slice(0, 4))
+                                  }
+                                  className="h-8 w-28 rounded border border-border bg-surface px-2 text-sm tracking-widest text-foreground"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="payment-credito-eficaz-installments">Número de parcelas</Label>
+                                <Select
+                                  id="payment-credito-eficaz-installments"
+                                  value={String(paymentCreditoEficazInstallments)}
+                                  onChange={(e) => setPaymentCreditoEficazInstallments(Number(e.target.value))}
+                                  className="h-8 w-full"
+                                >
+                                  {Array.from({ length: creditoEficazMaxInstallments }, (_, i) => i + 1).map((n) => (
+                                    <option key={n} value={n}>
+                                      {n}x
+                                    </option>
+                                  ))}
+                                </Select>
+                              </div>
+                              <label className="flex items-center gap-2 text-xs text-text-muted">
+                                <input
+                                  type="checkbox"
+                                  checked={paymentCreditoEficazWouldBeLost}
+                                  onChange={(e) => setPaymentCreditoEficazWouldBeLost(e.target.checked)}
+                                />
+                                Esse serviço provavelmente seria perdido sem o Crédito Eficaz?
+                              </label>
                             </div>
                           )}
                           <div className="mt-3 flex gap-2">
@@ -1180,6 +1302,47 @@ export function RepairOrderWorkspace({
                             onChange={(e) => setDeliveryFiadoDueDate(e.target.value)}
                             className="h-8 w-full rounded border border-border bg-surface px-2 text-sm text-foreground"
                           />
+                        </div>
+                      )}
+                      {deliveryHasCreditoEficaz && (
+                        <div className="mt-2 space-y-2 rounded-md bg-warning/10 p-2">
+                          <div>
+                            <Label htmlFor="delivery-credito-eficaz-pin">PIN do Crédito Eficaz (peça ao cliente)</Label>
+                            <input
+                              id="delivery-credito-eficaz-pin"
+                              type="password"
+                              inputMode="numeric"
+                              maxLength={4}
+                              value={deliveryCreditoEficazPin}
+                              onChange={(e) =>
+                                setDeliveryCreditoEficazPin(e.target.value.replace(/\D/g, "").slice(0, 4))
+                              }
+                              className="h-8 w-28 rounded border border-border bg-surface px-2 text-sm tracking-widest text-foreground"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="delivery-credito-eficaz-installments">Número de parcelas</Label>
+                            <Select
+                              id="delivery-credito-eficaz-installments"
+                              value={String(deliveryCreditoEficazInstallments)}
+                              onChange={(e) => setDeliveryCreditoEficazInstallments(Number(e.target.value))}
+                              className="h-8 w-full"
+                            >
+                              {Array.from({ length: creditoEficazMaxInstallments }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>
+                                  {n}x
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs text-text-muted">
+                            <input
+                              type="checkbox"
+                              checked={deliveryCreditoEficazWouldBeLost}
+                              onChange={(e) => setDeliveryCreditoEficazWouldBeLost(e.target.checked)}
+                            />
+                            Esse serviço provavelmente seria perdido sem o Crédito Eficaz?
+                          </label>
                         </div>
                       )}
                       <div className="mt-3 flex gap-2">

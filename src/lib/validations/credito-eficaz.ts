@@ -27,6 +27,8 @@ export const CREDITO_EFICAZ_TERMS_VERSION = "v1";
 export const approveCreditoEficazApplicationSchema = z.object({
   limitAmount: z.coerce.number().positive("Informe um limite maior que zero."),
   note: z.string().trim().max(500).optional().or(z.literal("")),
+  /** Onda/lote de entrada no programa (Adendo) — texto livre, opcional. */
+  wave: z.string().trim().max(60).optional().or(z.literal("")),
 });
 export type ApproveCreditoEficazApplicationInput = z.infer<typeof approveCreditoEficazApplicationSchema>;
 
@@ -58,3 +60,21 @@ export const registerCreditoEficazPaymentSchema = z.object({
   method: z.string().trim().min(1, "Informe a forma de recebimento."),
 });
 export type RegisterCreditoEficazPaymentInput = z.infer<typeof registerCreditoEficazPaymentSchema>;
+
+/** Teto global de exposição (Adendo) — string vazia desliga a trava (`null`). */
+export const setCreditoEficazExposureLimitSchema = z.object({
+  limit: z
+    .union([z.literal(""), z.coerce.number().min(0, "O teto não pode ser negativo.")])
+    .transform((v) => (v === "" ? null : v)),
+});
+export type SetCreditoEficazExposureLimitInput = z.infer<typeof setCreditoEficazExposureLimitSchema>;
+export type SetCreditoEficazExposureLimitFormValues = z.input<typeof setCreditoEficazExposureLimitSchema>;
+
+export const setCreditoEficazMaxInstallmentsSchema = z.object({
+  maxInstallments: z.coerce
+    .number()
+    .int()
+    .min(1, "Mínimo 1 parcela.")
+    .max(12, "Máximo 12 parcelas."),
+});
+export type SetCreditoEficazMaxInstallmentsInput = z.infer<typeof setCreditoEficazMaxInstallmentsSchema>;

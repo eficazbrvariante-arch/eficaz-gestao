@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { startOfMonthISO, todayISO } from "@/lib/format";
 
 /**
  * Custo do bcrypt pro PIN de confirmação — mesmo custo usado pra senha de
@@ -263,7 +264,9 @@ export async function approveApplication(
   applicationId: string,
   adminUserId: string,
   limitAmount: number,
-  note?: string | null
+  note?: string | null,
+  /** Onda/lote de entrada no programa (Adendo) — texto livre, opcional. */
+  wave?: string | null
 ): Promise<SimpleResult> {
   if (limitAmount <= 0) return { ok: false, error: "O limite precisa ser maior que zero." };
 
@@ -295,6 +298,7 @@ export async function approveApplication(
         reviewedById: adminUserId,
         reviewedAt: new Date(),
         decisionNote: note ?? null,
+        wave: wave || null,
       },
     });
     return { ok: true };
@@ -377,6 +381,38 @@ export async function adminResetCreditoEficazPin(
 }
 
 // ---------------------------------------------------------------------------
+// Configuração do programa (Adendo — controle e saúde da carteira)
+// ---------------------------------------------------------------------------
+
+/** Teto global de exposição — `null` desliga a trava (comportamento de antes do Adendo). */
+export async function setCreditoEficazExposureLimit(
+  tenantId: string,
+  limit: number | null
+): Promise<SimpleResult> {
+  if (limit != null && limit < 0) return { ok: false, error: "O teto não pode ser negativo." };
+  await prisma.tenant.update({ where: { id: tenantId }, data: { creditoEficazExposureLimit: limit } });
+  return { ok: true };
+}
+
+/** Pausa de emergência — bloqueia só novo débito (ver `debitCreditoEficazInTx`), nunca o que já existe. */
+export async function setCreditoEficazPaused(tenantId: string, paused: boolean): Promise<SimpleResult> {
+  await prisma.tenant.update({ where: { id: tenantId }, data: { creditoEficazPaused: paused } });
+  return { ok: true };
+}
+
+/** Parcelas máximas ao financiar o saldo de uma OS — nunca hardcoded na tela (Adendo). */
+export async function setCreditoEficazMaxInstallments(
+  tenantId: string,
+  maxInstallments: number
+): Promise<SimpleResult> {
+  if (!Number.isInteger(maxInstallments) || maxInstallments < 1 || maxInstallments > 12) {
+    return { ok: false, error: "Informe um número de parcelas entre 1 e 12." };
+  }
+  await prisma.tenant.update({ where: { id: tenantId }, data: { creditoEficazMaxInstallments: maxInstallments } });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Uso no PDV (débito atômico) — chamado por `sale-service.ts` (Fase 6)
 // ---------------------------------------------------------------------------
 
@@ -399,6 +435,39 @@ export async function debitCreditoEficazInTx(
   customerId: string,
   amount: number
 ): Promise<DebitCreditoEficazResult> {
+  // Pausa de emergência (Adendo — "botão de pausa"): bloqueia só NOVO
+  // débito, aqui, no único choque-lugar por onde toda utilização passa
+  // (PDV e financiamento de OS). Pagamentos/estornos/consulta continuam
+  // funcionando normalmente, sem passar por aqui.
+  const tenant = await tx.tenant.findUniqueOrThrow({
+    where: { id: tenantId },
+    select: { creditoEficazPaused: true, creditoEficazExposureLimit: true },
+  });
+  if (tenant.creditoEficazPaused) {
+    return { ok: false, error: "Novas utilizações do Crédito Eficaz estão pausadas no momento." };
+  }
+
+  // Teto global de exposição (Adendo): simplificação deliberada — lê a
+  // exposição agregada AO VIVO dentro desta transação (não é um contador
+  // mantido à parte). Protege contra o caso comum (uma utilização de cada
+  // vez); numa disputa rara entre CLIENTES DIFERENTES no mesmíssimo
+  // instante, o teto pode ser cruzado por um valor pequeno antes de
+  // estabilizar — aceitável no volume de um piloto com poucos clientes e
+  // aprovação manual (decisão confirmada com o usuário).
+  if (tenant.creditoEficazExposureLimit != null) {
+    const exposureAgg = await tx.customer.aggregate({
+      where: { tenantId },
+      _sum: { creditoEficazLimitAmount: true, creditoEficazAvailableAmount: true },
+    });
+    const currentExposure = round2(
+      Number(exposureAgg._sum.creditoEficazLimitAmount ?? 0) -
+        Number(exposureAgg._sum.creditoEficazAvailableAmount ?? 0)
+    );
+    if (round2(currentExposure + amount) > Number(tenant.creditoEficazExposureLimit) + 0.005) {
+      return { ok: false, error: "Teto global do programa Crédito Eficaz atingido." };
+    }
+  }
+
   const before = await tx.customer.findFirst({
     where: { id: customerId, tenantId },
     select: { creditoEficazAvailableAmount: true },
@@ -498,6 +567,122 @@ export async function reverseCreditoEficazUsageInTx(
     data: { creditoEficazAvailableAmount: { increment: Number(usage.amount) } },
   });
   await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "CANCELLED" } });
+}
+
+// ---------------------------------------------------------------------------
+// Crédito Eficaz na Assistência Técnica (Adendo) — financiamento de OS
+// ---------------------------------------------------------------------------
+
+export type FinanceRepairOrderResult =
+  | { ok: true; financingId: string; usageIds: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Financia o SALDO de uma OS com Crédito Eficaz: debita a SOMA das
+ * parcelas de uma vez só (reusa `debitCreditoEficazInTx` — mesmo guard de
+ * pausa/teto/saldo/bloqueio de qualquer outro débito), cria o "contrato"
+ * (`CreditoEficazServiceFinancing`) e uma `CreditoEficazUsage` por parcela.
+ * Chamado por `repair-payment-service.ts`, sempre DEPOIS de já ter criado
+ * o `RepairOrderPayment` que fecha o saldo da OS na hora (mesmo padrão já
+ * usado por `FIADO` — a OS pode ser entregue mesmo com o dinheiro ainda
+ * por vir, porque a promessa de pagamento já está registrada).
+ */
+export async function financeRepairOrderBalanceInTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    tenantId: string;
+    customerId: string;
+    repairOrderId: string;
+    totalAmount: number;
+    downPayment: number;
+    installments: { amount: number; dueDate: Date }[];
+    createdById: string;
+    wouldBeLostWithoutCredit?: boolean | null;
+  }
+): Promise<FinanceRepairOrderResult> {
+  const financedAmount = round2(params.installments.reduce((sum, i) => sum + i.amount, 0));
+  if (financedAmount <= 0) return { ok: false, error: "Nenhum valor a financiar." };
+
+  const debited = await debitCreditoEficazInTx(tx, params.tenantId, params.customerId, financedAmount);
+  if (!debited.ok) return debited;
+
+  const financing = await tx.creditoEficazServiceFinancing.create({
+    data: {
+      tenantId: params.tenantId,
+      repairOrderId: params.repairOrderId,
+      customerId: params.customerId,
+      totalAmount: params.totalAmount,
+      downPayment: params.downPayment,
+      financedAmount,
+      installmentCount: params.installments.length,
+      wouldBeLostWithoutCredit: params.wouldBeLostWithoutCredit ?? null,
+      createdById: params.createdById,
+    },
+    select: { id: true },
+  });
+
+  const usageIds: string[] = [];
+  for (const [index, installment] of params.installments.entries()) {
+    const usage = await tx.creditoEficazUsage.create({
+      data: {
+        tenantId: params.tenantId,
+        customerId: params.customerId,
+        financingId: financing.id,
+        installmentNumber: index + 1,
+        installmentCount: params.installments.length,
+        amount: installment.amount,
+        // Snapshot do débito único que cobriu todas as parcelas — não é
+        // "antes/depois desta parcela específica", é o antes/depois do
+        // financiamento inteiro (simplificação deliberada, mesmo espírito
+        // de outras simplificações já documentadas neste módulo).
+        availableBefore: debited.availableBefore,
+        availableAfter: debited.availableAfter,
+        dueDate: installment.dueDate,
+        operatorId: params.createdById,
+      },
+      select: { id: true },
+    });
+    usageIds.push(usage.id);
+  }
+
+  return { ok: true, financingId: financing.id, usageIds };
+}
+
+/**
+ * Cortesia numa OS com financiamento ativo (Adendo): devolve ao disponível
+ * só a fatia AINDA NÃO PAGA de cada parcela `OPEN` (nunca mexe em parcela
+ * já `PAID` nem devolve o que já foi recebido) e marca como `CANCELLED` —
+ * coerente com "o serviço foi de graça, o cliente não continua devendo por
+ * ele". Chamado por `grantRepairOrderCourtesy` antes de aplicar o desconto
+ * de cortesia na OS. Sem financiamento pra essa OS, não faz nada.
+ */
+export async function reverseServiceFinancingInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  repairOrderId: string
+): Promise<void> {
+  const financing = await tx.creditoEficazServiceFinancing.findFirst({
+    where: { tenantId, repairOrderId },
+    select: { id: true },
+  });
+  if (!financing) return;
+
+  const openUsages = await tx.creditoEficazUsage.findMany({
+    where: { financingId: financing.id, status: "OPEN" },
+    select: { id: true, customerId: true, amount: true, payments: { select: { amount: true } } },
+  });
+
+  for (const usage of openUsages) {
+    const alreadyPaid = usage.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const remaining = round2(Number(usage.amount) - alreadyPaid);
+    if (remaining > 0) {
+      await tx.customer.update({
+        where: { id: usage.customerId },
+        data: { creditoEficazAvailableAmount: { increment: remaining } },
+      });
+    }
+    await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "CANCELLED" } });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +855,200 @@ export async function getExposureSummary(tenantId: string): Promise<CreditoEfica
   };
 }
 
+export type PortfolioHealth = {
+  approvedCustomers: number;
+  /** Clientes com algo efetivamente usado (limite &gt; disponível) agora. */
+  activeCustomers: number;
+  totalLimit: number;
+  totalUsed: number;
+  totalAvailable: number;
+  totalOpen: number;
+  totalOverdue: number;
+  totalUpcoming: number;
+  totalReceived: number;
+  /** `totalOverdue / totalUsed × 100` — 0 quando nada foi usado ainda. */
+  overduePercent: number;
+  averageTicket: number;
+  /** Média da entrada nos financiamentos de OS que já tiveram entrada &gt; 0. */
+  averageDownPayment: number;
+  averageTermDays: number;
+  paidOnTimeCount: number;
+  paidLateCount: number;
+  openCount: number;
+  overdueCount: number;
+};
+
+/**
+ * "Saúde do Crédito Eficaz" (Adendo) — pra olhar por poucos segundos e
+ * entender o estado da carteira. Tudo derivado das tabelas existentes
+ * (uso, pagamento, financiamento) — nenhum campo de "score" ou avaliação
+ * subjetiva. Pontualidade é sempre baseada em fato observado: cada
+ * pagamento comparado ao vencimento da parcela que ele quitou.
+ */
+export async function getPortfolioHealth(tenantId: string): Promise<PortfolioHealth> {
+  const [customers, usages, financings, paymentsAgg] = await Promise.all([
+    prisma.customer.findMany({
+      where: { tenantId, creditoEficazLimitAmount: { gt: 0 } },
+      select: { creditoEficazLimitAmount: true, creditoEficazAvailableAmount: true },
+    }),
+    prisma.creditoEficazUsage.findMany({
+      where: { tenantId },
+      select: {
+        amount: true,
+        status: true,
+        dueDate: true,
+        createdAt: true,
+        payments: { select: { amount: true, paidAt: true } },
+      },
+    }),
+    prisma.creditoEficazServiceFinancing.findMany({ where: { tenantId }, select: { downPayment: true } }),
+    prisma.creditoEficazPayment.aggregate({ where: { tenantId }, _sum: { amount: true } }),
+  ]);
+
+  const totalLimit = round2(customers.reduce((sum, c) => sum + Number(c.creditoEficazLimitAmount), 0));
+  const totalAvailable = round2(customers.reduce((sum, c) => sum + Number(c.creditoEficazAvailableAmount), 0));
+  const totalUsed = round2(totalLimit - totalAvailable);
+  const activeCustomers = customers.filter(
+    (c) => Number(c.creditoEficazLimitAmount) > Number(c.creditoEficazAvailableAmount)
+  ).length;
+
+  const now = new Date();
+  let totalOpen = 0;
+  let totalOverdue = 0;
+  let openCount = 0;
+  let overdueCount = 0;
+  let paidOnTimeCount = 0;
+  let paidLateCount = 0;
+  let termDaysSum = 0;
+
+  for (const usage of usages) {
+    const paidSum = usage.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const remaining = round2(Number(usage.amount) - paidSum);
+    termDaysSum += Math.max(
+      0,
+      Math.round((usage.dueDate.getTime() - usage.createdAt.getTime()) / (24 * 60 * 60 * 1000))
+    );
+
+    if (usage.status === "OPEN" && remaining > 0.005) {
+      totalOpen = round2(totalOpen + remaining);
+      openCount += 1;
+      if (usage.dueDate < now) {
+        totalOverdue = round2(totalOverdue + remaining);
+        overdueCount += 1;
+      }
+    }
+
+    for (const payment of usage.payments) {
+      if (payment.paidAt <= usage.dueDate) paidOnTimeCount += 1;
+      else paidLateCount += 1;
+    }
+  }
+
+  const downPayments = financings.map((f) => Number(f.downPayment)).filter((v) => v > 0);
+
+  return {
+    approvedCustomers: customers.length,
+    activeCustomers,
+    totalLimit,
+    totalUsed,
+    totalAvailable,
+    totalOpen,
+    totalOverdue,
+    totalUpcoming: round2(totalOpen - totalOverdue),
+    totalReceived: round2(Number(paymentsAgg._sum.amount ?? 0)),
+    overduePercent: totalUsed > 0 ? round2((totalOverdue / totalUsed) * 100) : 0,
+    averageTicket: usages.length > 0 ? round2(usages.reduce((sum, u) => sum + Number(u.amount), 0) / usages.length) : 0,
+    averageDownPayment:
+      downPayments.length > 0 ? round2(downPayments.reduce((sum, v) => sum + v, 0) / downPayments.length) : 0,
+    averageTermDays: usages.length > 0 ? Math.round(termDaysSum / usages.length) : 0,
+    paidOnTimeCount,
+    paidLateCount,
+    openCount,
+    overdueCount,
+  };
+}
+
+export type CreditCohort = {
+  monthStartISO: string;
+  approvedCustomers: number;
+  totalUsed: number;
+  totalReceived: number;
+  totalUpcoming: number;
+  totalOverdue: number;
+};
+
+/**
+ * Safra/coorte por mês de APROVAÇÃO (Adendo, item 14) — agrupa clientes
+ * pelo mês em que a solicitação foi aprovada, soma o uso de todos eles.
+ * Não existe precedente de `groupBy` por data no projeto — segue o mesmo
+ * estilo de `commission-tier-service.ts` (mês a mês, agregado em JS).
+ */
+export async function getCreditCohorts(tenantId: string): Promise<CreditCohort[]> {
+  const applications = await prisma.creditoEficazApplication.findMany({
+    where: { tenantId, status: "APPROVED", reviewedAt: { not: null } },
+    select: { customerId: true, reviewedAt: true },
+  });
+  if (applications.length === 0) return [];
+
+  const customerIdsByMonth = new Map<string, Set<string>>();
+  for (const application of applications) {
+    const monthStartISO = startOfMonthISO(todayISO(application.reviewedAt!));
+    const set = customerIdsByMonth.get(monthStartISO) ?? new Set<string>();
+    set.add(application.customerId);
+    customerIdsByMonth.set(monthStartISO, set);
+  }
+
+  const allCustomerIds = [...new Set(applications.map((a) => a.customerId))];
+  const usages = await prisma.creditoEficazUsage.findMany({
+    where: { tenantId, customerId: { in: allCustomerIds } },
+    select: {
+      customerId: true,
+      amount: true,
+      status: true,
+      dueDate: true,
+      payments: { select: { amount: true } },
+    },
+  });
+  const usagesByCustomer = new Map<string, typeof usages>();
+  for (const usage of usages) {
+    const list = usagesByCustomer.get(usage.customerId);
+    if (list) list.push(usage);
+    else usagesByCustomer.set(usage.customerId, [usage]);
+  }
+
+  const now = new Date();
+  const cohorts: CreditCohort[] = [];
+  for (const [monthStartISO, customerIdSet] of [...customerIdsByMonth.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0])
+  )) {
+    let totalUsed = 0;
+    let totalReceived = 0;
+    let totalOpen = 0;
+    let totalOverdue = 0;
+    for (const customerId of customerIdSet) {
+      for (const usage of usagesByCustomer.get(customerId) ?? []) {
+        const paid = usage.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+        totalUsed = round2(totalUsed + Number(usage.amount));
+        totalReceived = round2(totalReceived + paid);
+        if (usage.status === "OPEN") {
+          const remaining = round2(Number(usage.amount) - paid);
+          totalOpen = round2(totalOpen + remaining);
+          if (usage.dueDate < now) totalOverdue = round2(totalOverdue + remaining);
+        }
+      }
+    }
+    cohorts.push({
+      monthStartISO,
+      approvedCustomers: customerIdSet.size,
+      totalUsed,
+      totalReceived,
+      totalUpcoming: round2(totalOpen - totalOverdue),
+      totalOverdue,
+    });
+  }
+  return cohorts;
+}
+
 /** Histórico do cliente — cada lista já vem ordenada; a tela compõe a linha do tempo. */
 export async function listCustomerLimitChanges(tenantId: string, customerId: string) {
   return prisma.creditoEficazLimitChange.findMany({
@@ -682,7 +1061,11 @@ export async function listCustomerLimitChanges(tenantId: string, customerId: str
 export async function listCustomerUsages(tenantId: string, customerId: string) {
   return prisma.creditoEficazUsage.findMany({
     where: { tenantId, customerId },
-    include: { payments: true, sale: { select: { number: true } } },
+    include: {
+      payments: true,
+      sale: { select: { number: true } },
+      financing: { select: { repairOrder: { select: { number: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
 }

@@ -3,6 +3,12 @@ import { Prisma } from "@/generated/prisma/client";
 import type { PaymentMethod } from "@/generated/prisma/enums";
 import { createFiadoEntry } from "@/modules/fiado/fiado-service";
 import { repairOrderTotal } from "./repair-order-service";
+import {
+  verifyCreditoEficazPin,
+  computeCreditoEficazDueDate,
+  financeRepairOrderBalanceInTx,
+  reverseServiceFinancingInTx,
+} from "@/modules/credito-eficaz/credito-eficaz-service";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
 const CENT = 0.005;
@@ -85,6 +91,12 @@ export type RepairPaymentContext = {
 export type RepairPaymentOptions = {
   /** Obrigatório só quando alguma das entradas é `FIADO`. */
   fiadoDueDate?: string;
+  /** Obrigatório só quando alguma das entradas é `CREDITO_EFICAZ` (Adendo). */
+  creditoEficazPin?: string;
+  /** Nº de parcelas do financiamento — default 1 se não informado. */
+  creditoEficazInstallments?: number;
+  /** Avaliação opcional do vendedor (Adendo, item 11) — nunca obrigatória. */
+  creditoEficazWouldBeLost?: boolean;
 };
 
 export type RepairPaymentResult = { ok: true } | { ok: false; error: string };
@@ -163,6 +175,22 @@ async function applyRepairOrderPayments(
         }
         if (!options.fiadoDueDate) {
           throw new RepairPaymentError("Informe a data prevista de pagamento do fiado.");
+        }
+      }
+
+      const creditoEficazAmount = round2(
+        realEntries.filter((e) => e.method === "CREDITO_EFICAZ").reduce((sum, e) => sum + e.amount, 0)
+      );
+      if (creditoEficazAmount > 0) {
+        if (!order.customerId) {
+          throw new RepairPaymentError("Selecione um cliente para usar o Crédito Eficaz.");
+        }
+        if (!options.creditoEficazPin) {
+          throw new RepairPaymentError("Informe o PIN do Crédito Eficaz.");
+        }
+        const pinValid = await verifyCreditoEficazPin(ctx.tenantId, order.customerId, options.creditoEficazPin);
+        if (!pinValid) {
+          throw new RepairPaymentError("PIN do Crédito Eficaz incorreto.");
         }
       }
 
@@ -249,6 +277,36 @@ async function applyRepairOrderPayments(
         );
       }
 
+      if (creditoEficazAmount > 0 && order.customerId) {
+        // Entrada = tudo que não veio do Crédito Eficaz (já pago antes +
+        // pago nesta mesma rodada) — sempre bate com `total - financedAmount`,
+        // inclusive quando a entrada foi registrada dias antes, num
+        // `receiveRepairOrderPayment` separado (ver `applyRepairOrderPayments`).
+        const downPayment = round2(total - creditoEficazAmount);
+        const installmentCount = Math.max(1, options.creditoEficazInstallments ?? 1);
+        const baseDueDate = await computeCreditoEficazDueDate(ctx.tenantId, order.customerId);
+        const perInstallment = round2(creditoEficazAmount / installmentCount);
+        const installments = Array.from({ length: installmentCount }, (_, index) => ({
+          amount:
+            index === installmentCount - 1
+              ? round2(creditoEficazAmount - perInstallment * (installmentCount - 1))
+              : perInstallment,
+          dueDate: new Date(baseDueDate.getTime() + index * 30 * 24 * 60 * 60 * 1000),
+        }));
+
+        const financed = await financeRepairOrderBalanceInTx(tx, {
+          tenantId: ctx.tenantId,
+          customerId: order.customerId,
+          repairOrderId,
+          totalAmount: total,
+          downPayment,
+          installments,
+          createdById: ctx.userId,
+          wouldBeLostWithoutCredit: options.creditoEficazWouldBeLost ?? null,
+        });
+        if (!financed.ok) throw new RepairPaymentError(financed.error);
+      }
+
       if (deliver) {
         await tx.repairOrder.update({
           where: { id: repairOrderId },
@@ -329,6 +387,13 @@ export type CourtesyResult = { ok: true } | { ok: false; error: string };
  * da OS (não gera um "pagamento" falso, que inflaria os relatórios de
  * faturamento). Só quem tem `canGrantRepairOrderCourtesy` chega a chamar
  * isso — a permissão é checada na action, não aqui.
+ *
+ * Adendo (Crédito Eficaz): uma OS financiada já fecha o `balance` da OS na
+ * hora (mesmo padrão de FIADO — a `RepairOrderPayment` de
+ * `CREDITO_EFICAZ` cobre o valor cheio), então a trava normal de "sem saldo
+ * pendente" não se aplica a ela. Cortesia numa OS financiada significa
+ * outra coisa: perdoar as parcelas ainda em aberto (`reverseServiceFinancingInTx`),
+ * nunca mexe no `discount` da OS (que já reflete o valor cheio faturado).
  */
 export async function grantRepairOrderCourtesy(
   ctx: { tenantId: string; userId: string },
@@ -355,8 +420,30 @@ export async function grantRepairOrderCourtesy(
       const alreadyPaid = round2(order.payments.reduce((sum, p) => sum + Number(p.amount), 0));
       const balance = round2(Math.max(0, total - alreadyPaid));
 
-      if (balance <= CENT) {
+      const financing = await tx.creditoEficazServiceFinancing.findFirst({
+        where: { tenantId: ctx.tenantId, repairOrderId },
+        select: { id: true },
+      });
+      const openInstallments = financing
+        ? await tx.creditoEficazUsage.count({ where: { financingId: financing.id, status: "OPEN" } })
+        : 0;
+
+      if (balance <= CENT && openInstallments === 0) {
         throw new RepairPaymentError("Esta OS não tem saldo pendente para dar cortesia.");
+      }
+
+      if (openInstallments > 0) {
+        // OS já financiada (balance já fechado pelo pagamento de Crédito
+        // Eficaz) — cortesia aqui perdoa as parcelas ainda não pagas, nunca
+        // mexe no `discount` (o valor faturado da OS continua o mesmo).
+        await reverseServiceFinancingInTx(tx, ctx.tenantId, repairOrderId);
+        await tx.repairOrderEvent.create({
+          data: {
+            repairOrderId,
+            message: `Cortesia administrativa: parcelas de Crédito Eficaz em aberto perdoadas. Motivo: ${reason}`,
+          },
+        });
+        return;
       }
 
       const newDiscount = round2(Number(order.discount) + balance);

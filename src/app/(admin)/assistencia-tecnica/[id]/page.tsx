@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format";
 import { getRepairOrderFinancials } from "@/modules/repairs/repair-payment-service";
 import {
   RepairOrderWorkspace,
+  type CreditoEficazFinancingView,
   type RepairOrderDefaults,
   type RepairOrderFinancialsView,
   type RepairOrderMeta,
@@ -33,11 +34,42 @@ export default async function OrdemServicoPage({
     );
   }
 
+  const tenant = await prisma.tenant.findUniqueOrThrow({
+    where: { id: user.tenantId },
+    select: { creditoEficazMaxInstallments: true },
+  });
+
+  const creditoEficazFinancingRaw = await prisma.creditoEficazServiceFinancing.findUnique({
+    where: { repairOrderId: id },
+    select: {
+      usages: {
+        select: {
+          id: true,
+          installmentNumber: true,
+          installmentCount: true,
+          amount: true,
+          dueDate: true,
+          status: true,
+          payments: { select: { amount: true } },
+        },
+        orderBy: { installmentNumber: "asc" },
+      },
+    },
+  });
+
   const order = await prisma.repairOrder.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
       customer: {
-        select: { id: true, name: true, document: true, phone: true, creditBalance: true },
+        select: {
+          id: true,
+          name: true,
+          document: true,
+          phone: true,
+          creditBalance: true,
+          creditoEficazAvailableAmount: true,
+          creditoEficazBlocked: true,
+        },
       },
       seller: { select: { id: true, name: true } },
       items: { select: { description: true, unitPrice: true, quantity: true } },
@@ -86,6 +118,8 @@ export default async function OrdemServicoPage({
           document: order.customer.document,
           phone: order.customer.phone,
           creditBalance: Number(order.customer.creditBalance),
+          creditoEficazAvailableAmount: Number(order.customer.creditoEficazAvailableAmount),
+          creditoEficazBlocked: order.customer.creditoEficazBlocked,
         }
       : null,
     seller: order.seller,
@@ -109,6 +143,19 @@ export default async function OrdemServicoPage({
       quantity: item.quantity,
     })),
     photoUrls: order.photos.map((photo) => photo.url),
+  };
+
+  const creditoEficazFinancing: CreditoEficazFinancingView | null = creditoEficazFinancingRaw && {
+    installments: creditoEficazFinancingRaw.usages.map((usage) => ({
+      id: usage.id,
+      installmentNumber: usage.installmentNumber,
+      installmentCount: usage.installmentCount,
+      amount: Number(usage.amount),
+      paidAmount: usage.payments.reduce((sum, p) => sum + Number(p.amount), 0),
+      dueDate: usage.dueDate.toISOString(),
+      status: usage.status,
+      overdue: usage.status === "OPEN" && usage.dueDate < new Date(),
+    })),
   };
 
   const meta: RepairOrderMeta = {
@@ -137,6 +184,8 @@ export default async function OrdemServicoPage({
       canFiado={canManageFiado(user.role)}
       canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
       canCancelWithoutBilling={canCancelRepairOrderWithoutBilling(user.role)}
+      creditoEficazMaxInstallments={tenant.creditoEficazMaxInstallments}
+      creditoEficazFinancing={creditoEficazFinancing}
     />
   );
 }

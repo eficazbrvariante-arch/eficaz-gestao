@@ -50,7 +50,10 @@ export type AuditAction =
   | "credito_eficaz.block"
   | "credito_eficaz.unblock"
   | "credito_eficaz.payment"
-  | "credito_eficaz.pin_reset";
+  | "credito_eficaz.pin_reset"
+  | "credito_eficaz.exposure_limit_change"
+  | "credito_eficaz.pause_toggle"
+  | "credito_eficaz.max_installments_change";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -95,6 +98,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "credito_eficaz.unblock": "Crédito Eficaz desbloqueado",
   "credito_eficaz.payment": "Pagamento de Crédito Eficaz registrado",
   "credito_eficaz.pin_reset": "PIN de Crédito Eficaz redefinido pelo Admin",
+  "credito_eficaz.exposure_limit_change": "Teto global do Crédito Eficaz alterado",
+  "credito_eficaz.pause_toggle": "Crédito Eficaz pausado/despausado",
+  "credito_eficaz.max_installments_change": "Máximo de parcelas do Crédito Eficaz alterado",
 };
 
 export type AuditEntry = {

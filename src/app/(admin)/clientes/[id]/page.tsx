@@ -56,6 +56,10 @@ export default async function FichaClientePage({
         createdAt: usage.createdAt,
         saleNumber: usage.sale?.number ?? null,
         paidAmount: usage.payments.reduce((sum, p) => sum + Number(p.amount), 0),
+        paymentDates: usage.payments.map((p) => p.paidAt),
+        installmentNumber: usage.installmentNumber,
+        installmentCount: usage.installmentCount,
+        repairOrderNumber: usage.financing?.repairOrder.number ?? null,
       }))
     : [];
   const fiadoRows = fiadoEntries.map((entry) => ({

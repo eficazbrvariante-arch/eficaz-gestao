@@ -108,6 +108,21 @@ model Tenant {
   /// — mesmo padrão dos contadores acima, incrementado atomicamente na
   /// transação que cria o cliente.
   customerSequence         Int                  @default(0)
+  /// Teto global de exposição do Crédito Eficaz (Adendo — saúde da
+  /// carteira): `null` = sem teto configurado (comportamento de hoje).
+  /// Quando configurado, nenhum novo débito pode fazer a exposição total
+  /// (soma de `limitAmount - availableAmount` de todos os clientes) passar
+  /// desse valor — checado dentro da própria transação de débito (ver
+  /// `debitCreditoEficazInTx`), não é um saldo mantido à parte.
+  creditoEficazExposureLimit Decimal?           @db.Decimal(12, 2)
+  /// Pausa de emergência do Crédito Eficaz (Adendo): bloqueia só NOVO uso
+  /// (débito) — pagamentos/cobranças existentes, histórico e consulta da
+  /// carteira continuam funcionando normalmente. Nunca cancela/apaga nada.
+  creditoEficazPaused        Boolean            @default(false)
+  /// Máximo de parcelas ao financiar o saldo de uma Ordem de Serviço com
+  /// Crédito Eficaz (Adendo) — configurável pelo Admin, nunca hardcoded na
+  /// tela. Piloto conservador: começa em 3.
+  creditoEficazMaxInstallments Int              @default(3)
   /// Reservado para jornada/escala/tolerância de atraso/banco de horas
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
@@ -148,6 +163,7 @@ model Tenant {
   creditoEficazUsages         CreditoEficazUsage[]
   creditoEficazPayments       CreditoEficazPayment[]
   creditoEficazBillings       CreditoEficazBilling[]
+  creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
   devices                     Device[]
   visitorSessions             VisitorSession[]
   analyticsEvents             AnalyticsEvent[]
@@ -266,6 +282,7 @@ model User {
   creditoEficazLimitChangesMade     CreditoEficazLimitChange[] @relation("CreditoEficazLimitChangeBy")
   creditoEficazUsagesOperated       CreditoEficazUsage[]       @relation("CreditoEficazUsageOperator")
   creditoEficazPaymentsRegistered   CreditoEficazPayment[]     @relation("CreditoEficazPaymentRegisteredBy")
+  creditoEficazServiceFinancingsCreated CreditoEficazServiceFinancing[] @relation("CreditoEficazServiceFinancingCreatedBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -771,6 +788,7 @@ model Customer {
   creditoEficazApplications   CreditoEficazApplication[]
   creditoEficazLimitChanges   CreditoEficazLimitChange[]
   creditoEficazUsages         CreditoEficazUsage[]
+  creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
 
   @@unique([tenantId, username])
   @@unique([tenantId, eficazNumber])
@@ -924,6 +942,7 @@ model RepairOrder {
   events           RepairOrderEvent[]
   payments         RepairOrderPayment[]
   fiadoEntries     FiadoEntry[]
+  creditoEficazFinancing CreditoEficazServiceFinancing?
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -2214,6 +2233,10 @@ model CreditoEficazApplication {
   approvedLimitAmount Decimal?                       @db.Decimal(12, 2)
   reviewedById        String?
   reviewedAt          DateTime?
+  /// Onda/lote de entrada no programa (Adendo — ex.: "Onda 1"), preenchido
+  /// pelo Admin na aprovação. Texto livre, opcional — só pra comparar o
+  /// comportamento das primeiras turmas depois; não afeta nenhuma regra.
+  wave                String?
   createdAt           DateTime                       @default(now())
   updatedAt           DateTime                       @updatedAt
 
@@ -2270,36 +2293,83 @@ model CreditoEficazLimitChange {
   @@map("credito_eficaz_limit_changes")
 }
 
-/// A obrigação gerada por uma venda paga com Crédito Eficaz — nunca apagada
-/// (estorno marca `CANCELLED` e devolve `availableAfter` ao cliente, não
-/// remove a linha). `availableBefore`/`availableAfter` são o snapshot do
-/// saldo do cliente no momento exato desta venda, pra auditoria não
-/// depender de reconstruir o histórico depois.
+/// A obrigação gerada por uma venda paga com Crédito Eficaz OU por UMA
+/// PARCELA de um financiamento de Ordem de Serviço (Adendo — ver
+/// `CreditoEficazServiceFinancing`) — nunca apagada (estorno marca
+/// `CANCELLED` e devolve `availableAfter` ao cliente, não remove a linha).
+/// `saleId`/`financingId` são mutuamente exclusivos (regra aplicada em
+/// código, nunca as duas preenchidas na mesma linha): origem PDV usa
+/// `saleId` (uma linha por venda); origem Assistência Técnica usa
+/// `financingId` + `installmentNumber`/`installmentCount` (várias linhas,
+/// uma por parcela, do mesmo financiamento). `availableBefore`/
+/// `availableAfter` são o snapshot do saldo do cliente no momento exato
+/// desta operação, pra auditoria não depender de reconstruir o histórico.
 model CreditoEficazUsage {
-  id              String                    @id @default(cuid())
-  tenantId        String
-  customerId      String
-  saleId          String                    @unique
-  amount          Decimal                   @db.Decimal(12, 2)
-  availableBefore Decimal                   @db.Decimal(12, 2)
-  availableAfter  Decimal                   @db.Decimal(12, 2)
-  dueDate         DateTime
-  status          CreditoEficazUsageStatus  @default(OPEN)
-  /// Quem operava o caixa no momento (pode ser diferente do vendedor da
-  /// venda) — mesmo campo/motivo de `FiadoEntry.createdById`.
-  operatorId      String
-  createdAt       DateTime                  @default(now())
+  id                String                    @id @default(cuid())
+  tenantId          String
+  customerId        String
+  saleId            String?                   @unique
+  financingId       String?
+  /// Só preenchidos numa parcela de financiamento de serviço (ex.: "2 de 3").
+  installmentNumber Int?
+  installmentCount  Int?
+  amount            Decimal                   @db.Decimal(12, 2)
+  availableBefore   Decimal                   @db.Decimal(12, 2)
+  availableAfter    Decimal                   @db.Decimal(12, 2)
+  dueDate           DateTime
+  status            CreditoEficazUsageStatus  @default(OPEN)
+  /// Quem operava o caixa (venda) ou registrou o financiamento (OS) no
+  /// momento — mesmo campo/motivo de `FiadoEntry.createdById`.
+  operatorId        String
+  createdAt         DateTime                  @default(now())
 
-  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  sale     Sale                   @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  operator User                   @relation("CreditoEficazUsageOperator", fields: [operatorId], references: [id], onDelete: Restrict)
-  payments CreditoEficazPayment[]
-  billings CreditoEficazBilling[]
+  tenant    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer                       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale      Sale?                          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  financing CreditoEficazServiceFinancing? @relation(fields: [financingId], references: [id], onDelete: Cascade)
+  operator  User                           @relation("CreditoEficazUsageOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  payments  CreditoEficazPayment[]
+  billings  CreditoEficazBilling[]
 
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, status, dueDate])
+  @@index([tenantId, financingId])
   @@map("credito_eficaz_usages")
+}
+
+/// A decisão de financiar o SALDO de uma Ordem de Serviço com Crédito
+/// Eficaz (Adendo, seção "Crédito Eficaz na Assistência Técnica") — não é
+/// uma parcela, é o "contrato" que gera as parcelas (`CreditoEficazUsage`
+/// com `financingId` apontando pra cá). `totalAmount` é o valor da OS
+/// CONGELADO no momento da decisão (o total de `RepairOrder` nunca é
+/// persistido, é recalculado ao vivo — por isso precisa ser copiado aqui
+/// pra nunca divergir se os itens da OS mudarem depois). `downPayment` é só
+/// informativo: a entrada em si já foi registrada como um
+/// `RepairOrderPayment` normal (dinheiro/PIX/cartão), não duplicada aqui.
+model CreditoEficazServiceFinancing {
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  repairOrderId            String    @unique
+  customerId               String
+  totalAmount              Decimal   @db.Decimal(12, 2)
+  downPayment              Decimal   @default(0) @db.Decimal(12, 2)
+  financedAmount           Decimal   @db.Decimal(12, 2)
+  installmentCount         Int
+  /// Avaliação opcional do vendedor: "sem o Crédito Eficaz, esse serviço
+  /// provavelmente seria perdido?" — nunca obrigatório, `null` = não
+  /// respondido (ver Adendo, item 11).
+  wouldBeLostWithoutCredit Boolean?
+  createdById              String
+  createdAt                DateTime  @default(now())
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  repairOrder RepairOrder          @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+  customer    Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy   User                 @relation("CreditoEficazServiceFinancingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  usages      CreditoEficazUsage[]
+
+  @@index([tenantId, createdAt])
+  @@map("credito_eficaz_service_financings")
 }
 
 /// Pagamento manual (Protótipo 1) contra uma obrigação — suporta parcial:

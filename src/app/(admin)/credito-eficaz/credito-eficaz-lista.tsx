@@ -50,6 +50,7 @@ export function CreditoEficazLista({ applications }: { applications: Application
   const [infoTarget, setInfoTarget] = useState<ApplicationRow | null>(null);
   const [limitAmount, setLimitAmount] = useState("");
   const [note, setNote] = useState("");
+  const [wave, setWave] = useState("");
 
   function runAction(promise: Promise<{ error?: string; success?: string }>) {
     setFeedback(undefined);
@@ -64,7 +65,7 @@ export function CreditoEficazLista({ applications }: { applications: Application
 
   function confirmApprove() {
     if (!approveTarget) return;
-    runAction(approveApplicationAction(approveTarget.id, { limitAmount: Number(limitAmount), note }));
+    runAction(approveApplicationAction(approveTarget.id, { limitAmount: Number(limitAmount), note, wave }));
     setApproveTarget(null);
   }
 
@@ -171,6 +172,7 @@ export function CreditoEficazLista({ applications }: { applications: Application
                     setApproveTarget(app);
                     setLimitAmount("");
                     setNote("");
+                    setWave("");
                   }}
                   className="px-4"
                 >
@@ -249,6 +251,10 @@ export function CreditoEficazLista({ applications }: { applications: Application
               value={limitAmount}
               onChange={(e) => setLimitAmount(e.target.value)}
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-muted">Onda/lote (opcional)</label>
+            <Input value={wave} onChange={(e) => setWave(e.target.value)} placeholder="Ex.: Onda 1" />
           </div>
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação interna (opcional)" rows={2} />
         </div>

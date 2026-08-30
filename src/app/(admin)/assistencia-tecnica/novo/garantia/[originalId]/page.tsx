@@ -33,7 +33,15 @@ export default async function NovaGarantiaPage({
       number: true,
       pickedUpAt: true,
       customer: {
-        select: { id: true, name: true, document: true, phone: true, creditBalance: true },
+        select: {
+          id: true,
+          name: true,
+          document: true,
+          phone: true,
+          creditBalance: true,
+          creditoEficazAvailableAmount: true,
+          creditoEficazBlocked: true,
+        },
       },
       seller: { select: { id: true, name: true } },
       brand: true,
@@ -60,6 +68,8 @@ export default async function NovaGarantiaPage({
           document: original.customer.document,
           phone: original.customer.phone,
           creditBalance: Number(original.customer.creditBalance),
+          creditoEficazAvailableAmount: Number(original.customer.creditoEficazAvailableAmount),
+          creditoEficazBlocked: original.customer.creditoEficazBlocked,
         }
       : null,
     seller: original.seller,

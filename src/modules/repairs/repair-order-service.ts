@@ -141,6 +141,21 @@ export async function updateRepairOrder(
   });
   if (!existing) return { ok: false, error: "Ordem de serviço não encontrada." };
 
+  // Adendo (Crédito Eficaz): o valor financiado (parcelas já geradas) foi
+  // CONGELADO no momento do financiamento — editar itens/desconto depois
+  // divergiria do que o cliente já está pagando em parcelas. Bloqueia até o
+  // financiamento ser resolvido (quitado ou perdoado por cortesia).
+  const hasActiveFinancing = await prisma.creditoEficazServiceFinancing.findFirst({
+    where: { tenantId, repairOrderId: id },
+    select: { id: true },
+  });
+  if (hasActiveFinancing) {
+    return {
+      ok: false,
+      error: "Esta OS tem um financiamento de Crédito Eficaz ativo — não é possível editar itens/desconto.",
+    };
+  }
+
   // Gerente só grava o custo enquanto ninguém tiver informado um valor nesta
   // OS ainda — em qualquer outra OS, mesmo criada por outra pessoa, vale a
   // mesma regra. Depois de salvo uma vez, só ADMIN mexe.

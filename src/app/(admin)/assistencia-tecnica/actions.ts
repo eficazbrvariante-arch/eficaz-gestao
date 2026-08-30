@@ -160,7 +160,12 @@ export async function receiveRepairOrderPaymentAction(
     },
     id,
     parsed.data.payments,
-    { fiadoDueDate: parsed.data.fiadoDueDate || undefined }
+    {
+      fiadoDueDate: parsed.data.fiadoDueDate || undefined,
+      creditoEficazPin: parsed.data.creditoEficazPin || undefined,
+      creditoEficazInstallments: parsed.data.creditoEficazInstallments,
+      creditoEficazWouldBeLost: parsed.data.creditoEficazWouldBeLost,
+    }
   );
   if (!result.ok) return { error: result.error };
 
@@ -213,7 +218,12 @@ export async function deliverRepairOrderAction(id: string, input: DeliverRepairO
     },
     id,
     parsed.data.payments,
-    { fiadoDueDate: parsed.data.fiadoDueDate || undefined }
+    {
+      fiadoDueDate: parsed.data.fiadoDueDate || undefined,
+      creditoEficazPin: parsed.data.creditoEficazPin || undefined,
+      creditoEficazInstallments: parsed.data.creditoEficazInstallments,
+      creditoEficazWouldBeLost: parsed.data.creditoEficazWouldBeLost,
+    }
   );
   if (!result.ok) return { error: result.error };
 
