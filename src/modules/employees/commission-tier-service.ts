@@ -146,7 +146,7 @@ export async function getMonthlySaleCommissionsByUsers(
   const effectiveStart = start < COMMISSION_POLICY_EFFECTIVE_AT ? COMMISSION_POLICY_EFFECTIVE_AT : start;
   if (effectiveStart >= end) return result;
 
-  const [items, tierData] = await Promise.all([
+  const [itemsRaw, tierData] = await Promise.all([
     prisma.saleItem.findMany({
       where: {
         sale: {
@@ -161,12 +161,19 @@ export async function getMonthlySaleCommissionsByUsers(
         total: true,
         quantity: true,
         product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
-        sale: { select: { sellerId: true, createdAt: true } },
+        sale: { select: { sellerId: true, createdAt: true, payments: { select: { method: true } } } },
       },
       orderBy: { sale: { createdAt: "asc" } },
     }),
     getTierSetForMonth(tenantId, monthStartISO),
   ]);
+  // Venda paga (mesmo que só em parte) com Crédito Eficaz nunca gera
+  // comissão — pedido explícito do usuário: o crédito é liberado
+  // principalmente pra Assistência Técnica (que também não comissiona), e
+  // dar comissão sobre um valor ainda a receber do cliente não faz sentido.
+  const items = itemsRaw.filter(
+    (item) => !item.sale.payments.some((p) => p.method === "CREDITO_EFICAZ")
+  );
 
   const itemsByUser = new Map<string, typeof items>();
   for (const item of items) {
@@ -236,7 +243,7 @@ export async function computeSellerMonthlyCommission(
   const { start, end } = monthRange(monthStartISO);
   const effectiveStart = start < COMMISSION_POLICY_EFFECTIVE_AT ? COMMISSION_POLICY_EFFECTIVE_AT : start;
 
-  const [items, tierData] = await Promise.all([
+  const [itemsRaw, tierData] = await Promise.all([
     effectiveStart >= end
       ? Promise.resolve([])
       : prisma.saleItem.findMany({
@@ -247,10 +254,13 @@ export async function computeSellerMonthlyCommission(
             total: true,
             quantity: true,
             product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
+            sale: { select: { payments: { select: { method: true } } } },
           },
         }),
     getTierSetForMonth(tenantId, monthStartISO),
   ]);
+  // Ver nota em `getMonthlySaleCommissionsByUsers`: venda com Crédito Eficaz nunca comissiona.
+  const items = itemsRaw.filter((item) => !item.sale.payments.some((p) => p.method === "CREDITO_EFICAZ"));
 
   const { tierEligibleSales, overrideSales, overrideCommission } = splitOverrideAndTierEligible(items);
   const progressive = computeProgressiveCommission(round2(tierEligibleSales), tierData.tiers);
@@ -303,7 +313,7 @@ export async function getSellerTierProgressByUsers(
   const { start, end } = monthRange(monthStartISO);
   const effectiveStart = start < COMMISSION_POLICY_EFFECTIVE_AT ? COMMISSION_POLICY_EFFECTIVE_AT : start;
 
-  const [items, tierData] = await Promise.all([
+  const [itemsRaw, tierData] = await Promise.all([
     effectiveStart >= end
       ? Promise.resolve([])
       : prisma.saleItem.findMany({
@@ -319,11 +329,13 @@ export async function getSellerTierProgressByUsers(
             total: true,
             quantity: true,
             product: { select: { commissionType: true, commissionPercent: true, commissionFixedAmount: true } },
-            sale: { select: { sellerId: true } },
+            sale: { select: { sellerId: true, payments: { select: { method: true } } } },
           },
         }),
     getTierSetForMonth(tenantId, monthStartISO),
   ]);
+  // Ver nota em `getMonthlySaleCommissionsByUsers`: venda com Crédito Eficaz nunca comissiona.
+  const items = itemsRaw.filter((item) => !item.sale.payments.some((p) => p.method === "CREDITO_EFICAZ"));
 
   const itemsByUser = new Map<string, CommissionableItem[]>();
   for (const item of items) {

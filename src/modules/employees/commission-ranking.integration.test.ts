@@ -26,6 +26,7 @@ import { getCommissionRanking, getSellerCommissionHistory } from "@/modules/empl
 import { getSellerTierProgressByUsers, saveTiersForMonth } from "@/modules/employees/commission-tier-service";
 import { currentMonthStartISO, periodRange, todayISO, addDaysISO } from "@/lib/format";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
+import { setCreditLimit, setCreditoEficazPin } from "@/modules/credito-eficaz/credito-eficaz-service";
 
 const SUBDOMAIN = "qa-commission-ranking-test";
 const UNIT_PRICE = 50;
@@ -319,6 +320,50 @@ describe("Ranking de Comissão — faixas progressivas (integração)", () => {
     // marginal por faixa e olham exatamente a mesma janela de tempo aqui.
     expect(round2(sellerRanking!.totalSales)).toBe(round2(tierProgress.totalSales));
     expect(round2(sellerRanking!.totalCommission)).toBe(round2(tierProgress.totalCommission));
+  });
+
+  it("11) venda paga com Crédito Eficaz nunca gera comissão", async () => {
+    const limitResult = await setCreditLimit(tenantId, customerId, adminId, 1000, "Setup de teste");
+    expect(limitResult.ok).toBe(true);
+    const pinResult = await setCreditoEficazPin(tenantId, customerId, "1234");
+    expect(pinResult.ok).toBe(true);
+
+    const before = (await getSellerTierProgressByUsers(tenantId, [sellerId], monthStartISO)).get(sellerId)!;
+
+    const result = await createSale(
+      {
+        tenantId,
+        sellerId,
+        cashRegisterId,
+        allowDiscount: true,
+        allowFreeDiscount: true,
+        allowFiado: true,
+        operatorId: sellerId,
+      },
+      {
+        customerId,
+        sellerId,
+        items: itemsForUnits(2), // R$100
+        payments: [{ method: "CREDITO_EFICAZ", amount: 100 }],
+        creditoEficazPin: "1234",
+      } as never
+    );
+    expect(result.ok).toBe(true);
+
+    const after = (await getSellerTierProgressByUsers(tenantId, [sellerId], monthStartISO)).get(sellerId)!;
+    // Venda com Crédito Eficaz fica inteiramente fora do universo de
+    // comissão — nem conta pro "vendido" da faixa nem gera comissão (mesmo
+    // tratamento de Assistência Técnica, que também nunca aparece aqui).
+    expect(round2(after.totalSales - before.totalSales)).toBe(0);
+    expect(round2(after.tierEligibleSales - before.tierEligibleSales)).toBe(0);
+    expect(round2(after.totalCommission - before.totalCommission)).toBe(0);
+
+    const rankingRange = { start: new Date(`${monthStartISO}T00:00:00-03:00`), end: new Date() };
+    const rankingBefore = await getCommissionRanking(tenantId, rankingRange);
+    // A venda de Crédito Eficaz não deve inflar "vendido" no Ranking também —
+    // sempre consistente com o motor de faixas (ver teste 10).
+    const sellerRankingRow = rankingBefore.find((r) => r.userId === sellerId);
+    expect(sellerRankingRow?.totalSales ?? 0).toBe(round2(after.totalSales));
   });
 });
 

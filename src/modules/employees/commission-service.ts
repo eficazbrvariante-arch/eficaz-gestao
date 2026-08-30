@@ -189,6 +189,12 @@ export async function getCommissionRanking(
         sellerId: { in: userIds },
         status: "COMPLETED",
         createdAt: effectiveCreatedAtFilter({ start, end }),
+        // Venda paga (mesmo que só em parte) com Crédito Eficaz fica de fora
+        // do "vendido" do ranking também — nunca só da comissão — pra nunca
+        // divergir do que o motor de faixas computa (ver
+        // `commission-tier-service.ts`, que já exclui esses itens de
+        // `tierEligibleSales`/`totalSales`).
+        payments: { none: { method: "CREDITO_EFICAZ" } },
       },
       _sum: { total: true },
     }),
