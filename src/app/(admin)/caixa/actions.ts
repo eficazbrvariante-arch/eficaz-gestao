@@ -202,6 +202,7 @@ export async function createCashMovementAction(input: CashMovementInput) {
       type: parsed.data.type,
       amount: parsed.data.amount,
       description: parsed.data.description,
+      receiptPhotoUrl: parsed.data.receiptPhotoUrl || null,
       userId: user.id,
     },
   });

@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
+import { ImageUploadField } from "@/components/ui/image-upload-field";
 import { formatBRL } from "@/lib/format";
 import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
 import {
@@ -512,29 +513,38 @@ export function ClosedRegisterPanel({
   );
 }
 
-export function CashMovementForm() {
+export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
+  const [receiptPhotoUrl, setReceiptPhotoUrl] = useState("");
 
   const {
     register,
     handleSubmit,
+    control,
     reset,
     formState: { errors },
-  } = useForm<CashMovementFormValues, unknown, CashMovementInput>({
-    resolver: zodResolver(cashMovementSchema),
+  } = useForm<Omit<CashMovementFormValues, "receiptPhotoUrl">, unknown, Omit<CashMovementInput, "receiptPhotoUrl">>({
+    resolver: zodResolver(cashMovementSchema.omit({ receiptPhotoUrl: true })),
     defaultValues: { type: "WITHDRAWAL" },
   });
 
-  const onSubmit = (data: CashMovementInput) => {
+  // `useWatch` (não `watch()` cru) — ver o comentário equivalente em
+  // `FinalizeReviewForm`: `watch()` direto no corpo do componente não é
+  // seguro combinado com memoização do React Compiler.
+  const type = useWatch({ control, name: "type" });
+
+  const onSubmit = (data: Omit<CashMovementInput, "receiptPhotoUrl">) => {
     setFeedback(undefined);
     startTransition(async () => {
-      const result = await createCashMovementAction(data);
+      const result = await createCashMovementAction({ ...data, receiptPhotoUrl });
       if (result?.error) {
         setFeedback({ type: "error", message: result.error });
       } else {
         setFeedback({ type: "success", message: result?.success ?? "Registrado." });
         reset({ type: "WITHDRAWAL", amount: undefined, description: "" });
+        setReceiptPhotoUrl("");
+        onSuccess?.();
       }
     });
   };
@@ -557,10 +567,25 @@ export function CashMovementForm() {
         <FieldError message={errors.amount?.message} />
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <Label htmlFor="description">Motivo</Label>
-        <Input id="description" placeholder="Ex.: depósito bancário" {...register("description")} />
+        <Input
+          id="description"
+          placeholder={type === "WITHDRAWAL" ? "Ex.: compra de material de escritório" : "Ex.: depósito bancário"}
+          {...register("description")}
+        />
         <FieldError message={errors.description?.message} />
+      </div>
+
+      <div className="mb-6">
+        <Label>
+          Foto da nota/comprovante {type === "WITHDRAWAL" ? "da compra" : "do depósito"} (opcional)
+        </Label>
+        <ImageUploadField
+          value={receiptPhotoUrl}
+          onChange={setReceiptPhotoUrl}
+          uploadUrl="/api/caixa/upload"
+        />
       </div>
 
       <Button type="submit" disabled={isPending} variant="secondary">

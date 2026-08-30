@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Viewport } from "next";
 import { requireTenant } from "@/lib/session";
-import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
+import { canApplyDiscount, canDiscountFreely, canManageFiado, canMoveCash, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
 import { formatDateTime, todayISO, periodRange, currentMonthStartISO } from "@/lib/format";
@@ -119,6 +119,7 @@ export default async function PdvPage() {
         canDiscount={canApplyDiscount(user.role)}
         canDiscountFreely={canDiscountFreely(user.role)}
         canFiado={canManageFiado(user.role)}
+        canMoveCash={canMoveCash(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
       />
 

@@ -72,6 +72,8 @@ export const cashMovementSchema = z.object({
   type: z.enum(["WITHDRAWAL", "SUPPLY"]),
   amount: z.coerce.number().positive("Informe um valor maior que zero"),
   description: z.string().trim().min(3, "Descreva o motivo"),
+  /** Foto da nota da compra (sangria) ou do depósito (suprimento) — opcional. */
+  receiptPhotoUrl: z.string().url().optional().or(z.literal("")),
 });
 export type CashMovementInput = z.infer<typeof cashMovementSchema>;
 export type CashMovementFormValues = z.input<typeof cashMovementSchema>;

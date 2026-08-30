@@ -209,6 +209,16 @@ export default async function CaixaPage() {
                         {m.description} · {m.user.name}
                       </div>
                       <div className="text-xs text-slate-400">{formatDateTime(m.createdAt)}</div>
+                      {m.receiptPhotoUrl && (
+                        <a
+                          href={m.receiptPhotoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-xs font-medium text-slate-600 underline hover:text-slate-900"
+                        >
+                          Ver foto do comprovante
+                        </a>
+                      )}
                     </td>
                     <td
                       className={
