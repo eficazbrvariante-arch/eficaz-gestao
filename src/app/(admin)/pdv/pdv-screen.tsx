@@ -3,6 +3,17 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  Search,
+  ShoppingCart,
+  User,
+  UserCog,
+  Wallet,
+  HandCoins,
+  ShieldCheck,
+  Receipt,
+  RefreshCw,
+} from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
@@ -60,6 +71,81 @@ type CustomerOption = {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+/** Mesma linguagem visual da Central do Cliente (cards escuros premium, ícone
+ *  em badge com gradiente, glow e barra de destaque por categoria) — aqui
+ *  aplicada aos painéis do PDV. Cor só no ícone/borda/glow, nunca no corpo
+ *  do card inteiro. */
+type PdvPanelTone = "purchases" | "neutral" | "credit" | "benefits" | "protection";
+
+const PANEL_TONE_CLASSES: Record<PdvPanelTone, { border: string; glow: string; icon: string }> = {
+  purchases: {
+    border: "border-blue-400/25",
+    glow: "shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]",
+    icon: "from-blue-400 to-blue-600",
+  },
+  neutral: {
+    border: "border-slate-400/15",
+    glow: "shadow-[0_0_20px_-16px_rgba(148,163,184,0.4)]",
+    icon: "from-slate-300 to-slate-500",
+  },
+  credit: {
+    border: "border-amber-400/25",
+    glow: "shadow-[0_0_24px_-16px_rgba(245,158,11,0.55)]",
+    icon: "from-amber-300 to-amber-600",
+  },
+  benefits: {
+    border: "border-violet-400/25",
+    glow: "shadow-[0_0_24px_-16px_rgba(167,139,250,0.55)]",
+    icon: "from-violet-400 to-violet-600",
+  },
+  protection: {
+    border: "border-emerald-500/25",
+    glow: "shadow-[0_0_24px_-16px_rgba(16,185,129,0.55)]",
+    icon: "from-emerald-400 to-emerald-600",
+  },
+};
+
+/** Painel escuro premium com ícone em badge — substitui o antigo
+ *  `rounded-xl border border-slate-200 bg-white p-4 shadow-sm` em todo o
+ *  PDV. `title`/`subtitle` ficam de fora quando o conteúdo já tem seu
+ *  próprio rótulo (ex.: `<Label>` interno). */
+function PdvPanel({
+  tone,
+  icon: Icon,
+  title,
+  subtitle,
+  className,
+  children,
+}: {
+  tone: PdvPanelTone;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const t = PANEL_TONE_CLASSES[tone];
+  return (
+    <div className={clsx("rounded-xl border bg-surface p-4", t.border, t.glow, className)}>
+      <div className="mb-3 flex items-center gap-2.5">
+        <span
+          className={clsx(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br shadow-inner",
+            t.icon
+          )}
+        >
+          <Icon className="h-[18px] w-[18px] text-white" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-foreground">{title}</p>
+          {subtitle && <p className="text-xs text-text-muted">{subtitle}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -620,7 +706,7 @@ export function PdvScreen({
   return (
     <div>
       {lastSale && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-success/10 px-4 py-3 text-sm text-success">
           <span>
             Venda #{lastSale.number} registrada com sucesso.
             {lastSale.changeAmount > 0 && (
@@ -634,7 +720,7 @@ export function PdvScreen({
             <button
               type="button"
               onClick={() => setLastSale(null)}
-              className="text-emerald-700 hover:text-emerald-900"
+              className="text-success hover:opacity-80"
               aria-label="Fechar aviso"
             >
               ×
@@ -661,12 +747,12 @@ export function PdvScreen({
       )}
 
       {discountNotice && (
-        <div className="mb-4 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-md bg-warning/10 px-4 py-3 text-sm font-medium text-warning">
           <span>{discountNotice}</span>
           <button
             type="button"
             onClick={() => setDiscountNotice(undefined)}
-            className="text-amber-700 hover:text-amber-900"
+            className="text-warning hover:opacity-80"
             aria-label="Fechar aviso"
           >
             ×
@@ -677,10 +763,18 @@ export function PdvScreen({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Coluna esquerda: busca e carrinho */}
         <div className="lg:col-span-3">
-        <div ref={searchBoxRef} className="relative mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <Label htmlFor="pdv-search" className="text-black">
-            Produto (nome, código interno ou código de barras)
-          </Label>
+        <div
+          ref={searchBoxRef}
+          className="relative mb-4 rounded-xl border border-blue-400/25 bg-surface p-4 shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]"
+        >
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner">
+              <Search className="h-[18px] w-[18px] text-white" />
+            </span>
+            <label htmlFor="pdv-search" className="text-sm font-bold text-foreground">
+              Produto <span className="font-normal text-text-muted">(nome, código interno ou código de barras)</span>
+            </label>
+          </div>
           <div className="flex gap-2">
             <Input
               id="pdv-search"
@@ -719,7 +813,7 @@ export function PdvScreen({
           {/* Sugestões em tempo real: atualiza a cada tecla digitada (busca parcial
               pelo nome) e some quando o campo esvazia ou uma opção é escolhida. */}
           {suggestionsOpen && results.length > 0 && (
-            <div className="absolute inset-x-4 top-full z-20 mt-1 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+            <div className="absolute inset-x-4 top-full z-20 mt-1 max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
               {results.map((product) => {
                 const hasVariants = product.variants.length > 0;
                 return (
@@ -735,10 +829,10 @@ export function PdvScreen({
                             if (e.key === "Enter") addToCart(product, null);
                           }
                     }
-                    className={clsx("p-3", !hasVariants && "cursor-pointer hover:bg-slate-50")}
+                    className={clsx("p-3", !hasVariants && "cursor-pointer hover:bg-surface-hover")}
                   >
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-surface-hover">
                         {product.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -747,19 +841,19 @@ export function PdvScreen({
                             className="h-full w-full object-contain"
                           />
                         ) : (
-                          <span className="text-[9px] text-slate-400">sem foto</span>
+                          <span className="text-[9px] text-text-muted">sem foto</span>
                         )}
                       </div>
                       <div className="min-w-[140px] flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900">
+                        <p className="truncate text-sm font-medium text-foreground">
                           {product.name}
                         </p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-text-muted">
                           {product.internalCode ?? "sem código"} · estoque {product.stockQty}
                         </p>
                       </div>
                       <div className="ml-auto flex shrink-0 items-center gap-3">
-                        <span className="text-sm text-slate-900">{formatBRL(product.price)}</span>
+                        <span className="text-sm text-foreground">{formatBRL(product.price)}</span>
                         {!hasVariants && (
                           <button
                             type="button"
@@ -767,7 +861,7 @@ export function PdvScreen({
                               e.stopPropagation();
                               addToCart(product, null);
                             }}
-                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                            className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
                           >
                             Adicionar
                           </button>
@@ -782,7 +876,7 @@ export function PdvScreen({
                             key={variant.id}
                             type="button"
                             onClick={() => addToCart(product, variant.id)}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                            className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-hover"
                           >
                             {variant.name} · {formatBRL(product.price + variant.priceAdjustment)}
                           </button>
@@ -793,7 +887,7 @@ export function PdvScreen({
                 );
               })}
               {resultsTotalCount > results.length && (
-                <p className="bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <p className="bg-warning/10 px-3 py-2 text-xs text-warning">
                   Mostrando {results.length} de {resultsTotalCount} — digite mais pra refinar (ex.:
                   a marca ou o modelo).
                 </p>
@@ -802,12 +896,17 @@ export function PdvScreen({
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-            Carrinho ({cart.length} {cart.length === 1 ? "item" : "itens"})
+        <div className="rounded-xl border border-blue-400/25 bg-surface shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]">
+          <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner">
+              <ShoppingCart className="h-[18px] w-[18px] text-white" />
+            </span>
+            <span className="text-sm font-bold text-foreground">
+              Carrinho ({cart.length} {cart.length === 1 ? "item" : "itens"})
+            </span>
           </div>
           {cart.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-slate-400">
+            <p className="px-4 py-10 text-center text-sm text-text-muted">
               Nenhum item no carrinho. Busque um produto acima para começar.
             </p>
           ) : (
@@ -818,7 +917,7 @@ export function PdvScreen({
             // rolando pro lado. Em blocos não existe rolagem horizontal
             // possível: o conteúdo sempre quebra linha, e Remover fica fixo
             // no canto do item, sempre visível.
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {cart.map((line) => (
                 <div key={line.key} className="relative p-4">
                   <button
@@ -826,26 +925,26 @@ export function PdvScreen({
                     onClick={() => removeLine(line.key)}
                     aria-label={`Remover ${line.name}`}
                     title="Remover"
-                    className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-text-muted hover:bg-danger/10 hover:text-danger"
                   >
                     ×
                   </button>
 
-                  <p className="max-w-[calc(100%-2.5rem)] text-base font-bold text-black">
+                  <p className="max-w-[calc(100%-2.5rem)] text-base font-bold text-foreground">
                     {line.name}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-text-muted">
                     {formatBRL(line.unitPrice)} · estoque {line.stockQty}
                   </p>
 
                   <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
                     <div>
-                      <p className="mb-1 text-xs font-medium text-slate-500">Quantidade</p>
+                      <p className="mb-1 text-xs font-medium text-text-muted">Quantidade</p>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => changeQuantity(line.key, line.quantity - 1)}
-                          className="h-8 w-8 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="h-8 w-8 rounded border border-border text-text-secondary hover:bg-surface-hover"
                         >
                           −
                         </button>
@@ -854,12 +953,12 @@ export function PdvScreen({
                           min={1}
                           value={line.quantity}
                           onChange={(e) => changeQuantity(line.key, Number(e.target.value))}
-                          className="money-input h-8 w-14 rounded border border-slate-300 px-1 text-center"
+                          className="money-input h-8 w-14 rounded border border-border bg-surface px-1 text-center text-foreground"
                         />
                         <button
                           type="button"
                           onClick={() => changeQuantity(line.key, line.quantity + 1)}
-                          className="h-8 w-8 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                          className="h-8 w-8 rounded border border-border text-text-secondary hover:bg-surface-hover"
                         >
                           +
                         </button>
@@ -878,9 +977,9 @@ export function PdvScreen({
                           : "capinha já usada em outra película";
                       return (
                         <div>
-                          <p className="mb-1 text-xs font-medium text-slate-500">Desconto</p>
+                          <p className="mb-1 text-xs font-medium text-text-muted">Desconto</p>
                           <div className="relative w-24">
-                            <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-slate-500">
+                            <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-text-muted">
                               R$
                             </span>
                             <input
@@ -901,11 +1000,11 @@ export function PdvScreen({
                               onChange={(e) =>
                                 changeDiscount(line.key, Math.max(0, Number(e.target.value) || 0))
                               }
-                              className="money-input h-8 w-full rounded border border-slate-300 py-1 pl-7 pr-1 text-right text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                              className="money-input h-8 w-full rounded border border-border bg-surface py-1 pl-7 pr-1 text-right text-xs text-foreground disabled:bg-surface-hover disabled:text-text-muted"
                             />
                           </div>
                           {blockedBySellerRule && (
-                            <p className="mt-0.5 max-w-[6rem] text-[10px] leading-tight text-amber-600">
+                            <p className="mt-0.5 max-w-[6rem] text-[10px] leading-tight text-warning">
                               {blockedReason}
                             </p>
                           )}
@@ -914,12 +1013,12 @@ export function PdvScreen({
                     })()}
 
                     <div className="text-right">
-                      <p className="mb-1 text-xs font-medium text-slate-500">Total</p>
-                      <p className="text-lg font-bold text-black">
+                      <p className="mb-1 text-xs font-medium text-text-muted">Total</p>
+                      <p className="text-lg font-bold text-foreground">
                         {formatBRL(round2(line.unitPrice * line.quantity - line.discount))}
                       </p>
                       {line.discount > 0 && (
-                        <p className="text-xs font-normal text-slate-500">
+                        <p className="text-xs font-normal text-text-muted">
                           Desconto aplicado nesta linha: -{formatBRL(line.discount)}
                         </p>
                       )}
@@ -937,25 +1036,22 @@ export function PdvScreen({
         <div className="space-y-4">
           {/* Ordem fixa da lateral: Cliente → Vendedor → Total → Forma de
               pagamento → Finalizar. */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <Label htmlFor="pdv-customer" className="text-sm font-bold text-black">
-              Cliente (opcional)
-            </Label>
+          <PdvPanel tone="neutral" icon={User} title="Cliente" subtitle="Opcional">
             {customer ? (
-              <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-surface-hover px-3 py-2">
                 <div>
-                  <p className="text-base font-bold text-black">{customer.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-base font-bold text-foreground">{customer.name}</p>
+                  <p className="text-xs text-text-muted">
                     {customer.document ?? customer.phone ?? "sem documento"}
                     {customer.eficazNumber ? ` · ${customer.eficazNumber}` : ""}
                   </p>
                   {customer.creditBalance > 0 && (
-                    <p className="text-xs font-medium text-emerald-700">
+                    <p className="text-xs font-medium text-success">
                       Crédito de loja disponível: {formatBRL(customer.creditBalance)}
                     </p>
                   )}
                   {customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked && (
-                    <p className="text-xs font-medium text-emerald-700">
+                    <p className="text-xs font-medium text-success">
                       Crédito Eficaz disponível: {formatBRL(customer.creditoEficazAvailableAmount)}
                     </p>
                   )}
@@ -976,7 +1072,7 @@ export function PdvScreen({
                     }));
                     setCreditoEficazPin("");
                   }}
-                  className="text-xs text-red-600 hover:underline"
+                  className="text-xs text-danger hover:underline"
                 >
                   Remover
                 </button>
@@ -1009,7 +1105,7 @@ export function PdvScreen({
                   </Button>
                 </div>
                 {customerResults.length > 0 && (
-                  <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+                  <div className="mt-2 divide-y divide-border rounded-md border border-border">
                     {customerResults.map((c) => (
                       <button
                         key={c.id}
@@ -1019,10 +1115,10 @@ export function PdvScreen({
                           setCustomerResults([]);
                           setCustomerTerm("");
                         }}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-hover"
                       >
-                        <span className="font-medium text-slate-900">{c.name}</span>
-                        <span className="ml-2 text-xs text-slate-400">
+                        <span className="font-medium text-foreground">{c.name}</span>
+                        <span className="ml-2 text-xs text-text-muted">
                           {c.document ?? c.phone ?? ""}
                         </span>
                       </button>
@@ -1031,17 +1127,16 @@ export function PdvScreen({
                 )}
               </>
             )}
-          </div>
+          </PdvPanel>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <Label className="mb-1 text-sm font-bold text-black">Vendedor</Label>
+          <PdvPanel tone="neutral" icon={UserCog} title="Vendedor">
             {sellerName ? (
-              <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                <span className="text-base font-bold text-black">{sellerName}</span>
+              <div className="flex items-center justify-between rounded-md bg-surface-hover px-3 py-2">
+                <span className="text-base font-bold text-foreground">{sellerName}</span>
                 <button
                   type="button"
                   onClick={() => setSellerModalOpen(true)}
-                  className="text-xs font-medium text-slate-700 hover:underline"
+                  className="text-xs font-medium text-text-secondary hover:underline"
                 >
                   Trocar
                 </button>
@@ -1051,11 +1146,10 @@ export function PdvScreen({
                 Selecionar vendedor
               </Button>
             )}
-          </div>
+          </PdvPanel>
 
           {canMoveCash && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <Label className="mb-1 text-sm font-bold text-black">Caixa</Label>
+            <PdvPanel tone="credit" icon={Wallet} title="Caixa">
               <Button
                 type="button"
                 variant="secondary"
@@ -1063,21 +1157,20 @@ export function PdvScreen({
               >
                 Sangria / Suprimento
               </Button>
-            </div>
+            </PdvPanel>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <Label className="mb-1 text-sm font-bold text-black">Convênio corporativo</Label>
+          <PdvPanel tone="benefits" icon={HandCoins} title="Convênio corporativo">
             {convenioMember ? (
-              <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
                 <div>
-                  <span className="block text-sm font-bold text-black">{convenioMember.member.name}</span>
-                  <span className="text-xs text-slate-500">Convênio {convenioMember.convenio.name}</span>
+                  <span className="block text-sm font-bold text-foreground">{convenioMember.member.name}</span>
+                  <span className="text-xs text-text-muted">Convênio {convenioMember.convenio.name}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setConvenioMember(null)}
-                  className="text-xs font-medium text-slate-700 hover:underline"
+                  className="text-xs font-medium text-text-secondary hover:underline"
                 >
                   Remover
                 </button>
@@ -1087,53 +1180,52 @@ export function PdvScreen({
                 Escanear QR do convênio
               </Button>
             )}
-          </div>
+          </PdvPanel>
 
           {protecaoEficazEligible && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <PdvPanel tone="protection" icon={ShieldCheck} title="Proteção Eficaz">
               <label className="flex items-start gap-3">
                 <input
                   type="checkbox"
                   checked={protecaoEficazOptedIn}
                   onChange={(e) => setProtecaoEficazOptedIn(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                  className="mt-1 h-4 w-4 rounded border-border"
                 />
                 <span>
-                  <span className="block text-sm font-bold text-black">
+                  <span className="block text-sm font-bold text-foreground">
                     Cliente optou pela Proteção Eficaz
                   </span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-text-muted">
                     Sem desconto na película agora — em troca, garantia de trocar a película em
                     até 30 dias da venda. Sai marcado no cupom; o cliente valida em /conta no site.
                   </span>
                 </span>
               </label>
-            </div>
+            </PdvPanel>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <Label className="mb-1 text-sm font-bold text-black">Troca — Proteção Eficaz</Label>
+          <PdvPanel tone="protection" icon={RefreshCw} title="Troca — Proteção Eficaz">
             {protecaoEficazRedemption ? (
               <div>
-                <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+                <div className="flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
                   <div>
-                    <span className="block text-sm font-bold text-black">
+                    <span className="block text-sm font-bold text-foreground">
                       {protecaoEficazRedemption.customerName}
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-text-muted">
                       Venda original #{protecaoEficazRedemption.saleNumber}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setProtecaoEficazRedemption(null)}
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className="text-xs font-medium text-text-secondary hover:underline"
                   >
                     Remover
                   </button>
                 </div>
                 {!protecaoEficazRedemptionReady && (
-                  <p className="mt-2 text-xs text-amber-700">
+                  <p className="mt-2 text-xs text-warning">
                     {peliculaUnits === 0
                       ? "Adicione a película ao carrinho pra aplicar."
                       : "Exige exatamente 1 película no carrinho — remova as demais pra aplicar."}
@@ -1149,45 +1241,46 @@ export function PdvScreen({
                 Validar troca de película
               </Button>
             )}
-          </div>
+          </PdvPanel>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <PdvPanel tone="neutral" icon={Receipt} title="Resumo">
             <div className="space-y-1.5 text-base">
-              <div className="flex justify-between font-medium text-slate-700">
+              <div className="flex justify-between font-medium text-text-secondary">
                 <span>Subtotal</span>
-                <span className="font-bold text-black">{formatBRL(subtotal)}</span>
+                <span className="font-bold text-foreground">{formatBRL(subtotal)}</span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between font-medium text-slate-700">
+                <div className="flex justify-between font-medium text-text-secondary">
                   <span>Desconto (nos itens)</span>
-                  <span className="font-bold text-black">-{formatBRL(discount)}</span>
+                  <span className="font-bold text-foreground">-{formatBRL(discount)}</span>
                 </div>
               )}
               {convenioBenefit > 0 && (
-                <div className="flex justify-between font-medium text-slate-700">
+                <div className="flex justify-between font-medium text-text-secondary">
                   <span>Benefício convênio</span>
-                  <span className="font-bold text-black">-{formatBRL(convenioBenefit)}</span>
+                  <span className="font-bold text-foreground">-{formatBRL(convenioBenefit)}</span>
                 </div>
               )}
               {protecaoEficazRedemptionAmount > 0 && (
-                <div className="flex justify-between font-medium text-slate-700">
+                <div className="flex justify-between font-medium text-text-secondary">
                   <span>Troca Proteção Eficaz</span>
-                  <span className="font-bold text-black">-{formatBRL(protecaoEficazRedemptionAmount)}</span>
+                  <span className="font-bold text-foreground">-{formatBRL(protecaoEficazRedemptionAmount)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-slate-200 pt-2 text-xl font-bold text-black">
+              <div className="flex justify-between border-t border-border pt-2 text-xl font-bold text-foreground">
                 <span>Total</span>
                 <span>{formatBRL(total)}</span>
               </div>
             </div>
-          </div>
+          </PdvPanel>
 
-          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="rounded-xl border border-emerald-500/25 bg-surface p-4 shadow-[0_0_24px_-16px_rgba(34,197,94,0.5)]">
             {/* Card escuro de propósito (adiantado da Fase 4) — o MixedPaymentPanel
                 compartilhado já usa os tokens escuros desde a Fase 1, e ficava
                 com texto quase invisível dentro do card branco que ainda restava
                 aqui (bug real reportado: "Pago"/"Restante"/"Calcular troco"
-                só apareciam ao selecionar o texto). */}
+                só apareciam ao selecionar o texto). Glow verde adicionado junto
+                com o tema premium da Central do Cliente — é a ação final da tela. */}
             {/* A seleção do vendedor acontece antes da forma de pagamento: sem
                 vendedor escolhido, o painel abaixo fica desabilitado. */}
             <div className="mb-3">
