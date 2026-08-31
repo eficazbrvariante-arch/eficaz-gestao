@@ -46,10 +46,12 @@ const PRINCIPLES = [
  */
 export function PactoDeConfianca({
   variant,
-  requestAnchorId,
+  onRequest,
 }: {
   variant: PactoVariant;
-  requestAnchorId: string;
+  /** Chamado só quando o compromisso já está marcado — abre o formulário
+   *  real (`CreditoEficazSection`) direto, sem duplicar nada aqui. */
+  onRequest: () => void;
 }) {
   const [committed, setCommitted] = useState(false);
 
@@ -152,19 +154,12 @@ export function PactoDeConfianca({
         Suas informações são protegidas e seu limite é pessoal e intransferível.
       </p>
 
-      {/* CTA */}
-      <a
-        href={committed ? `#${requestAnchorId}` : undefined}
-        aria-disabled={!committed}
-        onClick={(e) => {
-          if (!committed) {
-            e.preventDefault();
-            return;
-          }
-          e.preventDefault();
-          document.getElementById(requestAnchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }}
-        className={`flex items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold tracking-wide text-white transition-all duration-200 motion-reduce:transition-none ${
+      {/* CTA — um clique só: já abre o formulário real logo abaixo. */}
+      <button
+        type="button"
+        disabled={!committed}
+        onClick={onRequest}
+        className={`flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold tracking-wide text-white transition-all duration-200 motion-reduce:transition-none ${
           committed
             ? "cursor-pointer bg-emerald-600 hover:-translate-y-0.5 hover:bg-emerald-500 motion-reduce:hover:translate-y-0"
             : "cursor-not-allowed bg-slate-300"
@@ -173,7 +168,7 @@ export function PactoDeConfianca({
         <CardIcon className="h-4 w-4" />
         QUERO SOLICITAR MEU CRÉDITO
         <ChevronRightIcon className="h-4 w-4" />
-      </a>
+      </button>
       {!committed && (
         <p className="-mt-2 text-center text-xs text-slate-400">
           Marque o compromisso acima para continuar.

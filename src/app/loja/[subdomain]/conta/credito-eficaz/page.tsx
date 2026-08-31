@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { CreditoEficazSection } from "../credito-eficaz-section";
-import { PactoDeConfianca, type PactoVariant } from "./pacto-de-confianca";
+import { CreditoEficazExperience } from "./credito-eficaz-experience";
+import type { PactoVariant } from "./pacto-de-confianca";
 import {
   getCustomerCreditSummary,
   listCustomerApplications,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
-
-const REQUEST_ANCHOR_ID = "credito-eficaz-solicitar";
 
 export default async function CreditoEficazAccountPage({
   params,
@@ -46,11 +44,12 @@ export default async function CreditoEficazAccountPage({
         ← Voltar para Minha Conta
       </Link>
 
-      <PactoDeConfianca variant={variant} requestAnchorId={REQUEST_ANCHOR_ID} />
-
-      <div id={REQUEST_ANCHOR_ID}>
-        <CreditoEficazSection subdomain={subdomain} summary={summary} latestApplication={latestApplication} />
-      </div>
+      <CreditoEficazExperience
+        subdomain={subdomain}
+        variant={variant}
+        summary={summary}
+        latestApplication={latestApplication}
+      />
     </div>
   );
 }

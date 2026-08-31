@@ -7,7 +7,7 @@ import { formatBRL, formatDate } from "@/lib/format";
 import { submitCreditoEficazApplicationAction } from "./actions";
 import type { CustomerCreditSummary } from "@/modules/credito-eficaz/credito-eficaz-service";
 
-type ApplicationRow = {
+export type ApplicationRow = {
   id: string;
   status: "DRAFT" | "UNDER_REVIEW" | "APPROVED" | "INFO_REQUESTED" | "REJECTED" | "BLOCKED";
   decisionNote: string | null;
@@ -20,10 +20,15 @@ export function CreditoEficazSection({
   subdomain,
   summary,
   latestApplication,
+  forceShowForm,
 }: {
   subdomain: string;
   summary: CustomerCreditSummary | null;
   latestApplication: ApplicationRow | null;
+  /** Abre o formulário direto, sem passar pelo botão "Solicitar Crédito
+   *  Eficaz" — usado pelo Pacto de Confiança, que já cobre essa etapa
+   *  intermediária com o próprio CTA (um clique só, sem duplicar formulário). */
+  forceShowForm?: boolean;
 }) {
   const [occupation, setOccupation] = useState("");
   const [income, setIncome] = useState("");
@@ -132,7 +137,7 @@ export function CreditoEficazSection({
     );
   }
 
-  const showFormNow = showForm || latestApplication?.status === "INFO_REQUESTED";
+  const showFormNow = showForm || forceShowForm || latestApplication?.status === "INFO_REQUESTED";
 
   return (
     <div className="mb-8 rounded-xl border border-slate-200 p-4">
