@@ -298,3 +298,11 @@ export function UserIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  );
+}
