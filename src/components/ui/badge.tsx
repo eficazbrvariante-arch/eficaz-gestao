@@ -1,7 +1,7 @@
 import { HTMLAttributes } from "react";
 import { clsx } from "@/lib/clsx";
 
-type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "brand";
+export type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "brand";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   success: "bg-success/10 text-success",

@@ -53,7 +53,7 @@ export async function submitReviewAction(subdomain: string, input: CustomerRevie
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath(`/loja/${subdomain}/conta`);
+  revalidatePath(`/loja/${subdomain}/conta/compras`);
   revalidatePath(`/loja/${subdomain}/produto/${parsed.data.productId}`);
 
   return { success: true as const };
@@ -123,7 +123,7 @@ export async function submitProtecaoEficazAction(
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath(`/loja/${subdomain}/conta`);
+  revalidatePath(`/loja/${subdomain}/conta/protecao-eficaz`);
 
   return { success: true as const };
 }
@@ -185,7 +185,7 @@ export async function submitCreditoEficazApplicationAction(
   );
   if (!submitted.ok) return { error: submitted.error };
 
-  revalidatePath(`/loja/${subdomain}/conta`);
+  revalidatePath(`/loja/${subdomain}/conta/credito-eficaz`);
 
   return { success: true as const };
 }

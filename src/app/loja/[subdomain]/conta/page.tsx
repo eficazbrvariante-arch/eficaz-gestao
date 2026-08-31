@@ -1,24 +1,20 @@
-import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { getStoreBySubdomain } from "@/modules/catalog/tenant-resolver";
-import { getCustomerSession } from "@/modules/customers/customer-session";
 import { listCustomerOrders } from "@/modules/orders/order-service";
-import { listReviewableProducts } from "@/modules/catalog/review-service";
 import { getCustomerCreditBalance } from "@/modules/customers/customer-service";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { getCustomerConvenioBenefit } from "@/modules/convenios/convenio-customer-benefit";
 import { listCustomerProtecaoEficaz } from "@/modules/protecao-eficaz/protecao-eficaz-service";
-import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
-import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
-import { LogoutButton } from "./logout-button";
-import { ReviewForm } from "./review-form";
-import { ChangePasswordForm } from "./change-password-form";
-import { ProtecaoEficazSection } from "./protecao-eficaz-form";
-import { CreditoEficazSection } from "./credito-eficaz-section";
 import {
   getCustomerCreditSummary,
   listCustomerApplications,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import { formatBRL } from "@/lib/format";
+import { LogoutButton } from "./logout-button";
+import { requireCustomerAccountSession } from "./require-customer-account";
+import { AccountFeatureCard, type AccountCardStatus } from "./account-feature-card";
+import { CardIcon, ShieldLockIcon, BagIcon, WalletIcon, GiftIcon, UserIcon } from "../icons";
+
+/** Pedidos ainda em curso (nem entregue/retirado, nem cancelado). */
+const ORDER_IN_PROGRESS_STATUSES = new Set(["NEW", "CONFIRMED", "PREPARING", "SHIPPED"]);
 
 export default async function CustomerAccountPage({
   params,
@@ -26,18 +22,10 @@ export default async function CustomerAccountPage({
   params: Promise<{ subdomain: string }>;
 }) {
   const { subdomain } = await params;
-  const store = await getStoreBySubdomain(subdomain);
-  if (!store) notFound();
-
-  const base = `/loja/${subdomain}`;
-  const session = await getCustomerSession(store.id);
-  if (!session) {
-    redirect(`${base}/conta/entrar?returnTo=${encodeURIComponent(`${base}/conta`)}`);
-  }
+  const { store, session, base } = await requireCustomerAccountSession(subdomain, `/loja/${subdomain}/conta`);
 
   const [
     orders,
-    reviewableProducts,
     creditBalance,
     fiadoEntries,
     convenioBenefit,
@@ -46,7 +34,6 @@ export default async function CustomerAccountPage({
     creditoEficazApplications,
   ] = await Promise.all([
     listCustomerOrders(store.id, session.customerId),
-    listReviewableProducts(store.id, session.customerId),
     getCustomerCreditBalance(store.id, session.customerId),
     listFiadoEntriesByCustomer(store.id, session.customerId),
     getCustomerConvenioBenefit(session.customerId),
@@ -54,7 +41,63 @@ export default async function CustomerAccountPage({
     getCustomerCreditSummary(store.id, session.customerId),
     listCustomerApplications(store.id, session.customerId),
   ]);
+
+  // --- Crédito Eficaz ---
+  const latestApplication = creditoEficazApplications[0] ?? null;
+  const hasApprovedCredit = !!creditoEficazSummary && creditoEficazSummary.limitAmount > 0;
+  let creditoEficazStatus: AccountCardStatus | undefined;
+  let creditoEficazValue: string | undefined;
+  if (hasApprovedCredit && creditoEficazSummary) {
+    creditoEficazStatus = creditoEficazSummary.blocked ? "BLOQUEADO" : "DISPONIVEL";
+    creditoEficazValue = creditoEficazSummary.blocked
+      ? "Bloqueado"
+      : `${formatBRL(creditoEficazSummary.availableAmount)} disponível`;
+  } else if (latestApplication?.status === "UNDER_REVIEW" || latestApplication?.status === "INFO_REQUESTED") {
+    creditoEficazStatus = "EM_ANALISE";
+  }
+
+  // --- Proteção Eficaz ---
+  const activeProtections = protecaoEficazRegistrations.filter(
+    (r) => r.status === "APPROVED" && !r.redeemedAt
+  );
+  const pendingProtections = protecaoEficazRegistrations.filter((r) => r.status === "PENDING");
+  let protecaoStatus: AccountCardStatus | undefined;
+  let protecaoValue: string | undefined;
+  if (activeProtections.length > 0) {
+    protecaoStatus = "ATIVO";
+    protecaoValue = `${activeProtections.length} ativa${activeProtections.length > 1 ? "s" : ""}`;
+  } else if (pendingProtections.length > 0) {
+    protecaoStatus = "EM_ANALISE";
+  }
+
+  // --- Minhas Compras ---
+  const ordersInProgress = orders.filter((o) => ORDER_IN_PROGRESS_STATUSES.has(o.status)).length;
+  const comprasBadge = orders.length > 0 ? `${orders.length}` : undefined;
+  const comprasValue = ordersInProgress > 0 ? `${ordersInProgress} em andamento` : undefined;
+
+  // --- Fiado e Crédito ---
   const pendingFiado = fiadoEntries.filter((entry) => entry.status === "PENDING");
+  const overdueFiado = pendingFiado.filter(isFiadoOverdue);
+  const totalPendingFiado = pendingFiado.reduce((sum, entry) => sum + Number(entry.amount), 0);
+  let fiadoStatus: AccountCardStatus | undefined;
+  let fiadoValue: string | undefined;
+  if (overdueFiado.length > 0) {
+    fiadoStatus = "ACAO_NECESSARIA";
+    fiadoValue = `${formatBRL(totalPendingFiado)} vencido`;
+  } else if (pendingFiado.length > 0) {
+    fiadoStatus = "PENDENTE";
+    fiadoValue = `${formatBRL(totalPendingFiado)} a pagar`;
+  } else if (creditBalance > 0) {
+    fiadoStatus = "DISPONIVEL";
+    fiadoValue = `${formatBRL(creditBalance)} de crédito disponível`;
+  }
+
+  // --- Benefícios (Convênio) ---
+  const showBenefits = !!convenioBenefit;
+  const benefitsValue =
+    convenioBenefit?.active && convenioBenefit.vitrine.length > 0
+      ? `${convenioBenefit.vitrine.length} com desconto exclusivo`
+      : undefined;
 
   return (
     <div>
@@ -66,141 +109,62 @@ export default async function CustomerAccountPage({
         <LogoutButton subdomain={subdomain} />
       </div>
 
-      {convenioBenefit && (
-        <div className="mb-8 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <h2 className="mb-1 text-sm font-semibold text-emerald-900">
-            Convênio {convenioBenefit.convenioName}
-          </h2>
-          {!convenioBenefit.active ? (
-            <p className="text-sm text-emerald-800">
-              Seu cadastro no convênio não está ativo no momento — fale com a loja se achar que
-              isso é um engano.
-            </p>
-          ) : convenioBenefit.vitrine.length === 0 ? (
-            <p className="text-sm text-emerald-800">
-              Você tem o desconto do convênio disponível no balcão da loja. Ainda não há produtos
-              com desconto exclusivo no site.
-            </p>
-          ) : (
-            <>
-              <p className="mb-3 text-sm text-emerald-800">
-                Além do desconto no balcão da loja, você tem desconto exclusivo nestes produtos do
-                site:
-              </p>
-              <ul className="space-y-2">
-                {convenioBenefit.vitrine.map((item) => (
-                  <li key={item.productId}>
-                    <Link
-                      href={`${base}/produto/${item.productId}`}
-                      className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-white p-3 text-sm hover:bg-emerald-50/50"
-                    >
-                      <span className="text-slate-800">{item.name}</span>
-                      <span className="shrink-0 text-right">
-                        <span className="mr-1.5 text-xs text-slate-400 line-through">
-                          {formatBRL(item.catalogPrice)}
-                        </span>
-                        <span className="font-semibold text-emerald-700">
-                          {formatBRL(item.finalPrice)}
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-
-      <ProtecaoEficazSection subdomain={subdomain} registrations={protecaoEficazRegistrations} />
-
-      <CreditoEficazSection
-        subdomain={subdomain}
-        summary={creditoEficazSummary}
-        latestApplication={creditoEficazApplications[0] ?? null}
-      />
-
-      {(pendingFiado.length > 0 || creditBalance > 0) && (
-        <div className="mb-8 rounded-xl border border-slate-200 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Fiado e crédito</h2>
-
-          {creditBalance > 0 && (
-            <p className="mb-3 text-sm font-medium text-emerald-700">
-              Você tem {formatBRL(creditBalance)} em crédito de loja disponível.
-            </p>
-          )}
-
-          {pendingFiado.length > 0 && (
-            <ul className="space-y-2 text-sm">
-              {pendingFiado.map((entry) => {
-                const overdue = isFiadoOverdue(entry);
-                return (
-                  <li key={entry.id} className="flex justify-between gap-2">
-                    <span className={overdue ? "font-medium text-red-600" : "text-slate-700"}>
-                      {overdue ? "Vencido" : "A pagar"}
-                      {entry.dueDate ? ` até ${formatDate(entry.dueDate)}` : ""}
-                    </span>
-                    <span className="shrink-0 font-medium text-slate-900">
-                      {formatBRL(Number(entry.amount))}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {reviewableProducts.length > 0 && (
-        <div className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Produtos para avaliar</h2>
-          <div className="space-y-3">
-            {reviewableProducts.map((product) => (
-              <ReviewForm
-                key={product.id}
-                subdomain={subdomain}
-                productId={product.id}
-                productName={product.name}
-                imageUrl={product.imageUrl}
-                initialRating={product.myReview?.rating ?? 0}
-                initialComment={product.myReview?.comment ?? ""}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <h2 className="mb-3 text-sm font-semibold text-slate-900">Meus pedidos</h2>
-      {orders.length === 0 ? (
-        <p className="text-sm text-slate-500">Você ainda não fez nenhum pedido.</p>
-      ) : (
-        <ul className="space-y-2">
-          {orders.map((order) => (
-            <li key={order.id}>
-              <Link
-                href={`${base}/pedido/${order.id}`}
-                className="block rounded-md border border-slate-200 p-3 text-sm hover:bg-slate-50"
-              >
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium text-slate-900">Pedido #{order.number}</span>
-                  <span className="shrink-0">{formatBRL(order.total)}</span>
-                </div>
-                <div className="mt-1 flex justify-between gap-2 text-xs text-slate-500">
-                  <span>{ORDER_STATUS_LABELS[order.status]}</span>
-                  <span className="shrink-0">{formatDateTime(order.createdAt)}</span>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <details className="mt-8 border-t border-slate-200 pt-6">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-900">Alterar senha</summary>
-        <div className="mt-4">
-          <ChangePasswordForm subdomain={subdomain} />
-        </div>
-      </details>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <AccountFeatureCard
+          icon={CardIcon}
+          title="Crédito Eficaz"
+          description={hasApprovedCredit ? "Seu crédito na Eficaz" : "Solicite seu limite"}
+          href={`${base}/conta/credito-eficaz`}
+          tone="credit"
+          status={creditoEficazStatus}
+          value={creditoEficazValue}
+        />
+        <AccountFeatureCard
+          icon={ShieldLockIcon}
+          title="Proteção Eficaz"
+          description="Proteja sua compra"
+          href={`${base}/conta/protecao-eficaz`}
+          tone="protection"
+          status={protecaoStatus}
+          value={protecaoValue}
+        />
+        <AccountFeatureCard
+          icon={BagIcon}
+          title="Minhas Compras"
+          description="Pedidos e histórico"
+          href={`${base}/conta/compras`}
+          tone="purchases"
+          badge={comprasBadge}
+          value={comprasValue}
+        />
+        <AccountFeatureCard
+          icon={WalletIcon}
+          title="Fiado e Crédito"
+          description="Consulte seu saldo"
+          href={`${base}/conta/fiado`}
+          tone="fiado"
+          status={fiadoStatus}
+          value={fiadoValue}
+        />
+        {showBenefits && (
+          <AccountFeatureCard
+            icon={GiftIcon}
+            title="Benefícios"
+            description={convenioBenefit?.convenioName ?? "Suas vantagens"}
+            href={`${base}/conta/beneficios`}
+            tone="benefits"
+            status={convenioBenefit?.active ? undefined : "BLOQUEADO"}
+            value={benefitsValue}
+          />
+        )}
+        <AccountFeatureCard
+          icon={UserIcon}
+          title="Meus Dados"
+          description="Cadastro e segurança"
+          href={`${base}/conta/dados`}
+          tone="neutral"
+        />
+      </div>
     </div>
   );
 }

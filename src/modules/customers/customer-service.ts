@@ -46,6 +46,23 @@ export async function getCustomerCreditBalance(tenantId: string, customerId: str
   return customer ? Number(customer.creditBalance) : 0;
 }
 
+export type CustomerProfile = {
+  name: string;
+  document: string | null;
+  phone: string | null;
+  email: string | null;
+  username: string | null;
+};
+
+/** Dados cadastrais do próprio cliente, só para exibição em "Meus Dados" —
+ *  não existe edição de cadastro pelo cliente hoje, só troca de senha. */
+export async function getCustomerProfile(tenantId: string, customerId: string): Promise<CustomerProfile | null> {
+  return prisma.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { name: true, document: true, phone: true, email: true, username: true },
+  });
+}
+
 export async function isUsernameAvailable(tenantId: string, usernameRaw: string): Promise<boolean> {
   const username = normalizeUsername(usernameRaw);
   const existing = await prisma.customer.findUnique({

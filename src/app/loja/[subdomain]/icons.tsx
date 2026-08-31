@@ -276,3 +276,25 @@ export function FlashDealIcon({ icon, ...props }: IconProps & { icon: string }) 
     icon in FLASH_DEAL_ICON_MAP ? FLASH_DEAL_ICON_MAP[icon as FlashDealIconKey] : LightningIcon;
   return <Component {...props} />;
 }
+
+// --- Ícones da Central do Cliente ("Minha conta") ---
+
+export function WalletIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3" />
+      <path d="M3 7v11a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+      <rect x="15" y="12" width="6" height="5" rx="1" />
+      <circle cx="17.5" cy="14.5" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+    </svg>
+  );
+}
