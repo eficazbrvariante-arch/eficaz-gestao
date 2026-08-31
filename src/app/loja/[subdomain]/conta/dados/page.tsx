@@ -1,7 +1,8 @@
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { BackToAccountLink } from "../back-to-account-link";
+import { AccountDetailHeader } from "../account-detail-header";
 import { ChangePasswordForm } from "../change-password-form";
 import { getCustomerProfile } from "@/modules/customers/customer-service";
+import { UserIcon } from "../../icons";
 
 export default async function DadosAccountPage({
   params,
@@ -18,8 +19,13 @@ export default async function DadosAccountPage({
 
   return (
     <div>
-      <BackToAccountLink base={base} />
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Meus Dados</h1>
+      <AccountDetailHeader
+        icon={UserIcon}
+        title="Meus Dados"
+        description="Atualize seus dados e segurança"
+        tone="neutral"
+        base={base}
+      />
 
       {profile && (
         <div className="mb-8 space-y-3 rounded-xl border border-slate-200 p-4 text-sm">

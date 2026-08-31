@@ -1,7 +1,8 @@
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { BackToAccountLink } from "../back-to-account-link";
+import { AccountDetailHeader } from "../account-detail-header";
 import { ProtecaoEficazSection } from "../protecao-eficaz-form";
 import { listCustomerProtecaoEficaz } from "@/modules/protecao-eficaz/protecao-eficaz-service";
+import { ShieldLockIcon } from "../../icons";
 
 export default async function ProtecaoEficazAccountPage({
   params,
@@ -18,7 +19,13 @@ export default async function ProtecaoEficazAccountPage({
 
   return (
     <div>
-      <BackToAccountLink base={base} />
+      <AccountDetailHeader
+        icon={ShieldLockIcon}
+        title="Proteção Eficaz"
+        description="Proteja suas compras com tranquilidade"
+        tone="protection"
+        base={base}
+      />
       <ProtecaoEficazSection subdomain={subdomain} registrations={registrations} />
     </div>
   );

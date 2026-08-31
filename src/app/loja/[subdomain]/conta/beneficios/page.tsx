@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { BackToAccountLink } from "../back-to-account-link";
+import { AccountDetailHeader } from "../account-detail-header";
 import { getCustomerConvenioBenefit } from "@/modules/convenios/convenio-customer-benefit";
 import { formatBRL } from "@/lib/format";
+import { GiftIcon } from "../../icons";
 
 export default async function BeneficiosAccountPage({
   params,
@@ -19,14 +20,20 @@ export default async function BeneficiosAccountPage({
 
   return (
     <div>
-      <BackToAccountLink base={base} />
+      <AccountDetailHeader
+        icon={GiftIcon}
+        title="Meus Benefícios"
+        description="Confira suas vantagens e recompensas"
+        tone="benefits"
+        base={base}
+      />
       {!convenioBenefit ? (
         <p className="text-sm text-slate-500">Você não tem nenhum benefício de convênio no momento.</p>
       ) : (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <h1 className="mb-1 text-sm font-semibold text-emerald-900">
+        <h2 className="mb-1 text-sm font-semibold text-emerald-900">
           Convênio {convenioBenefit.convenioName}
-        </h1>
+        </h2>
         {!convenioBenefit.active ? (
           <p className="text-sm text-emerald-800">
             Seu cadastro no convênio não está ativo no momento — fale com a loja se achar que isso

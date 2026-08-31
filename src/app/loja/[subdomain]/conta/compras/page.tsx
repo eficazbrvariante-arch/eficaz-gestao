@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { BackToAccountLink } from "../back-to-account-link";
+import { AccountDetailHeader } from "../account-detail-header";
 import { ReviewForm } from "../review-form";
 import { listCustomerOrders } from "@/modules/orders/order-service";
 import { listReviewableProducts } from "@/modules/catalog/review-service";
 import { ORDER_STATUS_LABELS } from "@/modules/orders/order-status";
 import { formatBRL, formatDateTime } from "@/lib/format";
+import { BagIcon } from "../../icons";
 
 export default async function ComprasAccountPage({
   params,
@@ -25,8 +26,13 @@ export default async function ComprasAccountPage({
 
   return (
     <div>
-      <BackToAccountLink base={base} />
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Minhas Compras</h1>
+      <AccountDetailHeader
+        icon={BagIcon}
+        title="Minhas Compras"
+        description="Acompanhe seus pedidos e histórico"
+        tone="purchases"
+        base={base}
+      />
 
       {reviewableProducts.length > 0 && (
         <div className="mb-8">

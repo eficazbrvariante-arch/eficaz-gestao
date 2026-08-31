@@ -306,3 +306,45 @@ export function ChevronRightIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function HandshakeIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M2 12l4-4 5 2 2-2 3 1 4-3 2 2-6 6-3-1-3 3z" />
+      <path d="M8 14l3 3" />
+      <path d="M11 11l3 3" />
+    </svg>
+  );
+}
+
+export function ChecklistIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 9l1.5 1.5L12 8" />
+      <path d="M8 15l1.5 1.5L12 14" />
+      <path d="M15 9h2" />
+      <path d="M15 15h2" />
+    </svg>
+  );
+}
+
+export function CalendarIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 3v4" />
+      <path d="M16 3v4" />
+    </svg>
+  );
+}
+
+export function TrendingUpIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <polyline points="3 17 9 11 13 15 21 6" />
+      <polyline points="15 6 21 6 21 12" />
+    </svg>
+  );
+}

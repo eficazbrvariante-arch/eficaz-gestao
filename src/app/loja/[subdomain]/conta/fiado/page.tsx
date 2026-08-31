@@ -1,8 +1,9 @@
 import { requireCustomerAccountSession } from "../require-customer-account";
-import { BackToAccountLink } from "../back-to-account-link";
+import { AccountDetailHeader } from "../account-detail-header";
 import { getCustomerCreditBalance } from "@/modules/customers/customer-service";
 import { listFiadoEntriesByCustomer, isFiadoOverdue } from "@/modules/fiado/fiado-service";
 import { formatBRL, formatDate } from "@/lib/format";
+import { WalletIcon } from "../../icons";
 
 export default async function FiadoAccountPage({
   params,
@@ -23,8 +24,13 @@ export default async function FiadoAccountPage({
 
   return (
     <div>
-      <BackToAccountLink base={base} />
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Fiado e Crédito</h1>
+      <AccountDetailHeader
+        icon={WalletIcon}
+        title="Fiado e Crédito"
+        description="Consulte seu saldo disponível"
+        tone="fiado"
+        base={base}
+      />
       <p className="mb-6 text-sm text-slate-500">
         Crédito de loja (gerado por trocas/cancelamentos) e fiado (venda a prazo) — dois saldos
         separados do Crédito Eficaz.
