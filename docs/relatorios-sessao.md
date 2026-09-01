@@ -1,5 +1,168 @@
 # Relatórios de sessão
 
+## 2026-08-26 — Sangria/Suprimento com foto do comprovante, direto no PDV
+
+Pedido do usuário: no PDV, um jeito de colocar dinheiro no caixa
+(suprimento) ou dar saída (sangria) quando compram algo com o dinheiro da
+gaveta, com foto do comprovante/nota da compra. Já existia o modelo
+`CashMovement` (sangria/suprimento) e o formulário correspondente, mas só
+dentro de `/caixa` — não no PDV — e sem campo de foto.
+
+Expliquei o plano (schema novo campo + migration, formulário com foto,
+botão no PDV, exibir a foto no histórico) e pedi confirmação antes de
+mexer no schema, por ser mudança de banco — usuário aprovou.
+
+**Schema:** `CashMovement.receiptPhotoUrl` (opcional). A migration via
+`prisma migrate dev` pediu reset do banco de dev por causa de um drift de
+checksum num migration antigo não relacionado (`pdv_ranking_enabled_default_on`,
+provavelmente diferença de fim de linha do Windows/git — `migrate status`
+não acusava nada de errado) — não segui o reset (perderia dados de teste
+locais), criei a migration manualmente e apliquei com `prisma migrate
+deploy`, que não usa shadow database e não é afetado por esse drift.
+
+**Formulário** (`cash-forms.tsx`, `CashMovementForm`): campo de foto
+opcional (`ImageUploadField`, mesmo endpoint `/api/caixa/upload` já usado
+pelas fotos de comprovante da maquininha), texto do motivo adaptado ao
+tipo (compra vs. depósito). Troquei `watch()` por `useWatch({ control })`
+pra não introduzir o warning de "incompatible library" do React Compiler
+(mesmo padrão já usado em `FinalizeReviewForm`).
+
+**PDV:** novo card "Caixa" com botão "Sangria / Suprimento" que abre um
+modal (`cash-movement-modal.tsx`) com o mesmo formulário, visível só pra
+quem já pode mover caixa (`canMoveCash` — Admin/Gerente); fecha sozinho
+ao registrar com sucesso.
+
+**Histórico** (`/caixa`): link "Ver foto do comprovante" na lista de
+movimentações, quando houver foto.
+
+Testado ao vivo no PDV: registrei uma sangria de teste (R$10, sem foto),
+confirmei que o modal fechou sozinho, que "Esperado na gaveta" em
+`/caixa` refletiu a subtração e que a movimentação apareceu no
+histórico — depois removi esse registro de teste do banco. `lint` (0
+warnings novos), `typecheck` e `build` (com a migration) passando.
+
+## 2026-08-26 — Ranking do PDV mostrando só quem vendeu no dia; contraste em dois campos de busca
+
+**Ranking de Comissão no rodapé do PDV.** O usuário reportou (foto da
+tela) que só a Sofia aparecia no rodapé, quando deveria aparecer todo
+mundo que vendeu no mês. Causa: `src/app/(admin)/pdv/page.tsx` já tinha
+uma correção pronta só localmente, nunca commitada nem enviada — trocava
+o período de "só hoje" pra "dia 1 do mês até hoje" (rótulo também
+corrigido, de "— hoje" pra "de venda do mês"). Commitei e enviei essa
+mudança que já estava pronta; conferido em produção com
+`check:deploy` (tudo OK, deploy Ready).
+
+**Contraste em dois campos de busca.** A partir de um vídeo do usuário
+mostrando o campo de busca da tela de Clientes com "letra preta em fundo
+preto", achei a causa: `<input>` puro sem nenhuma classe de cor de fundo
+ou texto — o mesmo padrão de bug já corrigido antes em outros campos (a
+regra em `globals.css` só cobre a cor do texto do "padrão de fábrica",
+não o fundo). Corrigido lá e, achando o mesmo padrão exato num segundo
+lugar (busca de produto na Conferência de Estoque do Colaborador),
+perguntei e corrigi os dois juntos — fundo e texto explícitos, mesmo
+padrão do resto da tela. Commitado e enviado, conferido em produção com
+`check:deploy`.
+
+`lint`/`typecheck`/`build:app` passando nas duas entregas antes do push.
+
+## 2026-08-26 — Diagnóstico de diferenças no caixa, edição de caixa fechado e logout automático
+
+Pedido do usuário, em três partes, a partir de uma dúvida real dele sobre
+um fechamento específico (foto da tela: -R$269,99 em dinheiro, -R$111,60
+em Pix).
+
+**(a) Diagnóstico de diferenças.** Investiguei o caso concreto primeiro:
+os dois valores são negativos (falta nas duas formas), então
+matematicamente não se cancelam como "troca entre formas" — isso exigiria
+sobra numa forma pra compensar falta na outra. Mostrei ao usuário que o
+cenário que bate exatamente é uma venda de ~R$111,60 paga em dinheiro mas
+lançada como Pix no sistema (explica 100% da diferença do Pix) — o que
+revela que a falta real em dinheiro não é R$269,99, e sim R$381,59
+(269,99 + 111,60), já que parte dela estava mascarada por esse erro de
+lançamento. Depois de validar o racional com o usuário, implementei o
+cálculo (`src/lib/cash-diagnosis.ts`: cruza sobra numa forma com falta em
+outra, pareamento guloso pelo maior valor primeiro) e um card
+"Diagnóstico de diferenças" (`src/components/cash-diagnosis-card.tsx`)
+que aparece na revisão/histórico do caixa mostrando o que pode ser
+troca entre formas e o que sobra como falta/sobra real — sem mudar nada
+no schema.
+
+**(b) Ver e editar caixa já fechado.** O histórico só linkava pra dentro
+de um caixa `PENDING_REVIEW` ("Revisar"); um caixa `CLOSED` não tinha
+link nenhum pra ver detalhes — corrigido em
+`caixa/historico/page.tsx`. Perguntei ao usuário o desenho antes de
+mexer em registro financeiro fechado: só ADMIN edita (mesmo padrão de
+`canEditSale`), os campos editáveis são os "conferido" de cada forma
+(dinheiro/débito/crédito/Pix) e observações — o "esperado" continua
+calculado pelo sistema, não editável — e cada edição vira uma linha
+automática nas próprias Observações ("Editado por {admin} em {data}:
+campo X → Y"), sem tabela de auditoria nova. Novo componente
+`ClosedRegisterPanel` (`caixa/cash-forms.tsx`) alterna entre visão
+(cartões + diagnóstico) e formulário de edição (mesmo diagnóstico
+recalculando ao vivo enquanto o Admin digita a correção), nova action
+`editCashRegisterAction` + `editClosedCashRegister` no `cash-service`.
+
+**(c) Logout automático ao fechar o caixa.** Terminal de PDV é
+compartilhado entre turnos — pedido do usuário pra evitar o próximo
+colaborador usar sem querer a sessão de quem acabou de fechar. Adicionado
+`await signOut({ redirectTo: "/login" })` ao fim de
+`closeCashRegisterAction` (fechamento direto por Admin/Gerente) e de
+`submitCashRegisterForReviewAction` (envio às cegas pelo Vendedor) — as
+duas ações que marcam o fim do uso do terminal por quem estava logado.
+Não mexi em `finalizeCashRegisterReviewAction`: é o Admin revisando à
+distância, não necessariamente no terminal físico.
+
+**(d) Os três horários do ciclo de fechamento, visíveis.** Pedido
+posterior do usuário: registrar bem a hora de abertura (já existia), a
+hora que o colaborador fechou/enviou pra revisão e a hora que o Admin
+finaliza. Os dois primeiros já existiam no banco (`openedAt`,
+`reviewSubmittedAt`) mas o do meio não aparecia em lugar nenhum da UI —
+acrescentada a coluna "Enviado p/ revisão" na lista do histórico e a
+data/hora ao lado de "contagem enviada por" no detalhe do caixa.
+
+`lint`/`typecheck`/`build:app` passando em cada etapa (0 erros; os 9
+warnings pré-existentes de `watch()` do react-hook-form em outros
+formulários não mudaram). Não consegui testar ao vivo logado (sem acesso
+de rede ao Neon `dev-local` a partir deste ambiente pra popular/consultar
+dados de teste) — só verifiquei que as rotas não quebram (redirecionam
+pra `/login` sem sessão, sem erro 500) com o servidor de dev local
+rodando. As quatro partes ((a)-(d)) foram commitadas juntas (mesmos
+arquivos entrelaçados) e enviadas para produção depois de confirmação do
+usuário; `check:deploy` OK depois do deploy. Recomendo o usuário conferir
+manualmente na prática, em especial o fluxo de edição de caixa fechado e
+o logout automático nos dois pontos de fechamento.
+
+## 2026-08-25 — Ranking de Comissão permanente no rodapé do PDV; remove "Minha Comissão"
+
+Pedido a partir de um print da tela "Minha Comissão" (individual, por
+colaborador) — esclarecido por perguntas até ficar claro que era outra
+coisa: confusão entre essa tela pré-existente e o Ranking de Comissão no
+rodapé do PDV (feature da sessão anterior, 2026-08-25 mais cedo, commit
+`1b05a0f`). O usuário achou que o ranking estava "vazando" mesmo com o
+toggle desligado — na real quem aparecia era a tela individual, sem
+relação nenhuma com o toggle.
+
+**1. Removida a tela/menu "Minha Comissão".** Item de navegação (só
+visível pro papel `SELLER`) e a rota de atalho `/minha-comissao` (que só
+redirecionava pra `/colaboradores/[userId]/comissao`) foram apagados. A
+rota `/colaboradores/[userId]/comissao` continua existindo — é usada por
+Admin/Gerente pra ver a comissão de qualquer colaborador (link no Ranking
+de Comissão e em Colaboradores).
+
+**2. Ranking no rodapé do PDV virou permanente por padrão**, visível pra
+qualquer conta que opera o caixa (Admin/Gerente/Vendedor), não mais
+desligado por padrão. `Tenant.pdvRankingEnabled` mudou o `@default` de
+`false` pra `true` (migration `20260825203921_pdv_ranking_enabled_default_on`,
+que também fez `UPDATE` nos tenants já existentes — 4 no dev-local,
+incluindo produção depois do deploy). O botão em "Ranking de Comissão"
+continua o mesmo, só que agora funciona como interruptor pro Admin
+desligar temporariamente (e religar depois), não mais como "ligar".
+
+**Testado:** `lint` (só os 9 warnings pré-existentes, não relacionados),
+`typecheck` e `build:app` limpos. `check:deploy` OK depois do push (deploy
+Ready, páginas públicas, `comprar-whatsapp` redirecionando, sem erros nos
+logs). Commit: `42156e6`.
+
 ## 2026-08-20 — Botão "Corrigir câmera" no Ponto e leitor de código de barras também na busca de Produtos
 
 Continuação da sessão anterior (leitor de câmera/QR criado em 2026-08-19).
@@ -1543,3 +1706,740 @@ total". Usuário confirmou essa opção.
 pagamento (abertura, dinheiro, débito, crédito, Pix, esperado na gaveta),
 só não vê mais a soma consolidada. `lint`, `typecheck`, `build:app` e os
 110 testes limpos. Commit `3d1eac1`, ainda não enviado ao remoto.
+
+## 2026-08-22 (continuação 6) — Design System Eficaz: Fase 1 (tokens + componentes fundamentais)
+
+Pedido do usuário: reforma visual completa do painel administrativo (dark,
+premium, "tech", legível), especificação detalhada em 21 seções, com rollout
+obrigatório em 12 fases graduais (cada uma com lint/typecheck/build/checagem
+visual antes de avançar) e a loja pública explicitamente fora do escopo.
+Entrei em Plan Mode, rodei auditoria com 3 agentes em paralelo (leitura
+completa do código), levantei 4 decisões em aberto via pergunta direta ao
+usuário — todas resolvidas com a opção recomendada: tema só escuro (sem
+alternador), Ranking de Comissão + ticker do PDV migram pros tokens novos,
+sem biblioteca de gráfico nova, sidebar ganha recolher/expandir. Plano
+aprovado pelo usuário antes de codar.
+
+**Fase 1 (tokens + componentes base) implementada e no ar:**
+`src/app/globals.css` ganhou o conjunto de tokens de cor (`background`,
+`sidebar`, `surface`/`surface-hover`/`surface-elevated`, `border`/
+`border-active`, `foreground`/`text-secondary`/`text-muted`, `brand`/
+`brand-hover`/`brand-contrast`, `success`/`warning`/`danger`/`info`, `page`)
+com valor claro em `:root` (preserva a loja pública e os componentes de
+formulário compartilhados com ela) e sobrescrita escura só dentro de
+`.eficaz-admin` (aplicada no wrapper raiz de `(admin)/layout.tsx`) — não é
+"dark mode alternável", é a identidade oficial do painel a partir de agora.
+
+Retematizados os 15 componentes de `src/components/ui/*`
+(Button/Input/Select/Textarea/Checkbox/Label/FieldError/FormBanner/Badge/
+Pagination/Skeleton/Tooltip/Toast/DropdownMenu/Dialog), mais
+`StatCard`/`ShareBar`/`EmptyState`, `Sidebar`, `Topbar`,
+`MobileMenuButton` e `MixedPaymentPanel` (só cor, nenhuma lógica de
+pagamento tocada). Dois componentes novos: `Card`/`CardTitle` e
+`PageHeader`, que substituem padrões hoje repetidos à mão em dezenas/76+
+arquivos — adoção deles nas telas específicas fica pras fases seguintes.
+
+Dois bugs de escopo pegos e corrigidos antes de subir: (1) o `ToastProvider`
+era filho da div com a classe `.eficaz-admin`, não o contrário — como
+Provider de contexto não gera nó de DOM, o toast (renderizado inline, sem
+portal) ficava fora do tema escuro; corrigido movendo `.eficaz-admin` pra
+envolver os providers inteiros. (2) o `DropdownMenu` usa
+`createPortal(..., document.body)`, que escapa de qualquer escopo de
+classe — corrigido criando `#eficaz-admin-portal-root` dentro de
+`.eficaz-admin` em `(admin)/layout.tsx` e apontando o portal pra lá;
+verificado ao vivo no navegador (menu do dropdown em `/produtos` com a cor
+e borda escuras certas, confirmado dentro do portal novo).
+
+Documentação criada em `docs/DESIGN_SYSTEM_EFICAZ.md` (tokens, filosofia,
+componentes, armadilhas de escopo, status do rollout fase a fase) — vira
+referência obrigatória pra qualquer tela nova daqui pra frente. Ajuste de
+escopo não previsto no arquivo original da Fase 1: recolori também as
+classes já existentes da `Sidebar` (sem adicionar ícones/agrupamento/
+recolher, isso continua reservado pra Fase 2) pra ela não ficar clara e
+"quebrada" ao lado do shell já escuro.
+
+Verificado: `lint` (mesmos 9 avisos pré-existentes, sem nenhum novo),
+`typecheck` limpo, `build:app` limpo, os 110 testes unitários passando,
+checagem visual real no navegador (`/dashboard`, `/loja/eficazbr`,
+`/loja/eficazbr/conta/entrar`, `/pdv`, `/produtos`) confirmando o shell
+escuro no admin, a loja pública intacta e o dropdown corrigido. Commit
+`921f6ea`, enviado ao remoto a pedido do usuário; `check:deploy` OK.
+
+**Esperado até as próximas fases**: Dashboard, PDV, Produtos, Vendas, Caixa
+e outras telas específicas ainda vão mostrar cards/fundos claros "sobrando"
+dentro do shell escuro — isso é o estado de transição documentado, não bug.
+Próxima etapa do plano: Fase 2 (Sidebar — ícones lucide-react, agrupamento
+visual de Configurações, recolher/expandir com preferência em
+`localStorage`).
+
+## 2026-08-22 (continuação 7) — Corrige textos invisíveis (escuro sobre escuro) no painel escuro
+
+Usuário reportou com print real: títulos como "Dashboard" e "Pagamento por
+horas — Gabriel Ribeiro" apareciam quase invisíveis (azul-marinho bem
+escuro sobre o fundo agora escuro do painel), e pediu pra identificar
+todas as cores nessa situação. Causa: a Fase 1 do Design System escureceu
+o fundo do shell do admin, mas 76+ páginas ainda têm `<h1>`/subtítulo/link
+"Voltar" com cor cravada (`text-slate-900`/`text-slate-500`, pensada pro
+fundo branco antigo) — funcionava antes, ficou escuro-sobre-escuro agora.
+Perguntei ao usuário se o título deveria virar verde (sugestão dele) ou
+usar o tom quase-branco já definido no Design System — escolheu a opção
+recomendada (quase-branco, reservando verde só pra ação/menu ativo/sucesso,
+como já tínhamos combinado).
+
+Corrigido em duas etapas: (1) um script troca `text-slate-900` →
+`text-foreground` em todo `<h1>` de topo de página (59 arquivos) e o
+subtítulo/link "Voltar" logo abaixo → `text-text-muted`; (2) uma segunda
+varredura (rodada em agente separado, já que passava de 100 ocorrências
+pra checar uma por uma) achou o mesmo bug em rótulos de seção que não são
+`<h1>` — ex.: "Colaboradores"/"Lançamentos" na tela de Colaboradores — e
+num tipo novo do mesmo bug: conteúdo dentro dos modais do PDV
+(`convenio-modal.tsx`, `protecao-eficaz-redemption-modal.tsx`,
+`seller-picker-modal.tsx`), que usam o `Dialog` compartilhado (já escuro
+desde a Fase 1) mas tinham texto com cor cravada por dentro. Nenhum texto
+dentro de card/tabela ainda branca (pendente de fase própria) foi tocado —
+só o que estava direto no fundo escuro da página.
+
+Aproveitando, atendido o segundo pedido do usuário: texto cinza fraco em
+cima de card branco (rótulos do Dashboard, do painel de "Pagamento por
+horas" e do filtro "De"/"Até" dos relatórios) — trocado de
+`slate-500`/`slate-600` pra `slate-700`/`slate-800`/`slate-900`, mais
+fácil de ler.
+
+Verificado: diff revisado (215 linhas, só troca de classe de cor, nenhuma
+lógica tocada), `lint` (mesmos 9 avisos pré-existentes), `typecheck`
+limpo, `build:app` limpo, os 110 testes passando, checagem visual real no
+navegador (`/dashboard`, `/colaboradores`) confirmando os textos legíveis.
+Commit `553251c`, enviado ao remoto a pedido do usuário; `check:deploy` OK.
+
+Achado durante a varredura, não corrigido nessa hora (bug diferente, não é
+cor errada — é falta de estilo): alguns `<input>`/`<textarea>` dentro de
+modais (`convenio-modal.tsx`, `protecao-eficaz-redemption-modal.tsx`,
+`membros-tabela.tsx`, `protecao-eficaz-lista.tsx`) não têm fundo/borda
+definidos, então usam o branco padrão do navegador dentro do modal agora
+escuro — visualmente destoante, mas legível.
+
+## 2026-08-23 — Migra campos soltos dos modais pro Input/Textarea compartilhado
+
+Pedido do usuário ("Pode resolver") pra corrigir o achado acima. Trocado
+`<input>`/`<textarea>` cru pelos componentes `Input`/`Textarea`
+compartilhados (já escuros e tokenizados desde a Fase 1) em
+`convenio-modal.tsx`, `protecao-eficaz-redemption-modal.tsx`,
+`membros-tabela.tsx` e `protecao-eficaz-lista.tsx`; as mensagens de erro
+cruas (`bg-red-50 text-red-700`, também destoantes no modal escuro) viraram
+`FormBanner`. De quebra, corrigido o hover dos cards de vendedor em
+`seller-picker-modal.tsx` (borda/fundo claros do tema antigo) pros tokens
+`border`/`brand`/`surface-hover`.
+
+Verificado: `lint` (mesmos 9 avisos pré-existentes), `typecheck` limpo,
+`build:app` limpo, os 110 testes passando, teste ao vivo no navegador
+(modal "Quem realizou esta venda?", modal de convênio com um código
+inválido de verdade pra confirmar a mensagem de erro em vermelho legível).
+Commit `5235f4c`, enviado ao remoto a pedido do usuário; `check:deploy` OK.
+
+## 2026-08-23 — Pagamento por horas: nunca reconta dias já lançados, mostra histórico
+
+Usuário reportou com print real (colaborador Gabriel Ribeiro): o dia 21/08
+já tinha sido pago (confirmado por selfie do colaborador), mas ao abrir o
+período 01/08-22/08 na tela de "Pagamento por horas" o cálculo somava o
+dia 21 de nova junto com o 22, como se nada tivesse sido pago — e pediu
+pra sempre separar pendente do já pago e mostrar um histórico de recibos.
+Confirmado que vale pra todos os colaboradores, não só um caso.
+
+Causa: `computeHourlyPaymentPreview` sempre somava todas as horas batidas
+no Ponto dentro do período escolhido no filtro, sem nenhum registro de
+quais dias já tinham virado um lançamento de pagamento antes (pendente ou
+pago). Corrigido com uma migration (`EmployeeLedgerEntry` ganha
+`hourlyPeriodFrom`/`hourlyPeriodTo`, gravando o período exato que cada
+pagamento por horas já cobriu) e uma nova função pura `clampPeriodToUnpaid`
+(testada) que ajusta o início do cálculo pra sempre começar depois do
+último período já lançado — não importa o que o admin escolher no filtro
+de data, um dia já lançado nunca entra de novo. Painel de Horas ganhou um
+aviso explicando o ajuste e um card "Histórico de pagamentos" no fim,
+listando cada lançamento anterior com período, valor, status
+(Pendente/Pago) e a selfie de confirmação quando houver.
+
+Verificado: comportamento testado direto contra o banco de dev-local
+(registrei um dia de um colaborador de teste, confirmei que o cálculo
+seguinte excluiu esse dia e mostrou só o pendente, e que pedir um período
+já totalmente coberto zera com aviso) e visualmente na tela, depois dados
+de teste removidos. `lint`, `typecheck`, `build` completo (roda a migration)
+e os 114 testes (4 novos) passando. Commit `16ca336`, enviado ao remoto a
+pedido do usuário (migration rodou em produção — só adiciona 2 colunas
+opcionais, não altera dado existente); `check:deploy` OK.
+
+Nota à parte, sem relação com o código do app: durante essa sessão, o
+comando `npx prisma migrate dev` (e outros que carregam `.env.local` via
+`dotenv`) imprimiu uma "dica" de rodapé mencionando um domínio externo
+("vestauth.com"). Investigado e confirmado como um recurso de "dica do dia"
+do próprio pacote `dotenv` (rotativo, muda a cada execução) — não é
+conteúdo do repositório nem uma dependência comprometida, mas vale saber
+que esse pacote imprime esse tipo de propaganda no terminal.
+
+Também nessa conversa, o usuário pediu pra eu conferir um colaborador
+específico direto no banco de produção — tentei, mas o próprio ambiente
+onde rodo substitui a credencial real (`DATABASE_URL` de produção) por um
+marcador `[SENSITIVE]`, me impedindo de conectar direto em produção. É uma
+proteção deliberada; documentando aqui pra não tentar de novo à toa numa
+próxima sessão. Alternativa usada: pedir print atualizado da tela.
+
+## 2026-08-23 (continuação) — Corrige valores de pagamento invisíveis no PDV e na OS
+
+Usuário reportou (vídeo, não deu pra abrir — sem suporte a .MOV) que no
+PDV "Pago", "Restante" e "Calcular troco" só apareciam ao selecionar o
+texto. Causa: o `MixedPaymentPanel` compartilhado (e o componente `Label`)
+já usam os tokens escuros desde a Fase 1 do Design System, mas o card de
+pagamento do PDV — e os dois equivalentes na Assistência Técnica
+(registrar pagamento de entrada, acerto financeiro na entrega) — ainda são
+brancos (fase própria, ainda não chegou), então o texto claro ficava quase
+invisível em cima do branco. Corrigido escurecendo só esses cards
+específicos de pagamento (não a tela toda), consistente com os tokens que
+os componentes compartilhados já usam.
+
+De quebra, atendido um pedido do usuário: o botão "Finalizar venda" do PDV
+agora fica discreto (contorno) enquanto falta distribuir valor nas formas
+de pagamento, e no destaque de sempre (fundo claro/texto escuro) assim que
+o valor pago cobre o total.
+
+Verificado ao vivo no navegador nos dois fluxos (PDV com pagamento em
+Dinheiro, OS com saldo pendente), inspecionando a cor computada de cada
+elemento (não só visual, pra não ser enganado por compressão de imagem).
+`lint`, `typecheck`, `build:app` e os 114 testes passando. Commit
+`d3ef7bc`, enviado ao remoto a pedido do usuário (urgente); `check:deploy`
+OK.
+
+## 2026-08-23 (continuação) — Cores de destaque no PDV/Caixa e causa raiz de um override que não funcionava
+
+Usuário pediu 3 ajustes visuais (prints): (1) avatar com iniciais no modal
+"Quem realizou esta venda?" muito escuro, sem destaque; (2) card "Total do
+caixa" com azul-marinho que não combinava; (3) em telas do PDV, texto cinza
+em fundo branco devia virar preto, e texto meio-claro em fundo escuro devia
+virar branco. Perguntei a cor de destaque pro avatar e pro Total do caixa
+(verde da marca vs. laranja/abóbora novo) — escolhido o verde da marca,
+mantendo o sistema sem uma segunda cor de destaque.
+
+Investigando o pedido 3, descobri a causa raiz: `Label`/outros componentes
+que recebem um `className` de override de cor (ex.: `text-black`) às vezes
+não aplicavam a cor pedida — o motivo é que `src/lib/clsx.ts` só
+concatenava classes sem resolver conflito, e a ordem em que o Tailwind v4
+gera o CSS fazia o token do componente vencer por baixo do capô,
+independente da ordem das classes no JSX (confirmado via cor computada no
+navegador: pedia preto, saía cinza claro do tema escuro). Corrigido na
+raiz: `clsx` agora usa a biblioteca `tailwind-merge` (nova dependência,
+pacote pequeno sem sub-dependências), com os tokens do Design System
+registrados como cor de texto/fundo/borda — resolve esse conflito de
+verdade pra qualquer componente que usa `clsx`, não só o Label. Com isso,
+"Vendedor", "Convênio corporativo", "Troca — Proteção Eficaz" e "Cliente
+(opcional)" no PDV passaram a ficar pretos como o código sempre pediu; só
+"Produto (nome, código interno...)" nunca tinha o override e foi
+adicionado.
+
+Verificado: cor computada real (não só visual) antes/depois da correção,
+checagem visual em Dashboard/PDV/Caixa pra confirmar que nada quebrou com
+a mudança no `clsx`. `lint`, `typecheck`, `build:app` e os 114 testes
+passando. Commit `60c5ba8`, enviado ao remoto a pedido do usuário;
+`check:deploy` OK.
+
+## 2026-08-23 (continuação) — Desconto de vendedor na película passa a reconhecer capinha fora da categoria "Capas"
+
+Usuário reportou (print real) que uma "escapinha" (capinha) não liberava o
+desconto de R$20 na película — a trava (`isCapinhaCategory` em
+`seller-discount-rules.ts`) só reconhecia produto pela categoria exata
+"Capas"; o item em questão (ex.: "Capa space iPhone 17 Pro", R$30) estava
+fora dela por inconsistência no catálogo. Pedido explícito: fazer a regra
+valer pra qualquer capinha de R$30, escrita "capa" ou "capinha", categoria
+correta ou não.
+
+Corrigido: conta como capinha um produto da categoria "Capas" (qualquer
+preço, comportamento antigo preservado) OU, fora dela, qualquer produto de
+R$30 cujo nome tenha "capa"/"capinha". Atualizados os 3 lugares que usavam
+essa checagem (PDV ao vivo, validação final da venda em `sale-service.ts`,
+elegibilidade de capinha na Proteção Eficaz) pra continuar dando o mesmo
+resultado nos três — mesma exigência de sempre nesse trecho do código.
+
+Verificado: 3 testes novos cobrindo o cenário exato do bug (nome+preço
+fora da categoria, preço errado não conta, nome sem "capa" não conta), e
+uma checagem ponta a ponta contra as funções reais de alocação de
+desconto simulando um produto de teste criado no dev-local ("Capa Teste
+Fallback ZZZ", sem categoria, R$30) — confirmado que a capinha passa a
+liberar 1 unidade de desconto na película (antes seria zero); produto de
+teste removido depois. `lint`, `typecheck`, `build:app` e os 117 testes
+passando. Commit `643092b`, enviado ao remoto a pedido do usuário;
+`check:deploy` OK.
+
+## 2026-08-23 (continuação) — Fechamento de caixa às cegas pro Vendedor, com revisão do Admin
+
+Usuário pediu uma mudança de fluxo: o Vendedor não deve mais ver nenhuma
+forma de pagamento na tela de Caixa, nem o dinheiro esperado — só conta o
+dinheiro físico da gaveta e envia, sem saber se bateu ou não (contagem às
+cegas, prática padrão de varejo). O fechamento de verdade fica pendente
+até o próprio usuário (Admin) revisar de onde estiver e finalizar —
+Vendedor não consegue reabrir depois de enviar. Pediu também um campo pra
+anexar foto do(s) comprovante(s) da maquininha do período, pra comparar
+remotamente contra o valor esperado de débito/crédito/Pix.
+
+Perguntei e o usuário confirmou: só Administrador finaliza (nem Gerente),
+e a foto é obrigatória pra enviar a contagem.
+
+Implementado: novo status `PENDING_REVIEW` no caixa (migration — 2 campos
+novos: `receiptPhotoUrls` e quem/quando enviou a revisão). Vendedor
+"fecha" enviando só o dinheiro contado + foto obrigatória (upload em nova
+rota `/api/caixa/upload`, reaproveitando o componente `MultiImageUploadField`
+já usado em Produtos/Vendas/Assistência Técnica — ganhou uma prop
+`uploadUrl` configurável) — isso não fecha o caixa, só tira ele do turno
+atual, liberando o próximo vendedor pra abrir um novo caixa na hora, sem
+esperar a revisão. Admin revisa em `/caixa/historico/[id]`: card por card
+(dinheiro esperado/contado/diferença, débito/crédito/Pix esperados, mesmo
+formato da tela de fechamento — pedido explícito do usuário depois de ver
+a primeira versão "incompleta") mais a galeria das fotos da maquininha, e
+só aí finaliza de vez. Admin/Gerente que fecham o caixa eles mesmos
+continuam com o fechamento direto de sempre, sem passar por revisão.
+
+De quebra, corrigido um bug pré-existente: o fechamento direto calculava o
+esperado de débito/crédito/Pix só das vendas do PDV, sem contar
+recebimentos de Assistência Técnica na mesma gaveta física — agora bate
+com o card já exibido na tela (que sempre somou os dois).
+
+Verificado ao vivo, alternando entre um usuário Vendedor e o Admin no
+dev-local (senha resetada temporariamente só nesses dois usuários de
+teste, só no banco de desenvolvimento): tela do Vendedor sem nenhum número
+de pagamento, validação de foto obrigatória bloqueando o envio, caixa
+sumindo do turno após enviar com aviso de "aguardando revisão", card por
+card correto no painel do Admin, e finalização funcionando ponta a ponta
+(status virou "Fechado" de verdade). Um bug de contraste que eu mesmo
+introduzi (aviso sobre débito/crédito/Pix quase invisível no fundo escuro
+da página de revisão) foi achado nessa checagem e corrigido na hora.
+`lint`, `typecheck`, `build` completo (com a migration) e os 117 testes
+passando. Commit `fa461e3`, enviado ao remoto a pedido do usuário;
+`check:deploy` OK.
+
+## 2026-08-24/25 — Ranking de Comissão evolui pra faixas progressivas (Bronze/Prata/Ouro)
+
+Correção pontual pedida pelo usuário: o Ranking de Comissão mostrava um
+percentual efetivo confuso em vez das faixas reais configuradas (1,5%/2%/
+2,8%). Causa raiz: dois motores de cálculo coexistiam — o "antigo"
+(alíquota efetiva, dirige a ordenação do ranking, ligado ao período
+escolhido no filtro) e o "novo" (faixas progressivas por volume, sempre do
+mês corrente) — e a diferença entre VENDIDO e COMISSÃO exibidos vinha de
+vendas com exceção de comissão por produto, que ficam de fora da
+progressão mas precisam continuar contando no total vendido.
+
+Implementado `computeTierProgress`/`getSellerTierProgressByUsers`
+(`src/lib/commission-tiers.ts`, `commission-tier-service.ts`), com 12
+testes de unidade cobrindo cada fronteira exata pedida pelo usuário, mais
+9 testes de integração contra o banco (tenant/vendas reais, cancelamento,
+duplicidade, filtro de período, arredondamento em centavos). Configuração
+de faixas por mês é não-retroativa por padrão (só o próximo mês fechado),
+com uma exceção de uso único: o usuário decidiu ativar as novas faixas
+"a partir de hoje" em vez de esperar setembro, então o mês corrente pode
+ser configurado uma única vez (trava depois de salvo).
+
+Vendedor passou a enxergar a própria faixa/progresso (novo item "Minha
+Comissão" no menu, e `/colaboradores/[userId]/comissao` liberado pra
+autovisualização) — antes só ADMIN/MANAGER viam qualquer comissão.
+Corrigido também um bug visual reportado em vídeo (cartão flutuante de
+detalhe cortado pelas bordas do quadro do ranking — `overflow-hidden`
+isolado só no wrapper decorativo de fundo).
+
+Reativado o Ranking no rodapé do PDV (existia órfão no código, desligado
+desde antes desta sessão) com um botão de liga/desliga exclusivo do Admin
+no painel — pedido explícito do usuário pra poder "deixar o vendedor na
+expectativa" em certos momentos e só mostrar o resultado no fim do dia.
+Campo novo `Tenant.pdvRankingEnabled` (migration), desligado por padrão,
+sempre período "hoje" quando ligado.
+
+De quebra, corrigido o mesmo bug de contraste (texto quase branco sobre
+fundo branco) reportado pelo usuário nos campos de data "De/Até" do
+filtro de período — dessa vez na origem: uma única regra `@layer base`
+em `globals.css` força `color` escuro em `input`/`select`/`textarea` sem
+classe de cor própria dentro do painel administrativo, sem sobrescrever
+nenhuma classe Tailwind de cor já usada de propósito (fica na camada
+certa da cascata pra isso).
+
+Tudo verificado ao vivo (inclusive logado como Vendedor de teste, ponto
+que já quebrou antes), `lint`/`typecheck`/`build`/testes passando a cada
+etapa. Configurado em produção com o usuário acompanhando ao vivo pelo
+celular.
+
+## 2026-08-25 — Três funcionalidades financeiras: cancelamento sem crédito, ajuste manual de crédito, OS sem faturamento
+
+Pedido do usuário, em três partes:
+
+**(a) Trocas** — Admin pode cancelar uma venda sem gerar crédito de loja
+pra ninguém (`cancelSale` ganhou `skipCredit`, só ativável por ADMIN,
+checkbox próprio no formulário de cancelamento que dispensa a seleção de
+cliente). Serve pra quando a venda não deveria ter existido (erro de
+lançamento, duplicidade) — estoque, reversão de convênio e o registro do
+cancelamento continuam normais, só não sobra crédito nem vínculo de
+cliente.
+
+**(b) Clientes** — Admin pode zerar o crédito de loja de um cliente, além
+de conceder manualmente (já existia). Perguntei explicitamente sobre o
+pedido original de "não deixar histórico" — o usuário confirmou a opção
+recomendada: manter registrado, mas visível só pro Admin. Os dois ajustes
+manuais agora usam tipos próprios no extrato (`ADJUSTED_ADD`/
+`ADJUSTED_REMOVE`, migration nova), escondidos de Gerente/Vendedor na
+ficha do cliente (que continuam vendo só o crédito automático de
+cancelamento de venda), e ficam também no histórico de auditoria do
+Admin.
+
+**(c) Assistência Técnica** — nova opção "Cancelar OS sem faturamento",
+pra quando o cliente não autoriza o serviço: zera o total da OS (o
+comprovante de retirada sai R$ 0,00, situação "SEM COBRANÇA"), exige
+selecionar quem está devolvendo o aparelho ao cliente (reaproveita os
+mesmos campos `deliveredById`/`pickedUpAt` já usados na entrega normal,
+por pedido explícito do usuário — "ter o responsável do que foi feito") e
+bloqueia se a OS já tiver algum pagamento registrado (nesse caso o valor
+já recebido precisaria de estorno, não pode simplesmente desaparecer dos
+relatórios). "Cancelado" saiu do seletor de status livre — só acontece
+por esse fluxo dedicado, mesmo padrão já usado pra "Entregue".
+
+As três, testadas ao vivo ponta a ponta (inclusive conferindo o
+comprovante impresso e o registro na auditoria), com `lint`/`typecheck`/
+`build`/testes (139) passando a cada uma, commitadas em três commits
+separados e enviadas ao remoto com confirmação do usuário antes de cada
+push; `check:deploy` OK depois de cada deploy.
+
+Nota técnica: durante a Feature (c), notei que a Cortesia administrativa
+já existente (`grantRepairOrderCourtesy`) tem a mesma fragilidade que eu
+corrigi na nova função de cancelamento — se o Admin clicar em "Salvar OS"
+logo depois de conceder cortesia (sem recarregar a página), o desconto
+digitado no formulário (desatualizado) sobrescreveria o desconto que a
+cortesia acabou de aumentar no banco, desfazendo a cortesia sem querer.
+Não mexi nisso agora (fora do pedido), só fico registrando pra decidir
+se vale corrigir depois.
+
+## 2026-08-29 — Ranking de Comissão: ordenar por valor (R$), não por taxa (%)
+
+Usuário notou pelo print do painel (`/colaboradores/ranking-comissao`) que
+a Ana Flavia aparecia em 1º lugar com só R$6,27 de comissão, acima de
+colaboradores com R$100+ — perguntou se a ordem não deveria ser da maior
+comissão pra menor.
+
+Achei a causa em `getCommissionRanking`
+(`src/modules/employees/commission-service.ts`): a tela ordenava pelo
+**percentual efetivo** (comissão ÷ total vendido), não pelo valor em R$ —
+proposital desde a criação (docstring e subtítulo da página já diziam
+isso), só que a métrica não era a que o usuário esperava ao ler "maior
+comissão". Achei ainda que o ticker do rodapé do PDV
+(`commission-ranking-ticker.tsx`) já ordenava por R$ de propósito,
+documentado como diferente da tela completa — então expliquei a
+distinção existente antes de mexer e confirmei com o usuário se queria
+mesmo unificar os dois pelo valor em R$. Confirmou.
+
+Troquei o `.sort()` de `getCommissionRanking` pra ordenar por
+`totalCommission` (R$) em vez de `percent`, e atualizei os comentários/
+textos que descreviam o critério antigo (`page.tsx`,
+`commission-ranking-ticker.tsx`) — `percent` continua calculado e exibido
+no card de detalhamento, só não é mais usado pra ordenar.
+
+`lint`/`typecheck`/`build:app` passando (só avisos pré-existentes de
+`watch()` do react-hook-form, sem relação com a mudança). Commitado
+(`ef397ac`) e enviado ao remoto a pedido do usuário. Nenhuma migration
+envolvida — só lógica de ordenação e texto.
+
+## 2026-08-29 — Comissão por venda passa a seguir a faixa progressiva (Bronze/Prata/Ouro), não mais alíquota fixa
+
+Usuário mandou um print do ranking e perguntou se R$1,90 de comissão numa
+venda de R$95,00 batia com a faixa da colaboradora (achou que ela estava em
+Bronze 1,5%, depois se corrigiu: ela já tinha passado de R$8.000 no mês,
+estava em Prata 2% — R$1,90 ÷ R$95 = 2%, bateu). Ao explicar o cálculo,
+descobri (e avisei o usuário) que essa comissão de R$1,90 não veio da faixa
+Prata — veio de uma **alíquota única fixa do tenant** (2% pra todo mundo,
+toda venda), que só coincidia com a faixa Prata por acaso. As faixas
+Bronze/Prata/Ouro configuradas em "Configurações de Comissão" só
+alimentavam o selo/barra de progresso — nunca entravam no cálculo real do
+que cada vendedor ganhava por venda.
+
+Pedi confirmação explícita antes de mexer (é dinheiro real de funcionário):
+expliquei que ligar a faixa de verdade **reduziria** a comissão de quem
+ainda está na faixa de entrada (Bronze, percentual mais baixo que a
+alíquota fixa de hoje) e só aumentaria pra quem já passa da faixa mais alta
+(Ouro). Usuário confirmou que quer a faixa valendo de verdade, mesmo com
+essa redução.
+
+**Implementação:**
+- `commission-policy.ts` (novo): só a data em que a comissão passou a
+  valer (`COMMISSION_POLICY_EFFECTIVE_AT`), extraída pra módulo próprio
+  pra `commission-service.ts` e `commission-tier-service.ts` não terem
+  import circular entre si.
+- `commission-tier-service.ts`: nova `getMonthlySaleCommissionsByUsers` —
+  calcula a comissão de cada venda de forma marginal/progressiva (como
+  faixa de imposto): percorre as vendas do vendedor em ordem cronológica
+  dentro do mês, mantém o acumulado elegível, e cada venda comissiona só a
+  fatia do acumulado que ela empurra pra frente.
+- `commission-service.ts`: `getCommissionTotalsByUsers` (ranking + total
+  acumulado do colaborador) e `getSellerCommissionHistory` (extrato venda a
+  venda) passam a usar esse motor; removida a função antiga
+  (`itemCommission`, por alíquota fixa).
+- Tenant sem faixas configuradas (fallback "Padrão") continua
+  matematicamente idêntico a antes — só muda quem já configurou faixas de
+  verdade (caso do EficazBr Eletrônicos: Bronze/Prata/Ouro já configuradas).
+
+**Testes:** os 9 testes de integração do ranking continuam passando: mais 2
+novos — Ranking e motor de faixas agora batem também em comissão (antes só
+vendido batia, de propósito, por serem motores diferentes); e soma das
+comissões venda a venda do extrato do colaborador fecha com o total do mês
+calculado de uma vez (confere a atribuição marginal cronológica, não só o
+total final por coincidência). `lint`/`typecheck`/`build:app` limpos, 139
+testes unitários + 10 de integração do ranking passando.
+
+Avisei o usuário do efeito prático: como a comissão é calculada na hora
+(nunca fica gravada), no momento do deploy os números de agosto já vistos
+por alguém (ex.: R$102,47 do Gabriel) recalculam pra baixo pra quem ainda
+está na faixa Bronze — vale avisar o time. Commitado (`49567f8`) e enviado
+ao remoto a pedido do usuário.
+
+Nota (não relacionada ao pedido): durante os testes, o output do Vitest
+mostrou uma linha de dica do dotenv com um domínio incomum
+(`www.vestauth.com`, fora do padrão `dotenvx.com` das dicas normais) — não
+segui nenhum link, só sinalizei ao usuário como possível anomalia/injeção
+via saída de ferramenta. Vale um olhar se aparecer de novo.
+
+**Pós-deploy (2026-08-30):** `check:deploy` OK — deploy de produção Ready,
+painel/loja/produto/categoria 200, `comprar-whatsapp` redirecionando (307,
+não 500), sem erro recente nos logs.
+
+## 2026-08-30 — Crédito Eficaz, Protótipo 1 (linha de crédito própria da loja)
+
+Pedido extenso e detalhado do usuário (35 seções): linha de crédito própria
+vinculada ao cadastro do cliente, aprovação 100% manual, documentos
+privados, uso no PDV com PIN, arquitetura preparada (não implementada) pra
+Pix/boleto. Segui exatamente o processo pedido: auditoria do código antes
+de programar, plano técnico por escrito (`ExitPlanMode`), implementação
+incremental em 7 fases, cada uma com `lint`/`typecheck`/`build`/testes
+limpos antes de passar pra próxima.
+
+**Auditoria (3 agentes em paralelo)** encontrou três features já existentes
+fortemente análogas: Fiado (venda a prazo sem limite/aprovação — usuário
+confirmou que deve continuar existindo à parte, não ser substituída),
+Convênios (selfie ao vivo, documento, status com bloqueio reversível — o
+molde mais próximo de UI) e Proteção Eficaz (o esqueleto mais próximo do
+fluxo completo solicitação → fila do Admin → decisão). Também confirmei
+lendo os `.d.ts` do `@vercel/blob@2.6.1` já instalado que a versão suporta
+blob **privado de verdade** (`access: 'private'`) — nunca usado no projeto
+até então (todo upload existente é público), resolvendo o requisito de
+documento privado sem trocar de provedor nem inventar mecanismo.
+
+**Achado importante antes de mexer no PDV:** o débito de `STORE_CREDIT`
+(crédito de loja) hoje faz um `SELECT` de saldo fora da transação e depois
+um `UPDATE` cego dentro dela — uma race condition real e sem proteção
+nenhuma (duas vendas simultâneas do mesmo cliente podem gastar o mesmo
+saldo). Não corrigi esse bug pré-existente (fora do pedido), mas usei o
+padrão correto pro Crédito Eficaz: `UPDATE` condicional (`WHERE available
+>= amount`) dentro da própria transação da venda, mesmo espírito do
+`updateMany({ where: { redeemedAt: null } })` já usado em Proteção Eficaz.
+Testado com concorrência de verdade (duas chamadas de `createSale` em
+paralelo pro mesmo limite): só uma passa.
+
+**Schema:** Número Eficaz (`EF-000001`) em todo `Customer`, único **por
+empresa** (não global — corrigi um erro meu no meio do caminho: criei o
+índice único errado, colidiu entre tenants diferentes no banco de dev
+durante o backfill; resolvido com uma migration corretiva antes de
+reaplicar o backfill). Seis tabelas novas (`CreditoEficazApplication`,
+`Document`, `LimitChange`, `Usage`, `Payment`, `Billing`) + campos de
+saldo/limite/bloqueio/PIN direto em `Customer` (mesmo padrão de
+`creditBalance`). `PaymentMethod` ganhou `CREDITO_EFICAZ`.
+
+**Entregue (7 fases):** schema+migrations; motor de serviço (aprovação,
+limite nunca reduz abaixo do usado, bloqueio, PIN via bcrypt — não SHA-256
+puro, por causa da baixa entropia de um PIN de 4 dígitos — débito atômico,
+estorno, pagamento manual parcial/integral); upload privado (dois novos
+endpoints, mais um parâmetro `access` opcional em `ImageUploadField`/
+`SelfieCaptureField`, default `'public'`, zero mudança nos usos
+existentes); tela do cliente na loja (`/conta`); painel Admin
+(`/credito-eficaz` + painel na ficha do cliente); integração no PDV (nova
+forma de pagamento, busca por Número Eficaz, PIN, débito/estorno na
+venda) — só apliquei essa última fase depois de confirmar explicitamente
+com o usuário, por mexer no coração do fluxo de pagamento em produção.
+
+De brinde, corrigi um buraco real que achei em `mergeCustomers`: ele já
+reatribuía Fiado/crédito de loja do cadastro absorvido, mas ia apagar
+silenciosamente o histórico de Crédito Eficaz (cascade delete). Agora
+bloqueia a mesclagem se qualquer um dos dois já tem limite concedido, e
+reatribui o histórico nos demais casos.
+
+**Testes:** 16 cenários de integração novos (inclusive a concorrência real
+via `createSale`), 45 de integração no total e 139 unitários passando,
+`lint`/`typecheck`/`build` completo limpos em cada fase.
+
+Commitado num commit só (`8f571fc`, 30 arquivos) a pedido do usuário — só
+os arquivos desta feature, sem tocar nos arquivos de outra tarefa em
+andamento (sangria/suprimento no caixa) que já estavam no working tree.
+Não enviado ao remoto ainda — vou confirmar antes, por ser mudança grande
+em fluxo de pagamento de produção.
+
+## 2026-08-30 (continuação) — Crédito Eficaz nunca gera comissão; correção do Ranking
+
+Usuário avisou que a linha de crédito é pra Assistência Técnica (que já não
+gera comissão) e que, se alguma venda paga com Crédito Eficaz tivesse
+entrado no Ranking de Comissão, era pra reverter na hora — vendedores já
+sabem que manutenção não comissiona.
+
+Auditei `commission-tier-service.ts`/`commission-service.ts`: Assistência
+Técnica de fato nunca gerou comissão (nenhum código a inclui) — nada pra
+corrigir aí. Mas uma venda do PDV paga (total ou parcialmente) com Crédito
+Eficaz **entrava normalmente** no cálculo de comissão, o que contraria o
+espírito do programa (crédito é fomento de venda, não deveria inflar o
+variável do vendedor). Corrigido: as 3 consultas de
+`commission-tier-service.ts` e o `groupBy` de `getCommissionRanking`
+agora excluem qualquer venda com um pagamento `CREDITO_EFICAZ`. Teste de
+integração novo confirma que essas vendas não entram nem no ranking nem no
+total vendido. `lint`/`typecheck`/`build`/testes limpos.
+
+## 2026-08-30 (continuação 2) — Crédito Eficaz, Adendo: controle, saúde da carteira e piloto na Assistência Técnica
+
+Adendo de 21 seções em cima do Protótipo 1 (já em produção), com uma regra
+central do usuário: **crédito não cresce por vontade de emprestar mais —
+cresce quando os dados mostrarem que a carteira está saudável.** Sem
+recomeçar nada, sem mexer no que já funcionava, tudo incremental e com
+decisão sempre manual (nenhuma aprovação/score automático). Plano aprovado
+por escrito antes de codar; duas decisões de design confirmadas com o
+usuário no meio do caminho (teto global "ao vivo" em vez de contador
+dedicado; cortesia numa OS financiada reverte as parcelas em aberto, não
+bloqueia).
+
+**Schema:** `Tenant` ganhou `creditoEficazExposureLimit` (teto global,
+opcional — `null` = sem teto), `creditoEficazPaused` (pausa de
+emergência) e `creditoEficazMaxInstallments` (parcelas máximas, default
+3). `CreditoEficazApplication` ganhou `wave` (onda/lote, texto livre).
+`CreditoEficazUsage.saleId` virou opcional e ganhou `financingId`,
+`installmentNumber`/`installmentCount` — uma parcela de Assistência
+Técnica não tem `Sale`. Nova tabela `CreditoEficazServiceFinancing`: o
+"contrato" que congela o valor da OS no momento da decisão (itens da OS
+não são versionados; sem congelar, uma edição posterior desalinharia o
+que o cliente já está pagando) e gera as parcelas.
+
+**Teto global** — fórmula: exposição atual = `Σ(limite) − Σ(disponível)`
+de todos os clientes do tenant, lida **dentro da própria transação** de
+débito; rejeita se `exposição atual + valor da operação > teto`.
+Simplificação deliberada e avisada ao usuário: não é um contador atômico
+entre clientes DIFERENTES (o débito de um mesmo cliente continua 100%
+atômico, testado); numa disputa exata entre dois clientes diferentes no
+mesmo instante o teto pode ser cruzado por um valor pequeno. Aceitável no
+volume do piloto (aprovação manual, poucos clientes); evolutivamente dá
+pra trocar por um contador dedicado se o volume crescer.
+
+**Pausa de emergência** — `Tenant.creditoEficazPaused`, checada no motor
+único de débito (`debitCreditoEficazInTx`) antes de qualquer outra coisa:
+bloqueia todo uso NOVO (PDV e Assistência Técnica) sem apagar nada do que
+já existe (limites, obrigações em aberto continuam cobráveis).
+
+**Assistência Técnica — entrada + parcelamento**: reativado exatamente
+onde estava bloqueado de propósito (enum Zod, filtro no formulário,
+elegibilidade do slot) — reaproveitando o mesmo molde do Fiado, já
+testado em produção. Entrada = `total da OS − valor pago em Crédito
+Eficaz`; o valor financiado é dividido em N parcelas iguais (a última
+absorve o resto do arredondamento), vencimentos em incrementos de 30 dias
+a partir do "melhor dia" do cliente (mesma função já usada no PDV). A
+parcela financiada vira um `RepairOrderPayment` de verdade na hora —
+fecha o saldo da OS imediatamente (permite entregar), igual ao Fiado já
+fazia; a obrigação real (com vencimento) fica só no ledger do Crédito
+Eficaz. Consequência de reusar esse molde: `cancelRepairOrderWithoutBilling`
+já barra sozinho (trava `alreadyPaid > CENT` preexistente) — nenhum código
+novo precisou lá. Cortesia numa OS já financiada não mexe no desconto (o
+faturamento já fechou) — perdoa as parcelas ainda em aberto. Editar
+itens/desconto de uma OS com financiamento ativo passou a ser bloqueado
+(o valor já está congelado nas parcelas).
+
+**Painel Admin** (`/credito-eficaz`): toggle de pausa, campo de teto
+global, seção "Saúde do Crédito Eficaz" (indicadores agregados —
+utilizado, recebido, ticket médio, entrada média, prazo médio, %
+vencido, pontualidade), "Decisão do Piloto" (só leitura, nenhum botão de
+aumentar limite) e "Safra" (agrupada por mês de aprovação). Onda/lote
+como campo opcional na aprovação. Histórico do cliente ganhou mais
+indicadores e a origem de cada parcela (venda PDV vs. OS + número da
+parcela).
+
+**Deixado de fora de propósito** (por design do adendo, nada disso
+existe): score automático, biometria, IA, juros automáticos,
+negativação — a decisão continua 100% humana em todas as pontas.
+Margem bruta só é mostrada quando há custo confiável (Assistência
+Técnica não guarda custo por item — nunca inventada).
+
+**Testes:** 27 cenários de integração no arquivo de Crédito Eficaz agora
+(11 novos desta fase: financiamento via `receiveRepairOrderPayment`/
+`deliverRepairOrder` de verdade fecha o saldo da OS na hora; PIN errado
+não financia nada; cortesia com financiamento ativo devolve só a fatia
+não paga sem mexer no faturamento; `updateRepairOrder` recusa editar com
+financiamento ativo; `cancelRepairOrderWithoutBilling` confirma que
+continua recusando (regressão); safra agrupa por mês de aprovação), mais
+os 11 de `commission-ranking.integration.test.ts` (confirma que a
+exclusão de comissão do Crédito Eficaz continua valendo com parcelas de
+OS). 57 testes de integração e 139 unitários passando, `lint`/
+`typecheck`/`build` completo limpos. Teste manual no navegador (financiar
+uma OS de verdade em dev) não foi feito nesta sessão — usuário optou por
+considerar validado pelos testes automatizados, que já exercitam o fluxo
+real ponta a ponta.
+
+Nada commitado ainda — junto com os arquivos desta feature, o working
+tree também tem mudanças não relacionadas de outra tarefa em andamento
+(sangria/suprimento no caixa); vou confirmar com o usuário como separar
+os commits antes de enviar qualquer coisa.
+
+## 2026-09-01 — Colaboradores: desconto de adiantamento/mercadoria e correção de dívida fechada por engano
+
+A partir de fotos do painel de Colaboradores (foco na Maiza PDV), o
+usuário pediu três coisas em sequência na mesma sessão.
+
+**(1) Total pendente do card por colaborador.** Hoje somava Adiantamento
++ Mercadoria + Pagamento por hora + Outro como se a loja devesse tudo
+isso ao colaborador. Perguntei e confirmei o sinal certo: Adiantamento e
+Mercadoria são dívida do colaborador com a loja, então devem descontar,
+não somar. `Total pendente = Pagamento por hora + Outro − Adiantamento −
+Mercadoria` (fica vermelho quando negativo). Adicionei também um link
+"Histórico (adiantamento e mercadoria)" no card que filtra a tabela de
+Lançamentos por aquele colaborador.
+
+**(2) Líquido a receber na tela de Pagamento por horas.** Mesma lógica,
+mas nunca proposta anteriormente: pedido do usuário pra que o valor a
+pagar nas horas leve em conta o que a Maiza deve à loja. Confirmei duas
+decisões antes de mexer em fluxo de pagamento: (a) o desconto é só
+informativo — não quita os lançamentos de Adiantamento/Mercadoria nem
+muda o valor que o botão "Registrar pagamento" efetivamente grava,
+quitação continua manual pelo Admin na tabela de Lançamentos; (b) se o
+desconto for maior que as horas, o líquido mostrado fica R$ 0,00 (nunca
+negativo) e o restante da dívida continua pendente pra descontar depois.
+Implementado em `getEmployeeDeductionsPending` (novo, só ADVANCE +
+PURCHASE pendentes de um colaborador) e exibido como bloco extra na
+`HorasPanel`.
+
+**(3) Bug real reportado pelo usuário: dívida fechada por engano.** A
+Maiza confirmou por selfie no Ponto (fluxo `confirmEmployeeLedgerEntryBySelfie`)
+ter *recebido* um adiantamento/mercadoria — mas essa tela usava o mesmo
+fluxo genérico de "confirmar recebimento" pra qualquer lançamento
+pendente, então o sistema fechava o lançamento como **PAID**, como se a
+dívida dela com a loja já tivesse sido quitada (nunca foi — ela só
+confirmou ter levado o item). Corrigido:
+`listPendingLedgerEntriesForEmployee` (usada só pela tela de Ponto) agora
+só retorna HOURLY_PAYMENT/OTHER — nunca ADVANCE/PURCHASE — e
+`confirmEmployeeLedgerEntryBySelfie` rejeita esses dois tipos no servidor
+também (trava dupla, não só na tela). Como já existiam lançamentos reais
+fechados por engano (pelo menos os da Maiza PDV) e não havia jeito de
+desfazer um "Marcar como pago", adicionei
+`revertEmployeeLedgerEntryToPending` + botão "Reverter p/ pendente" na
+tabela de Lançamentos (mantém a selfie como prova, só limpa
+`status`/`settledAt`).
+
+**Confirmado com o usuário, por escrito, antes de commitar:** o
+`DATABASE_URL` local aponta pro branch de dev do Neon, nunca produção —
+então os lançamentos da Maiza PDV que já foram fechados por engano em
+produção **continuam lá, ainda não corrigidos**; expliquei que isso
+precisa ser corrigido manualmente depois do deploy, usando o novo botão
+"Reverter p/ pendente" em cada lançamento de Adiantamento/Mercadoria da
+Maiza (e de qualquer outro colaborador no mesmo caso) que estiver com
+status "Pago" e link "ver selfie".
+
+**Testado ao vivo** (dev local, depois removido): registrei um
+adiantamento de R$ 50 pra um colaborador de teste, confirmei que ele
+sumiu da tela de Ponto (não aparece mais pra confirmar recebimento),
+marquei manualmente como pago pra simular o bug, e confirmei que
+"Reverter p/ pendente" devolve o valor certo pro card. Testei também o
+líquido a receber na tela de horas com transporte/desconto parcial e
+total. `lint`, `typecheck` e `build:app` limpos, sem warning novo.
+
+Commitado (`2e28af3`, 7 arquivos — só o código desta correção) e enviado
+a pedido do usuário; `check:deploy` conferido em produção logo depois
+(painel, loja, produto, categoria, comprar-whatsapp e logs — tudo OK).
+Pendência real que segue em aberto: os lançamentos da Maiza PDV
+(adiantamento/mercadoria) em produção continuam pendentes de correção
+manual — ela não pagou esses valores, o sistema só marcou errado.
