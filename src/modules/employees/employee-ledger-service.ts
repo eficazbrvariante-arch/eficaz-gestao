@@ -51,6 +51,32 @@ export async function settleEmployeeLedgerEntry(
   return { ok: true, id: entry.id };
 }
 
+/**
+ * Reverte um lançamento marcado como pago de volta pra pendente — corrige um
+ * "Marcar como pago" (ou confirmação por selfie) feito por engano. Mantém
+ * `paidSelfieUrl` como prova de que o colaborador confirmou ter levado a
+ * mercadoria/adiantamento; só limpa `status`/`settledAt`, que é o que faz o
+ * valor voltar a contar como pendente.
+ */
+export async function revertEmployeeLedgerEntryToPending(
+  tenantId: string,
+  id: string
+): Promise<EmployeeLedgerResult> {
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id, tenantId },
+    select: { id: true, status: true },
+  });
+  if (!entry) return { ok: false, error: "Lançamento não encontrado." };
+  if (entry.status === "PENDING") return { ok: true, id: entry.id };
+
+  await prisma.employeeLedgerEntry.update({
+    where: { id },
+    data: { status: "PENDING", settledAt: null },
+  });
+
+  return { ok: true, id: entry.id };
+}
+
 export type DeleteEmployeeLedgerEntryResult =
   | { ok: true; userName: string; type: string; amount: number }
   | { ok: false; error: string };
@@ -118,6 +144,31 @@ export async function getEmployeeLedgerSummary(tenantId: string): Promise<Employ
   return [...byUser.values()].sort((a, b) => b.totalPending - a.totalPending);
 }
 
+/**
+ * Adiantamento + Mercadoria pendentes de um único colaborador — o que ele
+ * deve à loja, usado como desconto informativo na tela de Pagamento por
+ * horas (ver `HorasPanel`). Não inclui Pagamento por hora nem Outro, que não
+ * são dívida do colaborador com a loja.
+ */
+export async function getEmployeeDeductionsPending(
+  tenantId: string,
+  userId: string
+): Promise<{ advancePending: number; purchasePending: number }> {
+  const pending = await prisma.employeeLedgerEntry.findMany({
+    where: { tenantId, userId, status: "PENDING", type: { in: ["ADVANCE", "PURCHASE"] } },
+    select: { type: true, amount: true },
+  });
+
+  let advancePending = 0;
+  let purchasePending = 0;
+  for (const entry of pending) {
+    const amount = Number(entry.amount);
+    if (entry.type === "ADVANCE") advancePending = round2(advancePending + amount);
+    else purchasePending = round2(purchasePending + amount);
+  }
+  return { advancePending, purchasePending };
+}
+
 export type PendingLedgerEntry = {
   id: string;
   type: CreateEmployeeLedgerEntryInput["type"];
@@ -126,13 +177,21 @@ export type PendingLedgerEntry = {
   createdAt: Date;
 };
 
-/** Lançamentos pendentes de um colaborador — usado na confirmação por selfie no Ponto. */
+/**
+ * Lançamentos pendentes de um colaborador que a loja deve a ele — usado na
+ * confirmação por selfie no Ponto ("confirmar recebimento"). Não inclui
+ * ADVANCE/PURCHASE: esses são dívida do colaborador COM a loja (adiantamento
+ * recebido, mercadoria levada), então "confirmar recebimento" não se aplica
+ * — quitar essa dívida é feito pelo desconto na hora de pagar as horas (ver
+ * `getEmployeeDeductionsPending`) ou manualmente pelo Admin/Gerente na
+ * tabela de Lançamentos, nunca pelo próprio colaborador com uma selfie.
+ */
 export async function listPendingLedgerEntriesForEmployee(
   tenantId: string,
   userId: string
 ): Promise<PendingLedgerEntry[]> {
   const entries = await prisma.employeeLedgerEntry.findMany({
-    where: { tenantId, userId, status: "PENDING" },
+    where: { tenantId, userId, status: "PENDING", type: { in: ["HOURLY_PAYMENT", "OTHER"] } },
     select: { id: true, type: true, amount: true, description: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
@@ -143,6 +202,10 @@ export async function listPendingLedgerEntriesForEmployee(
  * Confirmação do próprio colaborador de que recebeu o pagamento, com selfie
  * como "assinatura" — só quita um lançamento que pertence a ele mesmo,
  * diferente de `settleEmployeeLedgerEntry` (ação administrativa, sem foto).
+ * Nunca aceita ADVANCE/PURCHASE aqui, mesma trava de
+ * `listPendingLedgerEntriesForEmployee` — sem isso o colaborador "confirmava
+ * recebimento" de uma mercadoria/adiantamento que só tinha levado da loja, e
+ * o lançamento virava PAID como se a dívida já tivesse sido quitada.
  */
 export async function confirmEmployeeLedgerEntryBySelfie(
   tenantId: string,
@@ -152,9 +215,15 @@ export async function confirmEmployeeLedgerEntryBySelfie(
 ): Promise<EmployeeLedgerResult> {
   const entry = await prisma.employeeLedgerEntry.findFirst({
     where: { id: entryId, tenantId, userId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, type: true },
   });
   if (!entry) return { ok: false, error: "Lançamento não encontrado." };
+  if (entry.type === "ADVANCE" || entry.type === "PURCHASE") {
+    return {
+      ok: false,
+      error: "Adiantamento e mercadoria são dívida com a loja — não dá pra confirmar como recebido.",
+    };
+  }
   if (entry.status === "PAID") return { ok: true, id: entry.id };
 
   await prisma.employeeLedgerEntry.update({

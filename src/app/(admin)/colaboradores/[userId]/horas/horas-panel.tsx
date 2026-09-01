@@ -27,6 +27,8 @@ export function HorasPanel({
   coveredThrough,
   fullyCovered,
   history,
+  advancePending,
+  purchasePending,
 }: {
   userId: string;
   hourlyRate: number;
@@ -54,6 +56,11 @@ export function HorasPanel({
   /** `true` quando o período pedido inteiro já está coberto — nada pendente. */
   fullyCovered: boolean;
   history: HourlyPaymentHistoryEntry[];
+  /** Adiantamento de salário pendente deste colaborador — só informativo,
+   *  descontado do "Líquido a receber" aqui, sem quitar o lançamento. */
+  advancePending: number;
+  /** Compra de mercadoria pendente deste colaborador — mesmo tratamento. */
+  purchasePending: number;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -63,6 +70,8 @@ export function HorasPanel({
 
   const transportAmount = Math.max(0, Number(transportInput) || 0);
   const totalWithTransport = amount + transportAmount;
+  const deductionsPending = advancePending + purchasePending;
+  const netAmount = Math.max(0, totalWithTransport - deductionsPending);
 
   function handleSaveRate() {
     setFeedback(undefined);
@@ -202,6 +211,44 @@ export function HorasPanel({
         <span>Total a pagar</span>
         <span>{formatBRL(totalWithTransport)}</span>
       </div>
+
+      {deductionsPending > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="mb-1 text-sm font-semibold text-slate-900">
+            Descontos pendentes (o que ela deve à loja)
+          </p>
+          <p className="mb-3 text-xs text-slate-500">
+            Só informativo — não muda o que é registrado ao clicar em &quot;Registrar
+            pagamento&quot; abaixo. Pra quitar de fato, marque o Adiantamento/Mercadoria como
+            pago na tabela de Lançamentos, em Colaboradores.
+          </p>
+          <div className="space-y-1 text-sm">
+            {advancePending > 0 && (
+              <div className="flex justify-between text-slate-700">
+                <span>Adiantamento pendente</span>
+                <span>-{formatBRL(advancePending)}</span>
+              </div>
+            )}
+            {purchasePending > 0 && (
+              <div className="flex justify-between text-slate-700">
+                <span>Mercadoria pendente</span>
+                <span>-{formatBRL(purchasePending)}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-slate-100 pt-2 text-base font-bold text-black">
+              <span>Líquido a receber</span>
+              <span>{formatBRL(netAmount)}</span>
+            </div>
+            {totalWithTransport - deductionsPending < 0 && (
+              <p className="pt-1 text-xs text-red-600">
+                O desconto é maior que as horas dessa vez — o restante (
+                {formatBRL(deductionsPending - totalWithTransport)}) continua pendente pra ser
+                descontado depois.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {hasIncompleteDays && (
         <p className="text-sm text-red-600">

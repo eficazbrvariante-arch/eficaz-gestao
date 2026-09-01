@@ -42,6 +42,7 @@ export type AuditAction =
   | "repair.cancel_without_billing"
   | "employee_ledger.confirm_paid"
   | "employee_ledger.delete"
+  | "employee_ledger.revert_to_pending"
   | "commission.tiers_update"
   | "commission.pdv_ranking_toggle"
   | "credito_eficaz.approve"
@@ -90,6 +91,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "repair.cancel_without_billing": "OS cancelada sem faturamento",
   "employee_ledger.confirm_paid": "Pagamento confirmado por selfie pelo colaborador",
   "employee_ledger.delete": "Lançamento de colaborador excluído",
+  "employee_ledger.revert_to_pending": "Lançamento de colaborador revertido de pago para pendente",
   "commission.tiers_update": "Faixas de comissão progressiva alteradas",
   "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
   "credito_eficaz.approve": "Solicitação de Crédito Eficaz aprovada",

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
 import { formatISODate } from "@/lib/format";
 import { computeHourlyPaymentPreview, listHourlyPaymentHistory } from "@/modules/employees/hourly-payment-service";
+import { getEmployeeDeductionsPending } from "@/modules/employees/employee-ledger-service";
 import { resolvePeriod } from "../../../relatorios/period";
 import { PeriodPicker } from "../../../relatorios/report-nav";
 import { HorasPanel } from "./horas-panel";
@@ -33,9 +34,10 @@ export default async function HorasColaboradorPage({
   if (!employee) notFound();
 
   const period = resolvePeriod(await searchParams);
-  const [preview, history] = await Promise.all([
+  const [preview, history, deductions] = await Promise.all([
     computeHourlyPaymentPreview(user.tenantId, userId, period),
     listHourlyPaymentHistory(user.tenantId, userId),
+    getEmployeeDeductionsPending(user.tenantId, userId),
   ]);
 
   return (
@@ -72,6 +74,8 @@ export default async function HorasColaboradorPage({
         coveredThrough={preview.coveredThrough}
         fullyCovered={preview.fullyCovered}
         history={history}
+        advancePending={deductions.advancePending}
+        purchasePending={deductions.purchasePending}
       />
     </div>
   );

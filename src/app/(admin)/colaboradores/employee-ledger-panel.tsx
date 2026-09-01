@@ -19,6 +19,7 @@ import {
   createEmployeeLedgerEntryAction,
   deleteEmployeeLedgerEntryAction,
   listEmployeesAction,
+  revertEmployeeLedgerEntryToPendingAction,
   setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
   settleEmployeeLedgerEntryAction,
@@ -39,6 +40,7 @@ export type EmployeeCardRow = {
 
 export type EmployeeLedgerEntryRow = {
   id: string;
+  userId: string;
   userName: string;
   type: EmployeeLedgerTypeValue;
   amount: number;
@@ -101,6 +103,20 @@ export function EmployeeLedgerPanel({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
+  // Filtro do histórico de lançamentos por colaborador — acionado pelo link
+  // "Ver histórico" no card (adiantamento e mercadoria não têm uma página
+  // própria como "Pagamento por horas", então o histórico fica nessa tabela).
+  const [historyFilter, setHistoryFilter] = useState<{ userId: string; userName: string } | null>(
+    null
+  );
+  function showHistoryFor(row: { userId: string; userName: string }) {
+    setHistoryFilter({ userId: row.userId, userName: row.userName });
+    document.getElementById("lancamentos")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const visibleEntries = historyFilter
+    ? entries.filter((entry) => entry.userId === historyFilter.userId)
+    : entries;
+
   const [commissionPercent, setCommissionPercent] = useState(String(defaultCommissionPercent));
 
   function handleCreate() {
@@ -129,6 +145,19 @@ export function EmployeeLedgerPanel({
     startTransition(async () => {
       const result = await settleEmployeeLedgerEntryAction(id);
       if (result?.error) setFeedback({ type: "error", message: result.error });
+    });
+  }
+
+  function handleRevertToPending(id: string) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await revertEmployeeLedgerEntryToPendingAction(id);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setFeedback({ type: "success", message: result?.success ?? "Lançamento voltou a ficar pendente." });
+      router.refresh();
     });
   }
 
@@ -332,17 +361,26 @@ export function EmployeeLedgerPanel({
           <EmptyState message="Nenhum Vendedor ou Gerente ativo cadastrado." />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {cardRows.map((row) => (
+            {cardRows.map((row) => {
+              // A loja deve ao colaborador (Pagamento por hora + Outro) menos o que já foi
+              // adiantado/descontado dele (Adiantamento + Mercadoria) — pode ficar negativo
+              // quando os descontos passam o que falta pagar em horas.
+              const netPending =
+                Math.round(
+                  (row.hourlyPending + row.otherPending - row.advancePending - row.purchasePending) *
+                    100
+                ) / 100;
+              return (
               <div key={row.userId} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-bold text-black">{row.userName}</p>
                 <div className="mt-2 space-y-1 text-xs text-slate-500">
                   <div className="flex justify-between">
-                    <span>Adiantamento</span>
-                    <span>{formatBRL(row.advancePending)}</span>
+                    <span>Adiantamento (desconto)</span>
+                    <span>-{formatBRL(row.advancePending)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Mercadoria</span>
-                    <span>{formatBRL(row.purchasePending)}</span>
+                    <span>Mercadoria (desconto)</span>
+                    <span>-{formatBRL(row.purchasePending)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Pagamento por hora</span>
@@ -355,10 +393,22 @@ export function EmployeeLedgerPanel({
                     </div>
                   )}
                 </div>
-                <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold text-black">
+                <div
+                  className={`mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-bold ${
+                    netPending < 0 ? "text-red-600" : "text-black"
+                  }`}
+                >
                   <span>Total pendente</span>
-                  <span>{formatBRL(row.totalPending)}</span>
+                  <span>{formatBRL(netPending)}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => showHistoryFor(row)}
+                  className="mt-2 flex w-full justify-between border-t border-slate-100 pt-2 text-sm font-medium text-slate-700 hover:underline"
+                >
+                  <span>Histórico (adiantamento e mercadoria)</span>
+                  <span>Ver →</span>
+                </button>
                 <Link
                   href={`/colaboradores/${row.userId}/comissao`}
                   className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-emerald-700 hover:underline"
@@ -374,13 +424,27 @@ export function EmployeeLedgerPanel({
                   <span>Calcular →</span>
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      <div>
-        <p className="mb-3 text-sm font-semibold text-foreground">Lançamentos</p>
+      <div id="lancamentos">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-foreground">
+            Lançamentos{historyFilter ? ` — ${historyFilter.userName}` : ""}
+          </p>
+          {historyFilter && (
+            <button
+              type="button"
+              onClick={() => setHistoryFilter(null)}
+              className="text-xs font-medium text-slate-500 hover:underline"
+            >
+              Limpar filtro
+            </button>
+          )}
+        </div>
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
@@ -395,7 +459,7 @@ export function EmployeeLedgerPanel({
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
+              {visibleEntries.map((entry) => (
                 <tr key={entry.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-2 text-slate-500">{formatDateTime(entry.createdAt)}</td>
                   <td className="px-3 py-2 font-medium text-slate-900">{entry.userName}</td>
@@ -432,6 +496,17 @@ export function EmployeeLedgerPanel({
                         Marcar como pago
                       </button>
                     )}
+                    {entry.status === "PAID" && (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleRevertToPending(entry.id)}
+                        title="Corrige um &quot;Marcar como pago&quot; feito por engano — ex.: adiantamento/mercadoria que o colaborador só confirmou ter levado, não que já pagou de volta."
+                        className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+                      >
+                        Reverter p/ pendente
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={isPending}
@@ -443,10 +518,10 @@ export function EmployeeLedgerPanel({
                   </td>
                 </tr>
               ))}
-              {entries.length === 0 && (
+              {visibleEntries.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
-                    Nenhum lançamento ainda.
+                    {historyFilter ? "Nenhum lançamento desse colaborador ainda." : "Nenhum lançamento ainda."}
                   </td>
                 </tr>
               )}

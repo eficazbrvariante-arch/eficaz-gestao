@@ -67,6 +67,7 @@ export default async function ColaboradoresPage() {
 
   const entryRows: EmployeeLedgerEntryRow[] = entries.map((entry) => ({
     id: entry.id,
+    userId: entry.userId,
     userName: entry.user.name,
     type: entry.type,
     amount: Number(entry.amount),

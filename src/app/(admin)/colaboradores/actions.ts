@@ -9,6 +9,7 @@ import {
   createEmployeeLedgerEntry,
   deleteEmployeeLedgerEntry,
   settleEmployeeLedgerEntry,
+  revertEmployeeLedgerEntryToPending,
 } from "@/modules/employees/employee-ledger-service";
 import { EMPLOYEE_LEDGER_TYPE_LABELS } from "@/lib/validations/employee-ledger";
 import { formatBRL } from "@/lib/format";
@@ -67,6 +68,34 @@ export async function settleEmployeeLedgerEntryAction(id: string) {
 
   revalidatePath("/colaboradores");
   return { success: "Lançamento quitado." };
+}
+
+/**
+ * Corrige um "Marcar como pago" (ou confirmação por selfie no Ponto) feito
+ * por engano — ex.: Adiantamento/Mercadoria que o colaborador só confirmou
+ * ter levado, mas o sistema fechou como se a dívida já tivesse sido quitada.
+ */
+export async function revertEmployeeLedgerEntryToPendingAction(id: string) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para alterar lançamentos de colaboradores." };
+  }
+
+  const result = await revertEmployeeLedgerEntryToPending(user.tenantId, id);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "employee_ledger.revert_to_pending",
+    entity: "EmployeeLedgerEntry",
+    entityId: id,
+    description: "Reverteu lançamento de pago para pendente (correção de quitação por engano).",
+  });
+
+  revalidatePath("/colaboradores");
+  return { success: "Lançamento voltou a ficar pendente." };
 }
 
 export async function deleteEmployeeLedgerEntryAction(id: string) {
