@@ -2443,3 +2443,61 @@ a pedido do usuário; `check:deploy` conferido em produção logo depois
 Pendência real que segue em aberto: os lançamentos da Maiza PDV
 (adiantamento/mercadoria) em produção continuam pendentes de correção
 manual — ela não pagou esses valores, o sistema só marcou errado.
+
+## 2026-09-02 — Colaboradores: reverter em lote as dívidas fechadas por engano
+
+Pedido do usuário (três fotos da tela de `/colaboradores`): os lançamentos
+da Maiza PDV que aparecem como "Pago" não foram pagos por ela — os
+adiantamentos de salário e as compras de mercadoria precisam voltar a
+somar como dívida e ser descontados do total de horas dela.
+
+**Diagnóstico antes de mexer.** A causa já estava corrigida em `2e28af3`
+(01/09): no Ponto, a confirmação por selfie de "pagamentos pendentes"
+incluía ADVANCE e PURCHASE, então quando o colaborador confirmava só ter
+*recebido/levado* o item o sistema fechava o lançamento como PAID, como se
+a dívida tivesse sido quitada. O cálculo também já estava certo —
+`getEmployeeDeductionsPending` soma Adiantamento + Mercadoria pendentes e
+`HorasPanel` já desconta isso do líquido a receber. Ou seja: não faltava
+lógica nenhuma, o que estava errado era o **status** dos lançamentos
+antigos, resíduo do bug.
+
+Não deu pra conferir os dados no banco: o `.env.local` aponta pra branch
+`dev-local` do Neon (e ela estava fora do ar, `ECONNREFUSED`), e o banco
+de produção não é acessível daqui. Li os lançamentos pelas fotos e
+conferi a lista com o usuário antes de escrever qualquer código — 10
+lançamentos da Maiza marcados como pagos indevidamente, somando
+R$ 759,00; com os R$ 60,00 que já estavam pendentes, dívida total de
+R$ 819,00. Usuário confirmou a lista e escolheu, entre as opções
+oferecidas (clicar linha por linha / botão em lote / script de
+manutenção), o **botão de reverter em lote**.
+
+**`employee-ledger-service.ts`:** `revertPaidDebtEntriesToPending(tenantId,
+userId)` — busca os lançamentos do colaborador com `status: PAID` e tipo
+ADVANCE/PURCHASE, devolve pra PENDING (limpa `settledAt`) e retorna
+quantos são e quanto somam. Não toca em HOURLY_PAYMENT nem OTHER (é o que
+a loja deve a ele, não o contrário) e mantém `paidSelfieUrl` como prova de
+que ele confirmou ter levado o item.
+
+**`actions.ts`:** `revertEmployeeDebtEntriesToPendingAction(userId)` —
+mesma trava de permissão do botão por linha (`canManageEmployeeLedger`),
+auditoria em `employee_ledger.revert_to_pending` com contagem e valor na
+descrição, e `revalidatePath` de `/colaboradores` **e**
+`/colaboradores/{id}/horas`, pro desconto aparecer na hora.
+
+**`employee-ledger-panel.tsx`:** no histórico filtrado por colaborador
+("Ver histórico" no card) aparece um botão âmbar no cabeçalho —
+"Reverter N dívida(s) marcada(s) como paga(s) — R$ X" — que só existe se
+houver alguma. Abre diálogo de confirmação dizendo quantos lançamentos
+mudam, quanto somam e o que **não** será tocado. A contagem mostrada vem
+do que está na tela (a tabela traz os 100 últimos lançamentos); a ação no
+servidor reverte todos e devolve o número real na mensagem de sucesso.
+
+`typecheck` limpo, `lint` com 0 erros e 9 warnings — todos pré-existentes,
+em `product-form.tsx` e `checkout-form.tsx`, arquivos não tocados —,
+`build:app` passando e 139 testes verdes. Commit `c345344`, push pra
+`main`, deploy conferido com `check:deploy`.
+
+**Pendente:** a reversão em si ainda precisa ser feita pelo usuário no
+painel de produção (Colaboradores → card da Maiza PDV → Ver histórico →
+botão → confirmar). Depois disso o "Total pendente" dela fica em
+R$ 819,00 negativo.
