@@ -19,6 +19,7 @@ import {
   createEmployeeLedgerEntryAction,
   deleteEmployeeLedgerEntryAction,
   listEmployeesAction,
+  revertEmployeeDebtEntriesToPendingAction,
   revertEmployeeLedgerEntryToPendingAction,
   setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
@@ -82,6 +83,10 @@ export function EmployeeLedgerPanel({
     null
   );
   const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<EmployeeLedgerEntryRow | null>(null);
+  const [confirmBulkRevert, setConfirmBulkRevert] = useState<{
+    userId: string;
+    userName: string;
+  } | null>(null);
   // Contagem local (ajustada de forma otimista a cada marcar/desmarcar) —
   // resincroniza com o valor vindo do servidor quando ele muda, sem passar
   // por um efeito: setState durante a renderização evita um re-render extra
@@ -116,6 +121,18 @@ export function EmployeeLedgerPanel({
   const visibleEntries = historyFilter
     ? entries.filter((entry) => entry.userId === historyFilter.userId)
     : entries;
+  // Adiantamento/Mercadoria que estão como pagos no colaborador filtrado — é o
+  // que a confirmação por selfie no Ponto fechava por engano, sumindo com a
+  // dívida. Contagem só do que está na tela (a tabela traz os 100 últimos
+  // lançamentos); a ação no servidor reverte todos e devolve o número real.
+  const bulkRevertCandidates = historyFilter
+    ? visibleEntries.filter(
+        (entry) =>
+          entry.status === "PAID" && (entry.type === "ADVANCE" || entry.type === "PURCHASE")
+      )
+    : [];
+  const bulkRevertTotal =
+    Math.round(bulkRevertCandidates.reduce((sum, entry) => sum + entry.amount, 0) * 100) / 100;
 
   const [commissionPercent, setCommissionPercent] = useState(String(defaultCommissionPercent));
 
@@ -157,6 +174,24 @@ export function EmployeeLedgerPanel({
         return;
       }
       setFeedback({ type: "success", message: result?.success ?? "Lançamento voltou a ficar pendente." });
+      router.refresh();
+    });
+  }
+
+  function handleBulkRevert() {
+    if (!confirmBulkRevert) return;
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await revertEmployeeDebtEntriesToPendingAction(confirmBulkRevert.userId);
+      setConfirmBulkRevert(null);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setFeedback({
+        type: "success",
+        message: result?.success ?? "Lançamentos voltaram a ficar pendentes.",
+      });
       router.refresh();
     });
   }
@@ -436,13 +471,32 @@ export function EmployeeLedgerPanel({
             Lançamentos{historyFilter ? ` — ${historyFilter.userName}` : ""}
           </p>
           {historyFilter && (
-            <button
-              type="button"
-              onClick={() => setHistoryFilter(null)}
-              className="text-xs font-medium text-slate-500 hover:underline"
-            >
-              Limpar filtro
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              {bulkRevertCandidates.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() =>
+                    setConfirmBulkRevert({
+                      userId: historyFilter.userId,
+                      userName: historyFilter.userName,
+                    })
+                  }
+                  title="Devolve pra pendente todos os adiantamentos e mercadorias deste colaborador que estão marcados como pagos — dívida que a confirmação por selfie no Ponto fechava por engano."
+                  className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+                >
+                  Reverter {bulkRevertCandidates.length} dívida(s) marcada(s) como paga(s) —{" "}
+                  {formatBRL(bulkRevertTotal)}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setHistoryFilter(null)}
+                className="text-xs font-medium text-slate-500 hover:underline"
+              >
+                Limpar filtro
+              </button>
+            </div>
           )}
         </div>
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
@@ -576,6 +630,27 @@ export function EmployeeLedgerPanel({
             </Button>
             <Button variant="danger" fullWidth={false} disabled={isPending} onClick={handleDelete}>
               Excluir
+            </Button>
+          </>
+        }
+      />
+
+      <Dialog
+        open={confirmBulkRevert !== null}
+        onClose={() => setConfirmBulkRevert(null)}
+        title="Reverter dívidas marcadas como pagas"
+        description={
+          confirmBulkRevert
+            ? `Devolve pra "Pendente" todos os lançamentos de Adiantamento de salário e Compra de mercadoria de ${confirmBulkRevert.userName} que estão marcados como pagos — ${bulkRevertCandidates.length} nesta lista, somando ${formatBRL(bulkRevertTotal)}. Esses valores voltam a ser descontados do Pagamento por horas. Pagamento por hora e Outro não são tocados, e a selfie de cada lançamento é mantida como prova.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="secondary" fullWidth={false} onClick={() => setConfirmBulkRevert(null)}>
+              Cancelar
+            </Button>
+            <Button variant="brand" fullWidth={false} disabled={isPending} onClick={handleBulkRevert}>
+              Reverter
             </Button>
           </>
         }

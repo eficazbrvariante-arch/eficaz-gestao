@@ -10,6 +10,7 @@ import {
   deleteEmployeeLedgerEntry,
   settleEmployeeLedgerEntry,
   revertEmployeeLedgerEntryToPending,
+  revertPaidDebtEntriesToPending,
 } from "@/modules/employees/employee-ledger-service";
 import { EMPLOYEE_LEDGER_TYPE_LABELS } from "@/lib/validations/employee-ledger";
 import { formatBRL } from "@/lib/format";
@@ -96,6 +97,39 @@ export async function revertEmployeeLedgerEntryToPendingAction(id: string) {
 
   revalidatePath("/colaboradores");
   return { success: "Lançamento voltou a ficar pendente." };
+}
+
+/**
+ * Mesma correção acima, em lote pra um colaborador: devolve pra pendente
+ * TODOS os Adiantamento/Mercadoria dele que estão como pagos. Serve pra
+ * limpar de uma vez a dívida que a confirmação por selfie no Ponto fechava
+ * por engano (bug corrigido em setembro/2026) — clicar linha por linha em
+ * quem tem meses de histórico era inviável.
+ */
+export async function revertEmployeeDebtEntriesToPendingAction(userId: string) {
+  const user = await requireUser();
+  if (!canManageEmployeeLedger(user.role)) {
+    return { error: "Seu perfil não tem permissão para alterar lançamentos de colaboradores." };
+  }
+
+  const result = await revertPaidDebtEntriesToPending(user.tenantId, userId);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "employee_ledger.revert_to_pending",
+    entity: "User",
+    entityId: userId,
+    description: `Reverteu em lote ${result.count} lançamento(s) de adiantamento/mercadoria de pago para pendente — ${formatBRL(result.total)} voltaram a contar como desconto.`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${userId}/horas`);
+  return {
+    success: `${result.count} lançamento(s) voltaram a ficar pendentes — ${formatBRL(result.total)} a descontar das horas.`,
+  };
 }
 
 export async function deleteEmployeeLedgerEntryAction(id: string) {

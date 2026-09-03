@@ -77,6 +77,46 @@ export async function revertEmployeeLedgerEntryToPending(
   return { ok: true, id: entry.id };
 }
 
+export type RevertDebtEntriesResult =
+  | { ok: true; count: number; total: number }
+  | { ok: false; error: string };
+
+/**
+ * Reverte de uma vez todos os Adiantamento/Mercadoria de um colaborador que
+ * estão marcados como pagos — limpeza dos lançamentos fechados por engano
+ * pela confirmação por selfie no Ponto (bug travado em
+ * `confirmEmployeeLedgerEntryBySelfie`), que sozinha faz a dívida do
+ * colaborador com a loja sumir do desconto. Mesma regra do botão por linha
+ * (`revertEmployeeLedgerEntryToPending`), só que em lote: mantém
+ * `paidSelfieUrl` como prova de que ele confirmou ter levado o
+ * item/adiantamento, e devolve o valor pra contar como desconto no
+ * Pagamento por horas. Nunca toca em HOURLY_PAYMENT nem OTHER, que são o que
+ * a loja deve a ele — esses continuam pagos.
+ */
+export async function revertPaidDebtEntriesToPending(
+  tenantId: string,
+  userId: string
+): Promise<RevertDebtEntriesResult> {
+  const entries = await prisma.employeeLedgerEntry.findMany({
+    where: { tenantId, userId, status: "PAID", type: { in: ["ADVANCE", "PURCHASE"] } },
+    select: { id: true, amount: true },
+  });
+  if (entries.length === 0) {
+    return {
+      ok: false,
+      error: "Nenhum adiantamento ou mercadoria marcado como pago pra reverter neste colaborador.",
+    };
+  }
+
+  await prisma.employeeLedgerEntry.updateMany({
+    where: { tenantId, id: { in: entries.map((entry) => entry.id) } },
+    data: { status: "PENDING", settledAt: null },
+  });
+
+  const total = round2(entries.reduce((sum, entry) => sum + Number(entry.amount), 0));
+  return { ok: true, count: entries.length, total };
+}
+
 export type DeleteEmployeeLedgerEntryResult =
   | { ok: true; userName: string; type: string; amount: number }
   | { ok: false; error: string };
