@@ -11,6 +11,7 @@ import { getTodayFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { normalizeHexColor } from "@/modules/pwa/store-icon";
 import { resolveStoreBasePath } from "@/modules/pwa/store-scope";
+import { InstallInvite } from "./install-invite";
 import { PwaRegister } from "./pwa-register";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
@@ -113,6 +114,7 @@ export default async function StoreLayout({
       >
         <StoreTracker subdomain={store.subdomain} />
         <PwaRegister swUrl={`${base}sw.js`} scope={base} />
+        <InstallInvite subdomain={store.subdomain} storeName={storeDisplayName(store)} />
         <StoreHeader store={store} categoryGroups={categoryGroups} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
