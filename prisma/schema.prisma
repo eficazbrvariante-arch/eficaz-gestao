@@ -1823,6 +1823,15 @@ enum DeviceType {
   DESKTOP
 }
 
+/// Como a loja estava aberta quando a sessão começou: numa aba comum do
+/// navegador ou pela PWA instalada na tela inicial. Serve para medir a adoção
+/// da PWA. Vem do cliente (`display-mode: standalone`), então é indicador de
+/// produto, não dado confiável para nenhuma decisão de negócio.
+enum DisplayMode {
+  BROWSER
+  STANDALONE
+}
+
 /// Cada etapa do funil de conversão da loja, mais os dois passos específicos do
 /// popup da Oferta Relâmpago (FLASH_VIEW/FLASH_CLICK). `isFlashDeal` em
 /// `AnalyticsEvent` marca quando PRODUCT_VIEW/ADD_TO_CART/PURCHASE também contam
@@ -1848,6 +1857,9 @@ model VisitorSession {
   /// "visitantes únicos", diferente desta sessão que expira com a aba.
   visitorId     String
   deviceType    DeviceType    @default(DESKTOP)
+  /// Gravado uma vez, na criação da sessão. Instalar a PWA no meio da visita
+  /// não reescreve a sessão em curso — a próxima é que nasce STANDALONE.
+  displayMode   DisplayMode   @default(BROWSER)
   trafficSource TrafficSource @default(DIRECT)
   /// Hostname bruto do referrer (ex.: "l.instagram.com"), só para auditar o
   /// balde "Outro" quando a categorização não reconhece a origem.
@@ -1867,6 +1879,7 @@ model VisitorSession {
   @@index([tenantId, lastSeenAt])
   @@index([tenantId, trafficSource, firstSeenAt])
   @@index([tenantId, deviceType, firstSeenAt])
+  @@index([tenantId, displayMode, firstSeenAt])
   @@map("visitor_sessions")
 }
 

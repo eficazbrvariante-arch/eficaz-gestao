@@ -63,6 +63,26 @@ export function getSessionReferrer(subdomain: string): string {
   }
 }
 
+/**
+ * Se a loja está aberta pela PWA instalada ou por uma aba comum do navegador.
+ *
+ * Só acompanha a criação da sessão no servidor (ver `/api/track`), então não
+ * gera nenhum evento novo — nada de pageview duplicado. É indicador de adoção
+ * da PWA, não dado para decisão de negócio: vem do cliente.
+ */
+function currentDisplayMode(): "BROWSER" | "STANDALONE" {
+  try {
+    if (window.matchMedia("(display-mode: standalone)").matches) return "STANDALONE";
+    // Safari no iOS não implementa `display-mode` e usa esta propriedade.
+    if ((window.navigator as Navigator & { standalone?: boolean }).standalone === true) {
+      return "STANDALONE";
+    }
+  } catch {
+    // matchMedia indisponível: assume navegador comum.
+  }
+  return "BROWSER";
+}
+
 type TrackableEventType =
   | "PAGE_VIEW"
   | "PRODUCT_VIEW"
@@ -84,6 +104,7 @@ export function trackEvent(
       sessionId,
       visitorId: getOrCreateVisitorId(subdomain),
       referrer: getSessionReferrer(subdomain),
+      displayMode: currentDisplayMode(),
       ...event,
     };
     const body = JSON.stringify(payload);

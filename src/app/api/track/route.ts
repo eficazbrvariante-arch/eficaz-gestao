@@ -52,6 +52,10 @@ export async function POST(request: Request) {
         tenantId: tenant.id,
         visitorId: input.visitorId,
         deviceType,
+        // Só no `create`: o modo é uma característica da sessão, gravada
+        // quando ela nasce. Instalar a PWA no meio da visita não reescreve a
+        // sessão em curso — a próxima é que nasce STANDALONE.
+        displayMode: input.displayMode ?? "BROWSER",
         trafficSource,
         referrerHost,
         geoCity: geoCity ? decodeURIComponent(geoCity) : null,

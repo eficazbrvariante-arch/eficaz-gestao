@@ -20,5 +20,7 @@ export const trackEventSchema = z.object({
   productId: z.string().trim().min(1).optional(),
   orderId: z.string().trim().min(1).optional(),
   referrer: z.string().trim().max(500).optional(),
+  // Como a loja foi aberta. Ausente em cliente antigo ainda em cache, por isso opcional.
+  displayMode: z.enum(["BROWSER", "STANDALONE"]).optional(),
 });
 export type TrackEventInput = z.infer<typeof trackEventSchema>;
