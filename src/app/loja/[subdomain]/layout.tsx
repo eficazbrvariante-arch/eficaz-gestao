@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata, Viewport } from "next";
 import {
@@ -9,6 +10,8 @@ import { listCatalogCategories, groupCategoriesByParent } from "@/modules/catalo
 import { getTodayFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
 import { normalizeHexColor } from "@/modules/pwa/store-icon";
+import { resolveStoreBasePath } from "@/modules/pwa/store-scope";
+import { PwaRegister } from "./pwa-register";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
 import { WhatsappFloatingButton } from "./whatsapp-floating-button";
@@ -87,6 +90,10 @@ export default async function StoreLayout({
   ]);
   const categoryGroups = groupCategoriesByParent(categories);
 
+  // Onde esta loja é servida neste host determina onde o Service Worker é
+  // registrado — e, por consequência, até onde ele pode enxergar.
+  const base = await resolveStoreBasePath((await headers()).get("host"), store.subdomain);
+
   // A cor da empresa entra como variável CSS para os componentes da loja usarem
   // sem precisar receber a cor por prop em cada nível.
   const themeStyle = store.primaryColor
@@ -105,6 +112,7 @@ export default async function StoreLayout({
         className="flex min-h-screen flex-col bg-white [--store-primary:#0f172a]"
       >
         <StoreTracker subdomain={store.subdomain} />
+        <PwaRegister swUrl={`${base}sw.js`} scope={base} />
         <StoreHeader store={store} categoryGroups={categoryGroups} />
         <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
         <StoreFooter store={store} />
