@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   getStoreBySubdomain,
   storeCityLabel,
@@ -8,6 +8,7 @@ import {
 import { listCatalogCategories, groupCategoriesByParent } from "@/modules/catalog/catalog-service";
 import { getTodayFlashDeal } from "@/modules/catalog/flash-deal-service";
 import { CartProvider } from "@/modules/catalog/cart-context";
+import { normalizeHexColor } from "@/modules/pwa/store-icon";
 import { StoreHeader } from "./store-header";
 import { StoreFooter } from "./store-footer";
 import { WhatsappFloatingButton } from "./whatsapp-floating-button";
@@ -25,6 +26,7 @@ export async function generateMetadata({
 
   const name = storeDisplayName(store);
   const description = `Confira os produtos disponíveis na ${name}.`;
+  const base = `/loja/${store.subdomain}`;
   return {
     title: `${name} — Catálogo online`,
     description,
@@ -33,7 +35,37 @@ export async function generateMetadata({
       description,
       images: store.logoUrl ? [{ url: store.logoUrl }] : undefined,
     },
+    // Caminho absoluto: o manifest e os ícones respondem no mesmo lugar tanto
+    // no host compartilhado quanto num domínio próprio (o proxy reescreve para
+    // cá de qualquer forma).
+    manifest: `${base}/manifest.webmanifest`,
+    icons: {
+      apple: `${base}/icones/apple-touch-180.png`,
+    },
+    appleWebApp: {
+      capable: true,
+      title: name,
+      // `default` mantém a barra de status opaca e o conteúdo abaixo dela. O
+      // `black-translucent` empurraria o cabeçalho da loja para debaixo do
+      // relógio do iPhone — exigiria tratar `safe-area-inset` em todas as
+      // telas para não cortar nada, o que não vale o ganho estético aqui.
+      statusBarStyle: "default",
+    },
   };
+}
+
+/**
+ * Cor da barra do navegador/app instalado: a cor da própria loja, a mesma que
+ * o manifest declara em `theme_color`.
+ */
+export async function generateViewport({
+  params,
+}: {
+  params: Promise<{ subdomain: string }>;
+}): Promise<Viewport> {
+  const { subdomain } = await params;
+  const store = await getStoreBySubdomain(subdomain);
+  return { themeColor: normalizeHexColor(store?.primaryColor) ?? "#0f172a" };
 }
 
 export default async function StoreLayout({
