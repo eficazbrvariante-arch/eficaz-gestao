@@ -34,6 +34,22 @@ function isIOS(userAgent: string): boolean {
   return /Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1;
 }
 
+/**
+ * Navegador de iPhone que não é o Safari (Chrome, Firefox, Edge, Opera...).
+ *
+ * No iOS todos usam o mesmo motor, mas só o Safari adiciona a loja à tela
+ * inicial como aplicativo: nos outros, o "Adicionar à Tela de Início" ou não
+ * aparece, ou cria um atalho comum, que abre com a barra de endereço. Ensinar o
+ * caminho do Safari ali leva a pessoa a um beco sem saída.
+ *
+ * A checagem procura a marca de cada navegador em vez de concluir pela ausência
+ * de "Safari" no User-Agent: errar para o lado de mostrar a instrução normal é
+ * bem menos ruim do que mandar quem já está no Safari abrir no Safari.
+ */
+function isNonSafariIOS(userAgent: string): boolean {
+  return /CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|DuckDuckGo|YaBrowser/i.test(userAgent);
+}
+
 /** A loja já está aberta como aplicativo instalado? */
 function isStandalone(): boolean {
   if (window.matchMedia("(display-mode: standalone)").matches) return true;
@@ -62,6 +78,8 @@ export function InstallInvite({
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [ready, setReady] = useState(false);
   const [iosHint, setIosHint] = useState(false);
+  const [precisaSafari, setPrecisaSafari] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
   const [hidden, setHidden] = useState(false);
   const pagesSeen = useRef(0);
   const pathname = usePathname();
@@ -106,7 +124,9 @@ export function InstallInvite({
       ) {
         return;
       }
-      setIosHint(isIOS(navigator.userAgent));
+      const ios = isIOS(navigator.userAgent);
+      setIosHint(ios);
+      setPrecisaSafari(ios && isNonSafariIOS(navigator.userAgent));
       setReady(true);
     }, INVITE_DELAY_MS);
 
@@ -117,6 +137,17 @@ export function InstallInvite({
     setHidden(true);
     dismissInvite(subdomain);
   }, [subdomain]);
+
+  // O aviso continua na tela depois de copiar: a pessoa ainda precisa ler o
+  // passo a passo para colar o link no Safari.
+  const copiarLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopiado(true);
+    } catch {
+      // Sem permissão de área de transferência: a instrução por escrito basta.
+    }
+  }, []);
 
   const install = useCallback(async () => {
     if (!promptEvent) return;
@@ -158,6 +189,22 @@ export function InstallInvite({
             >
               Instalar
             </button>
+          ) : precisaSafari ? (
+            <>
+              <p className="mt-2 text-sm text-slate-500">
+                No iPhone, a instalação só funciona pelo{" "}
+                <span className="font-medium text-slate-700">Safari</span>. Abra esta página lá,
+                toque em <span className="font-medium text-slate-700">Compartilhar</span> e depois
+                em <span className="font-medium text-slate-700">Adicionar à Tela de Início</span>.
+              </p>
+              <button
+                type="button"
+                onClick={copiarLink}
+                className="mt-3 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--store-primary)]"
+              >
+                {linkCopiado ? "Link copiado" : "Copiar link da loja"}
+              </button>
+            </>
           ) : (
             <p className="mt-2 text-sm text-slate-500">
               No iPhone: toque em <span className="font-medium text-slate-700">Compartilhar</span> e
