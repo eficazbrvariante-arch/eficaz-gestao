@@ -38,11 +38,14 @@ export default auth(async (req) => {
   // continuar com a barra, senão cai fora do escopo do Service Worker. Nesse
   // caso a página é servida por rewrite interno, sem mudar a URL.
   if (pathname !== "/" && pathname.endsWith("/")) {
-    const url = nextUrl.clone();
-    url.pathname = pathname.slice(0, -1);
-    return /^\/loja\/[^/]+$/.test(url.pathname)
-      ? NextResponse.rewrite(url)
-      : NextResponse.redirect(url, 308);
+    // `nextUrl.clone()` não serve aqui: ele remonta a URL a partir do caminho
+    // original e devolve a barra final, fazendo o redirect apontar para ele
+    // mesmo (laço infinito). Por isso a URL de destino é montada do zero.
+    const semBarra = pathname.slice(0, -1);
+    const destino = new URL(`${semBarra}${nextUrl.search}`, nextUrl.origin);
+    return /^\/loja\/[^/]+$/.test(semBarra)
+      ? NextResponse.rewrite(destino)
+      : NextResponse.redirect(destino, 308);
   }
 
   // Loja acessada por subdomínio (ex.: eficazbr.localhost:3000) é reescrita
