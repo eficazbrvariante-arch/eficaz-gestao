@@ -32,22 +32,6 @@ export default auth(async (req) => {
     return NextResponse.next();
   }
 
-  // Barra final. O redirect automático do Next está desligado
-  // (`skipTrailingSlashRedirect` no next.config), então ele é reproduzido aqui
-  // — com uma exceção: `/loja/<subdominio>/` é a `start_url` da PWA e precisa
-  // continuar com a barra, senão cai fora do escopo do Service Worker. Nesse
-  // caso a página é servida por rewrite interno, sem mudar a URL.
-  if (pathname !== "/" && pathname.endsWith("/")) {
-    // `nextUrl.clone()` não serve aqui: ele remonta a URL a partir do caminho
-    // original e devolve a barra final, fazendo o redirect apontar para ele
-    // mesmo (laço infinito). Por isso a URL de destino é montada do zero.
-    const semBarra = pathname.slice(0, -1);
-    const destino = new URL(`${semBarra}${nextUrl.search}`, nextUrl.origin);
-    return /^\/loja\/[^/]+$/.test(semBarra)
-      ? NextResponse.rewrite(destino)
-      : NextResponse.redirect(destino, 308);
-  }
-
   // Loja acessada por subdomínio (ex.: eficazbr.localhost:3000) é reescrita
   // internamente para /loja/[subdominio], mantendo a URL bonita no navegador.
   const subdomain = subdomainFromHost(req.headers.get("host"));
