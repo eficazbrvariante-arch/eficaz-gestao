@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
+import { compressImage } from "@/lib/image-compress";
 
 export function ImageUploadField({
   value,
@@ -46,22 +47,33 @@ export function ImageUploadField({
     if (!file) return;
     setError(undefined);
 
-    if (file.size > maxSizeBytes) {
-      setError(
-        `Foto muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB) — o limite é ${(maxSizeBytes / 1024 / 1024).toFixed(0)}MB. Tente uma foto com menos qualidade/resolução.`
-      );
-      if (inputRef.current) inputRef.current.value = "";
-      return;
-    }
-
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
     setIsUploading(true);
     try {
-      const blob = await upload(file.name, file, {
+      // Comprime antes de subir: foto crua de celular passa de 2MB e enche a
+      // cota do Blob à toa (ver `lib/image-compress`). Nunca lança — sem
+      // conseguir comprimir, devolve o arquivo original e o envio segue igual.
+      const { file: toUpload } = await compressImage(file);
+
+      // A checagem de tamanho vem DEPOIS de comprimir de propósito: antes,
+      // uma foto de celular de 8MB era recusada de cara, mesmo sendo daquelas
+      // que a compressão resolve com folga. Agora só recusa o que continua
+      // grande demais de verdade.
+      if (toUpload.size > maxSizeBytes) {
+        setError(
+          `Foto muito grande (${(toUpload.size / 1024 / 1024).toFixed(1)}MB) — o limite é ${(maxSizeBytes / 1024 / 1024).toFixed(0)}MB. Tente uma foto com menos qualidade/resolução.`
+        );
+        setPreview(value);
+        URL.revokeObjectURL(objectUrl);
+        if (inputRef.current) inputRef.current.value = "";
+        return;
+      }
+
+      const blob = await upload(toUpload.name, toUpload, {
         access,
         handleUploadUrl: uploadUrl,
-        contentType: file.type,
+        contentType: toUpload.type,
         clientPayload,
       });
       if (access === "private") {

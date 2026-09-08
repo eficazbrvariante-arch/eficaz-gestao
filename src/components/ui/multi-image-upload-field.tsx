@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
+import { compressImage } from "@/lib/image-compress";
 
 export function MultiImageUploadField({
   value,
@@ -43,10 +44,14 @@ export function MultiImageUploadField({
     try {
       const uploaded: string[] = [];
       for (const file of selected) {
-        const blob = await upload(file.name, file, {
+        // Ver `lib/image-compress`: sem isso, cada foto de vitrine sobe com o
+        // peso cru da câmera (~2MB) — e aqui o envio é em lote, multiplicando
+        // o desperdício por quantas fotos a pessoa selecionar de uma vez.
+        const { file: toUpload } = await compressImage(file);
+        const blob = await upload(toUpload.name, toUpload, {
           access: "public",
           handleUploadUrl: uploadUrl,
-          contentType: file.type,
+          contentType: toUpload.type,
         });
         uploaded.push(blob.url);
       }

@@ -2501,3 +2501,78 @@ em `product-form.tsx` e `checkout-form.tsx`, arquivos não tocados —,
 painel de produção (Colaboradores → card da Maiza PDV → Ver histórico →
 botão → confirmar). Depois disso o "Total pendente" dela fica em
 R$ 819,00 negativo.
+
+## 08/09/2026 — Blob estourou a cota e derrubou todos os uploads
+
+**Incidente:** a Sofia não conseguiu bater o ponto de saída para o almoço —
+a tela mostrava "Não foi possível enviar a selfie. Tente novamente" a cada
+tentativa. Não era rede nem o aparelho dela: **ninguém** conseguia subir
+arquivo nenhum.
+
+**Causa raiz:** o Vercel Blob chegou a **955MB de 1024MB**, o teto do plano
+Hobby. A partir daí toda escrita passou a ser recusada com
+`Storage quota exceeded for Hobby plan (1GB maximum)`. Leitura continuava
+funcionando, por isso o site, o PDV e as vendas pareciam normais e só o
+upload quebrava.
+
+O diagnóstico enganou de propósito: os logs da Vercel mostravam 6
+`POST /api/ponto/upload` com status **200**. Essa rota só gera o token — o
+envio da imagem vai direto do navegador pro Blob e nunca passa pelo nosso
+servidor, então a falha real não aparecia em log nenhum. E o `catch` de
+`selfie-capture-field.tsx:250` engolia o erro, mostrando só a mensagem
+genérica.
+
+**Quem encheu o disco (1.216 arquivos, 955MB):** fotos de produto na raiz —
+252 `.jpeg` (341,0MB) + 140 `.jpg` (301,7MB) + 35 `.png` (49,7MB) = **643MB
+em 392 arquivos**, média de 1,6MB cada. Somando `produtos-importados/`
+(124,9MB) e `comprovantes/` (107,6MB). As selfies do Ponto, que deram o
+sintoma, eram as menores da lista: **30,2MB em 339 arquivos** (~89KB cada),
+porque `selfie-capture-field` já comprimia via canvas.
+
+**Correção (branch `fix/comprimir-imagem-upload`, a partir da `main`):**
+`ImageUploadField` e `MultiImageUploadField` chamavam
+`upload(file.name, file, ...)` — subiam o arquivo cru da câmera, sem
+compressão nenhuma.
+
+- **`src/lib/image-compress.ts`** (novo): redimensiona pro lado maior de
+  2000px e recomprime em qualidade 0.82. Respeita o EXIF (foto de celular
+  não sobe girada), usa WebP quando a origem é PNG/WebP pra não perder
+  transparência (JPEG viraria fundo preto), e devolve o arquivo **original**
+  sem mexer quando comprimir seria destrutivo ou inútil: GIF (animação),
+  arquivo não-imagem, decodificação falha, ou resultado maior que o
+  original. Nunca lança — o pior caso é o comportamento antigo.
+- Os dois campos agora comprimem antes de enviar.
+- Em `image-upload-field.tsx`, a checagem de `maxSizeBytes` passou a rodar
+  **depois** da compressão: antes, foto de celular de 8MB era recusada de
+  cara mesmo sendo daquelas que a compressão resolve com folga.
+
+**Testes:** `lint` com 0 erros e 9 warnings (todos pré-existentes, em
+`checkout-form.tsx` e `product-form.tsx`, arquivos não tocados), `typecheck`
+limpo, `build:app` passando, 139 testes verdes. Além disso, o helper foi
+testado **no navegador** com 9 casos (o build não pegaria os erros que
+importam aqui): foto realista de 4032x3024 caiu de **1,84MB pra 0,08MB
+(-95,7%)**, saindo em 2000x1500; transparência de PNG preservada; GIF,
+PDF e JPEG corrompido passaram intactos; imagem já pequena não inchou.
+Em 1GB cabiam 557 fotos no formato antigo — passam a caber 13.059.
+
+**Desfecho:** o upgrade para o plano Pro foi concluído pelo usuário na mesma
+sessão. A primeira tentativa exibiu "Bem-vindo ao Pro" mas NÃO efetivou: o
+cartão padrão foi recusado ("Seu método de pagamento padrão não foi aceito").
+Quem revelou isso foi o teste de escrita, que seguiu retornando `Hobby plan`
+por 20 tentativas em 7 minutos — a tela de boas-vindas mentiu. Depois de
+trocar o método de pagamento, a escrita passou: gravação real confirmada e o
+arquivo de teste apagado em seguida. Ponto e cadastro de convênio voltaram.
+
+**Descartado no meio do caminho:** cheguei a implementar uma chave
+`ATTENDANCE_SELFIE_REQUIRED` para desligar a obrigatoriedade da selfie no
+Ponto (pedido do usuário enquanto o armazenamento estava fora). Com a Vercel
+resolvida, foi revertida a pedido — os 5 arquivos voltaram ao original,
+typecheck limpo e 139 testes verdes depois da reversão. A folha de ponto
+segue exigindo foto, como antes.
+
+**Pendente:** o ponto da Sofia precisa ser lançado à mão em Ponto →
+Colaboradores → Sofia → "Adicionar marcação" (BREAK_START, com motivo), já
+que o horário dela passou durante a indisponibilidade. Vale investigar também
+o consumo de CPU (10h47m de um limite de 4h) e as invocações de função (951
+mil de 1 milhão) — sem urgência agora, com o crédito de US$ 20 do Pro
+absorvendo, mas pode virar custo recorrente à toa.
