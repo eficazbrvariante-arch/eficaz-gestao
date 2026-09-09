@@ -8,6 +8,7 @@ import { formatDateTime, todayISO, periodRange, currentMonthStartISO } from "@/l
 import { getCommissionRanking } from "@/modules/employees/commission-service";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
 import { RankingComissaoMatrix, type RankingComissaoRow } from "../colaboradores/ranking-comissao/ranking-comissao-matrix";
+import { parseComboDiscountSettings } from "@/lib/combo-discount";
 import { PdvScreen } from "./pdv-screen";
 
 // Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
@@ -121,6 +122,7 @@ export default async function PdvPage() {
         canFiado={canManageFiado(user.role)}
         canMoveCash={canMoveCash(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
+        comboDiscountSettings={parseComboDiscountSettings(tenant.comboDiscountSettings)}
       />
 
       {/* Rodapé, nunca a área operacional do topo — permanente por padrão,

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime, nameInitials } from "@/lib/format";
 import { canCancelSale, canEditSale, canViewAllSales } from "@/lib/permissions";
+import { COMBO_DISCOUNT_LABEL } from "@/lib/combo-discount";
 import { storeDisplayHost, storeOrigin } from "@/modules/catalog/tenant-resolver";
 import { SaleActions } from "./sale-controls";
 
@@ -208,6 +209,18 @@ export default async function ComprovantePage({
             <div className="flex justify-between text-slate-600">
               <span>Desconto</span>
               <span>-{formatBRL(sale.discount)}</span>
+            </div>
+          )}
+          {Number(sale.comboDiscount) > 0 && (
+            <div className="flex justify-between gap-2 text-slate-600">
+              {/* O rótulo pode quebrar em duas linhas no cupom de 72mm, mas o
+                  valor não: sem `whitespace-nowrap` o "-" ficava órfão no fim
+                  de uma linha e o "R$ 30,00" caía na seguinte. */}
+              <span>
+                {COMBO_DISCOUNT_LABEL}
+                {sale.comboDiscountUnits > 1 ? ` (${sale.comboDiscountUnits}x)` : ""}
+              </span>
+              <span className="whitespace-nowrap">-{formatBRL(sale.comboDiscount)}</span>
             </div>
           )}
           {sale.convenioRedemption && Number(sale.convenioDiscount) > 0 && (

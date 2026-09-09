@@ -127,6 +127,12 @@ model Tenant {
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
   attendanceSettings       Json?
+  /// Palavras-chave e valor do desconto automático de combo "capinha +
+  /// película de hidrogel", editáveis em Configurações > Descontos. Formato
+  /// `{ capinhaKeywords, hidrogelKeywords, excludeKeywords, amountPerCombo }`
+  /// — sempre lido por `parseComboDiscountSettings`, que preenche o padrão
+  /// para campo ausente ou corrompido. Nulo = usa o padrão do código.
+  comboDiscountSettings    Json?
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
@@ -1135,6 +1141,17 @@ model Sale {
   /// em cima de `SaleItem.total`, que este campo nunca toca). Ver
   /// `ConvenioRedemption`, a linha que registra o uso em si.
   convenioDiscount      Decimal    @default(0) @db.Decimal(12, 2)
+  /// Desconto automático do combo "capinha + película de hidrogel" (ver
+  /// `lib/combo-discount.ts`). Separado de `discount` pelo mesmo motivo de
+  /// `convenioDiscount`: a comissão do vendedor é calculada sobre
+  /// `SaleItem.total`, que este campo nunca toca — o vendedor não concedeu
+  /// este desconto, o sistema concedeu. Guardado também para os relatórios
+  /// distinguirem o que foi promoção automática do que foi desconto manual.
+  comboDiscount         Decimal    @default(0) @db.Decimal(12, 2)
+  /// Quantos pares capinha+película formaram o `comboDiscount` acima —
+  /// impresso no cupom e usado para recalcular o desconto quando um item do
+  /// combo sai da nota numa troca (ver `reportSaleItemDefect`).
+  comboDiscountUnits    Int        @default(0)
   /// Cliente abriu mão do desconto de película pra ganhar direito à
   /// Proteção Eficaz (troca da película em até 30 dias da venda) — marcado
   /// pelo vendedor no PDV, nunca inferido. Impresso no cupom; validado

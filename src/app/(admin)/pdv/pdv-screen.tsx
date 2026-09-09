@@ -42,6 +42,11 @@ import {
   isCapinhaCategory,
   isPeliculaCategory,
 } from "@/lib/seller-discount-rules";
+import {
+  COMBO_DISCOUNT_LABEL,
+  computeComboDiscount,
+  type ComboDiscountSettings,
+} from "@/lib/combo-discount";
 
 type CartLine = {
   /** Identidade da linha no carrinho: produto + variação. */
@@ -162,6 +167,7 @@ export function PdvScreen({
   canFiado,
   canMoveCash,
   autoPrintReceipt,
+  comboDiscountSettings,
 }: {
   canDiscount: boolean;
   /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
@@ -173,6 +179,10 @@ export function PdvScreen({
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
    *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */
   autoPrintReceipt: boolean;
+  /** Config da empresa (Configurações > Descontos) — palavras-chave e valor do
+   *  desconto automático de combo. O servidor recalcula na hora de gravar
+   *  (ver `sale-service.ts`); aqui é só o número que o caixa vê ao vivo. */
+  comboDiscountSettings: ComboDiscountSettings;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -366,8 +376,30 @@ export function PdvScreen({
         )
       : 0;
 
+  // Desconto automático de combo "capinha + película de hidrogel" (ver
+  // `lib/combo-discount.ts`). Recalculado a cada render, então sai sozinho
+  // assim que o carrinho deixa de ter o par — sem botão, sem ação do
+  // vendedor. Não acumula com a Proteção Eficaz: ao optar por ela o cliente
+  // troca o desconto pelo direito de trocar a película em 30 dias.
+  const comboDiscountResult = protecaoEficazOptedIn
+    ? { combos: 0, amount: 0, capinhaUnits: 0, hidrogelUnits: 0 }
+    : computeComboDiscount(
+        cart.map((line) => ({ name: line.name, quantity: line.quantity })),
+        comboDiscountSettings
+      );
+  // Mesmo teto do servidor — o carrinho nunca mostra total negativo.
+  const comboDiscount = round2(
+    Math.min(
+      comboDiscountResult.amount,
+      Math.max(0, round2(subtotal - discount - convenioBenefit - protecaoEficazRedemptionAmount))
+    )
+  );
+
   const total = round2(
-    Math.max(0, subtotal - discount - convenioBenefit - protecaoEficazRedemptionAmount)
+    Math.max(
+      0,
+      subtotal - discount - convenioBenefit - protecaoEficazRedemptionAmount - comboDiscount
+    )
   );
 
   // Se o carrinho deixar de ser elegível (removeu a capinha ou a película),
@@ -1265,6 +1297,18 @@ export function PdvScreen({
                 <div className="flex justify-between font-medium text-text-secondary">
                   <span>Troca Proteção Eficaz</span>
                   <span className="font-bold text-foreground">-{formatBRL(protecaoEficazRedemptionAmount)}</span>
+                </div>
+              )}
+              {comboDiscount > 0 && (
+                <div className="flex justify-between font-medium text-emerald-700">
+                  <span>
+                    {COMBO_DISCOUNT_LABEL}
+                    <span className="ml-1 text-xs font-normal">
+                      ({comboDiscountResult.combos}{" "}
+                      {comboDiscountResult.combos === 1 ? "combo" : "combos"})
+                    </span>
+                  </span>
+                  <span className="font-bold">-{formatBRL(comboDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-border pt-2 text-xl font-bold text-foreground">

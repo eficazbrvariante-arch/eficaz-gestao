@@ -16,6 +16,7 @@ import {
   reverseCreditoEficazUsageInTx,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
 import { formatBRL } from "@/lib/format";
+import { computeComboDiscount, parseComboDiscountSettings } from "@/lib/combo-discount";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
 const CENT = 0.005;
@@ -61,10 +62,18 @@ export async function createSale(
 ): Promise<CreateSaleResult> {
   const productIds = [...new Set(input.items.map((i) => i.productId))];
 
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, tenantId: ctx.tenantId },
-    include: { variants: true, category: { select: { name: true } } },
-  });
+  const [products, tenantSettings] = await Promise.all([
+    prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId: ctx.tenantId },
+      include: { variants: true, category: { select: { name: true } } },
+    }),
+    // Palavras-chave e valor do desconto de combo, editáveis por empresa em
+    // Configurações > Descontos (ver `parseComboDiscountSettings`).
+    prisma.tenant.findUnique({
+      where: { id: ctx.tenantId },
+      select: { comboDiscountSettings: true },
+    }),
+  ]);
   const productMap = new Map(products.map((p) => [p.id, p]));
 
   // Desconto restrito do Vendedor (película 3D): cada capinha na venda
@@ -268,7 +277,30 @@ export async function createSale(
     convenioDiscount = round2(Math.min(result.benefitAmount, round2(subtotal - discount)));
   }
 
-  const total = round2(subtotal - discount - convenioDiscount);
+  // Desconto automático de combo "capinha + película de hidrogel" (ver
+  // `lib/combo-discount.ts`). Calculado aqui a partir dos itens que já foram
+  // resolvidos contra o banco, nunca aceito pronto do cliente — o PDV mostra
+  // o mesmo número ao vivo, mas quem grava é este cálculo.
+  //
+  // Não acumula com a Proteção Eficaz de propósito: ao optar por ela o
+  // cliente já abre mão do desconto da película em troca do direito de trocá-la
+  // em 30 dias (ver `Sale.protecaoEficazOptedIn` no schema). Dar os dois
+  // esvaziaria esse trato.
+  const comboSettings = parseComboDiscountSettings(tenantSettings?.comboDiscountSettings ?? null);
+  const comboResult = input.protecaoEficazOptedIn
+    ? { combos: 0, amount: 0 }
+    : computeComboDiscount(
+        resolvedItems.map((item) => ({ name: item.nameSnapshot, quantity: item.quantity })),
+        comboSettings
+      );
+  // Teto: nunca deixa o total negativo, mesmo com desconto manual grande e
+  // convênio na mesma venda.
+  const comboDiscount = round2(
+    Math.min(comboResult.amount, Math.max(0, round2(subtotal - discount - convenioDiscount)))
+  );
+  const comboDiscountUnits = comboDiscount > 0 ? comboResult.combos : 0;
+
+  const total = round2(Math.max(0, subtotal - discount - convenioDiscount - comboDiscount));
 
   // Abaixo de zero total (ex.: troca 100% grátis da Proteção Eficaz), não há
   // forma de pagamento nenhuma pra exigir — só acima de zero é obrigatório
@@ -397,6 +429,8 @@ export async function createSale(
           subtotal,
           discount,
           convenioDiscount,
+          comboDiscount,
+          comboDiscountUnits,
           total,
           costTotal,
           cashReceived,
@@ -766,7 +800,12 @@ export async function editSaleItems(
 
   if (changes.length === 0) return { ok: false, error: "Nenhuma alteração informada." };
 
-  const newTotal = round2(newSubtotal - newDiscount - Number(sale.convenioDiscount));
+  // `comboDiscount` entra na conta como valor já fixado: esta correção nunca
+  // troca produto (só preço/desconto de item), então a composição de
+  // capinhas e películas da nota — e portanto o número de combos — não muda.
+  const newTotal = round2(
+    newSubtotal - newDiscount - Number(sale.convenioDiscount) - Number(sale.comboDiscount)
+  );
   if (Math.abs(newTotal - Number(sale.total)) > CENT) {
     return {
       ok: false,
@@ -957,7 +996,47 @@ export async function reportSaleItemDefect(
     if (!customer) return { ok: false, error: "Cliente não encontrado." };
   }
 
-  const creditAmount = round2(Number(item.unitPrice) * input.quantity);
+  // Crédito da troca, já descontando o combo que deixa de existir.
+  //
+  // Se a venda deu desconto de combo e o item devolvido era metade de um par,
+  // o par se desfaz — e o cliente não pode ficar com um desconto de combo que
+  // não existe mais. Sem este ajuste ele receberia de volta o preço cheio de
+  // um item que comprou com abatimento, saindo ganhando na troca.
+  //
+  // O recálculo considera a nota inteira: soma o que já foi devolvido antes
+  // (`defects`) mais o que está sendo devolvido agora, refaz a contagem de
+  // combos com o que sobra, e cobra a diferença.
+  const grossCredit = round2(Number(item.unitPrice) * input.quantity);
+
+  let comboAdjustment = 0;
+  if (Number(sale.comboDiscount) > 0) {
+    const tenantSettings = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { comboDiscountSettings: true },
+    });
+    const comboSettings = parseComboDiscountSettings(tenantSettings?.comboDiscountSettings ?? null);
+
+    const remainingLines = sale.items.map((saleItem) => {
+      const alreadyOut = saleItem.defects.reduce((sum, d) => sum + d.quantity, 0);
+      const goingOutNow = saleItem.id === item.id ? input.quantity : 0;
+      return {
+        name: saleItem.nameSnapshot,
+        quantity: Math.max(0, saleItem.quantity - alreadyOut - goingOutNow),
+      };
+    });
+
+    const remainingCombos = computeComboDiscount(remainingLines, comboSettings).combos;
+    const combosLost = Math.max(0, sale.comboDiscountUnits - remainingCombos);
+    // Rateia pelo valor por combo efetivamente cobrado nesta venda, não pelo
+    // valor configurado hoje — a regra pode ter mudado desde a venda.
+    const amountPerCombo =
+      sale.comboDiscountUnits > 0
+        ? round2(Number(sale.comboDiscount) / sale.comboDiscountUnits)
+        : 0;
+    comboAdjustment = round2(Math.min(combosLost * amountPerCombo, grossCredit));
+  }
+
+  const creditAmount = round2(grossCredit - comboAdjustment);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -993,7 +1072,10 @@ export async function reportSaleItemDefect(
           amount: creditAmount,
           saleId: sale.id,
           userId,
-          reason: `Troca por defeito · venda #${sale.number} · ${item.nameSnapshot}`,
+          reason:
+            comboAdjustment > 0
+              ? `Troca por defeito · venda #${sale.number} · ${item.nameSnapshot} · ${formatBRL(grossCredit)} do item menos ${formatBRL(comboAdjustment)} do combo capinha + película desfeito`
+              : `Troca por defeito · venda #${sale.number} · ${item.nameSnapshot}`,
         },
       });
     });

@@ -126,6 +126,12 @@ export const NAV_ITEMS: NavItem[] = [
     visibleTo: canManageSettings,
   },
   {
+    label: "Descontos",
+    href: "/configuracoes/descontos",
+    available: true,
+    visibleTo: canManageSettings,
+  },
+  {
     label: "Configurações da empresa",
     href: "/configuracoes/empresa",
     available: true,
