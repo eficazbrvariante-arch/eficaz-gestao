@@ -2576,3 +2576,98 @@ que o horário dela passou durante a indisponibilidade. Vale investigar também
 o consumo de CPU (10h47m de um limite de 4h) e as invocações de função (951
 mil de 1 milhão) — sem urgência agora, com o crédito de US$ 20 do Pro
 absorvendo, mas pode virar custo recorrente à toa.
+
+## 2026-09-11 — Crédito Eficaz: solicitação travada em "Enviando..." e dados de trabalho
+
+**Sintoma (foto do celular de um cliente na loja):** RG e selfie ficavam em
+"Enviando..." e a solicitação nunca era enviada.
+
+**Causa:** os documentos do crédito eram enviados como `access: 'private'`,
+mas o projeto só tinha um Blob store, e ele é **público**
+(`eficaz-gestao-images`). A Vercel recusava na hora ("Cannot use private
+access on a public store"). Só que essa resposta de erro vem sem CORS, então
+o navegador via "Failed to fetch", o SDK tratava como falha de rede e
+retentava com espera crescente por uns 15 minutos. Nenhuma solicitação
+chegou a ser enviada desde o lançamento do Crédito Eficaz.
+
+**Correção (commit `760b8c2`):**
+- O usuário criou pelo painel o store **privado** `eficaz-documentos`,
+  conectado com o prefixo `CREDITO_BLOB`. Isso criou `CREDITO_BLOB_STORE_ID`
+  e `CREDITO_BLOB_WEBHOOK_PUBLIC_KEY`; o `BLOB_READ_WRITE_TOKEN` antigo
+  ficou intacto.
+- Store privado não tem read-write token: autentica por OIDC + id do store.
+  Por isso a rota `loja/[subdomain]/api/credito-eficaz/upload` passou para o
+  fluxo pré-assinado (`handleUploadPresigned` + `issueSignedToken`) e os
+  componentes usam `uploadPresigned` quando `access === "private"`.
+- A rota confere que o token saiu mesmo do store privado. Sem OIDC, o SDK
+  cairia calado no store público. Sem a configuração, recusa com mensagem
+  clara.
+- A leitura no painel (`/api/credito-eficaz/documentos/[id]`) usa o mesmo
+  `storeId`.
+- Limite de 90s em `ImageUploadField` e `SelfieCaptureField` (todos os
+  usos), para nunca mais ficar preso em "Enviando...".
+
+**Melhoria pedida (commit `811591b`):** seção "Seu trabalho" no formulário
+(nome do local, endereço, função/cargo reaproveitando `occupation`, e há
+quanto tempo trabalha lá em texto livre) mais o documento "Comprovante de
+trabalho" (`EMPLOYMENT_PROOF`). **Tudo obrigatório**, sem exceção para
+autônomo: decisão do usuário. O painel mostra os dados e os quatro
+documentos. A migration `20260911160000_credito_eficaz_dados_trabalho` é
+só aditiva (3 colunas opcionais e 1 valor de enum).
+
+**Testes:**
+- Envio real ponta a ponta no store privado: enviou, leu, apagou; CORS do
+  PUT pré-assinado ok.
+- `typecheck` limpo; `lint` sem avisos nos arquivos tocados (os 9 avisos
+  que existem são antigos, em outros arquivos).
+- 27 testes de integração do Crédito Eficaz verdes, incluindo um novo para
+  a recusa sem comprovante de trabalho.
+- `build:app` ok.
+
+**Deploy:** push direto para `main` (feito num worktree separado,
+`../eficaz-gestao-credito`, para não mexer na branch da etiqueta). Resultado:
+- Migration aplicada em produção no build.
+- `check:deploy` ok (só a leitura de logs falhou, erro do próprio CLI).
+- Em produção, a rota de upload responde "Faça login…", ou seja, as
+  variáveis do store privado estão presentes.
+
+**Continuação: compressão de fotos publicada (commit `a62353b`).**
+A branch `fix/comprimir-imagem-upload` (sessão de 08/09) estava pronta e
+testada, mas nunca tinha ido para a `main`. Foi aplicada por cherry-pick,
+resolvendo o conflito com o limite de 90s e o `uploadPresigned` em
+`image-upload-field.tsx`: agora a foto é comprimida, depois o tamanho é
+checado, depois vem o envio.
+
+Isso ajuda direto o crédito: foto de RG tirada no celular com mais de 5MB
+era recusada com "Foto muito grande", e agora é comprimida antes da
+checagem. O plano **já é Pro** desde 08/09, então os ~999MB do store
+público não bloqueiam nada; a compressão só segura o crescimento e o custo.
+
+**Teste ponta a ponta local** (servidor de dev do worktree, banco de dev,
+store privado de verdade), passando pela rota real:
+- sem login: recusado;
+- com sessão de cliente: 4 fotos enviadas ao store privado (3,4s);
+- solicitação ficou `UNDER_REVIEW` com os dados de trabalho e 4
+  documentos;
+- leitura com o mesmo `get` do painel: ok.
+
+Tudo de teste foi apagado depois. O navegador não foi usado no teste de
+login: as regras de segurança do agente não permitem criar conta nem
+digitar senha. A API da Vercel confirma `oidcTokenConfig` no projeto, e os
+deploys recebem o token OIDC.
+
+Verificações do estado final: `typecheck` limpo; `lint` 0 erros e 9
+warnings antigos; 139 testes unitários; `build:app` ok. Deploy
+`dnjdk1nsw` Ready; `check:deploy` ok; rota do crédito em produção
+responde "Faça login…".
+
+**Pendências:**
+- Primeira solicitação real pelo celular: é o único ponto não exercitado
+  com OIDC no runtime de produção. Se falhar, a mensagem será "Credencial
+  do armazenamento de documentos inválida".
+- Relatório de 08/09 (branch da compressão) e este foram acrescentados em
+  momentos diferentes. Ao juntar a branch da etiqueta com a `main`, é
+  provável um conflito simples no fim deste arquivo.
+- Para testar o crédito localmente, o `.env.local` precisa de
+  `CREDITO_BLOB_STORE_ID`, `CREDITO_BLOB_WEBHOOK_PUBLIC_KEY` e um
+  `VERCEL_OIDC_TOKEN` válido (expira em 12h; vem do `vercel env pull`).
