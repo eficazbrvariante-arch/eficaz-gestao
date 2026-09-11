@@ -27,6 +27,7 @@ import {
   setCreditoEficazPin,
   submitApplication,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import type { CreditoEficazDocumentType } from "@/generated/prisma/enums";
 
 /**
  * `customerId` nunca vem do formulário — só de uma sessão de verdade,
@@ -131,7 +132,7 @@ export async function submitProtecaoEficazAction(
 /**
  * Envio único da solicitação de Crédito Eficaz — reaproveita o rascunho
  * aberto (`getOrCreateDraftApplication`) se houver, preenche os dados,
- * anexa os três documentos (já enviados ao Blob privado pelo formulário),
+ * anexa os quatro documentos (já enviados ao Blob privado pelo formulário),
  * define o PIN de confirmação e manda pra análise, tudo numa chamada só.
  * `customerId` nunca vem do formulário, só da sessão.
  */
@@ -157,17 +158,21 @@ export async function submitCreditoEficazApplicationAction(
   if (!draft.ok) return { error: draft.error };
 
   const updated = await updateDraftApplication(tenant.id, session.customerId, draft.application.id, {
-    occupation: parsed.data.occupation || null,
+    occupation: parsed.data.occupation,
+    workplaceName: parsed.data.workplaceName,
+    workplaceAddress: parsed.data.workplaceAddress,
+    workplaceTenure: parsed.data.workplaceTenure,
     income: parsed.data.income ?? null,
     bestDueDay: parsed.data.bestDueDay ?? null,
     additionalNotes: parsed.data.additionalNotes || null,
   });
   if (!updated.ok) return { error: updated.error };
 
-  const documents: Array<[ "ID_DOCUMENT" | "RESIDENCE_PROOF" | "SELFIE", string ]> = [
+  const documents: Array<[CreditoEficazDocumentType, string]> = [
     ["ID_DOCUMENT", parsed.data.idDocumentPathname],
     ["RESIDENCE_PROOF", parsed.data.residenceProofPathname],
     ["SELFIE", parsed.data.selfiePathname],
+    ["EMPLOYMENT_PROOF", parsed.data.employmentProofPathname],
   ];
   for (const [type, pathname] of documents) {
     const added = await addApplicationDocument(tenant.id, session.customerId, draft.application.id, type, pathname);

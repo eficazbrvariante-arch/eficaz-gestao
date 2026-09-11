@@ -225,6 +225,19 @@ describe("Crédito Eficaz — solicitação e aprovação", () => {
       ],
     });
 
+    // Comprovante de trabalho é obrigatório — sem ele, os outros três não bastam.
+    const withoutEmploymentProof = await submitApplication(tenantId, customerId, draft.application.id, "v1");
+    expect(withoutEmploymentProof.ok).toBe(false);
+
+    await prisma.creditoEficazDocument.create({
+      data: {
+        tenantId,
+        applicationId: draft.application.id,
+        type: "EMPLOYMENT_PROOF",
+        blobPathname: "qa/employment.jpg",
+      },
+    });
+
     const submitted = await submitApplication(tenantId, customerId, draft.application.id, "v1");
     expect(submitted.ok).toBe(true);
 

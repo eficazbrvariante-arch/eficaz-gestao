@@ -5,16 +5,21 @@ import { z } from "zod";
  * — um formulário, um clique, sem burocracia de várias etapas). Os três
  * documentos já foram enviados ao Blob privado antes do submit (ver
  * `PrivateDocumentUploadField`/`SelfieCaptureField` na tela) — aqui só
- * chegam os pathnames.
+ * chegam os pathnames. Dados de trabalho e comprovante sempre obrigatórios
+ * (decisão do dono, sem exceção pra autônomo).
  */
 export const submitCreditoEficazApplicationSchema = z.object({
-  occupation: z.string().trim().max(120).optional().or(z.literal("")),
+  occupation: z.string().trim().min(1, "Informe sua função/cargo.").max(120),
+  workplaceName: z.string().trim().min(1, "Informe o nome do local de trabalho.").max(120),
+  workplaceAddress: z.string().trim().min(1, "Informe o endereço do trabalho.").max(200),
+  workplaceTenure: z.string().trim().min(1, "Informe há quanto tempo trabalha lá.").max(60),
   income: z.coerce.number().min(0).optional(),
   bestDueDay: z.coerce.number().int().min(1).max(28).optional(),
   additionalNotes: z.string().trim().max(500).optional().or(z.literal("")),
   idDocumentPathname: z.string().trim().min(1, "Envie o documento de identificação."),
   residenceProofPathname: z.string().trim().min(1, "Envie o comprovante de residência."),
   selfiePathname: z.string().trim().min(1, "Envie a selfie de confirmação."),
+  employmentProofPathname: z.string().trim().min(1, "Envie o comprovante de trabalho."),
   pin: z.string().regex(/^\d{4}$/, "O PIN precisa ter exatamente 4 dígitos."),
   termsAccepted: z.literal(true, { message: "Aceite os termos para continuar." }),
 });

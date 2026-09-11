@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import type { CreditoEficazDocumentType } from "@/generated/prisma/enums";
 import { startOfMonthISO, todayISO } from "@/lib/format";
 
 /**
@@ -23,6 +24,9 @@ function round2(value: number) {
 
 export type CreditoEficazApplicationDraftInput = {
   occupation?: string | null;
+  workplaceName?: string | null;
+  workplaceAddress?: string | null;
+  workplaceTenure?: string | null;
   income?: number | null;
   bestDueDay?: number | null;
   additionalNotes?: string | null;
@@ -88,6 +92,9 @@ export async function updateDraftApplication(
     where: { id: applicationId, tenantId, customerId, status: { in: [...EDITABLE_STATUSES] } },
     data: {
       occupation: input.occupation ?? null,
+      workplaceName: input.workplaceName ?? null,
+      workplaceAddress: input.workplaceAddress ?? null,
+      workplaceTenure: input.workplaceTenure ?? null,
       income: input.income ?? null,
       bestDueDay: input.bestDueDay ?? null,
       additionalNotes: input.additionalNotes ?? null,
@@ -104,7 +111,7 @@ export async function addApplicationDocument(
   tenantId: string,
   customerId: string,
   applicationId: string,
-  type: "ID_DOCUMENT" | "RESIDENCE_PROOF" | "SELFIE",
+  type: CreditoEficazDocumentType,
   blobPathname: string
 ): Promise<SimpleResult> {
   const application = await prisma.creditoEficazApplication.findFirst({
@@ -121,9 +128,14 @@ export async function addApplicationDocument(
   return { ok: true };
 }
 
-const REQUIRED_DOCUMENT_TYPES = ["ID_DOCUMENT", "RESIDENCE_PROOF", "SELFIE"] as const;
+const REQUIRED_DOCUMENT_TYPES = [
+  "ID_DOCUMENT",
+  "RESIDENCE_PROOF",
+  "SELFIE",
+  "EMPLOYMENT_PROOF",
+] as const satisfies readonly CreditoEficazDocumentType[];
 
-/** Envia pra análise: exige os três documentos e o aceite explícito dos termos vigentes. */
+/** Envia pra análise: exige os quatro documentos e o aceite explícito dos termos vigentes. */
 export async function submitApplication(
   tenantId: string,
   customerId: string,

@@ -2210,6 +2210,9 @@ enum CreditoEficazDocumentType {
   ID_DOCUMENT
   RESIDENCE_PROOF
   SELFIE
+  /// Comprovante de trabalho (carteira, contracheque, crachá, declaração) —
+  /// sempre obrigatório, decisão do dono (sem exceção pra autônomo).
+  EMPLOYMENT_PROOF
 }
 
 /// PAID é estado final. "Vencida" não é um valor guardado — calculada a
@@ -2233,7 +2236,13 @@ model CreditoEficazApplication {
   tenantId            String
   customerId          String
   status              CreditoEficazApplicationStatus @default(DRAFT)
+  /// Função/cargo no trabalho atual (na tela: "Função/cargo").
   occupation          String?
+  workplaceName       String?
+  workplaceAddress    String?
+  /// Há quanto tempo trabalha lá — texto livre ("1 ano e meio"), decisão do
+  /// dono: nada de lista de faixas.
+  workplaceTenure     String?
   income              Decimal?                       @db.Decimal(12, 2)
   /// Dia do mês (1-28, evita problema de mês curto) preferido pro
   /// vencimento das obrigações deste cliente.

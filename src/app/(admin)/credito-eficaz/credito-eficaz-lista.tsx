@@ -37,6 +37,7 @@ const DOCUMENT_LABEL = {
   ID_DOCUMENT: "Documento de identificação",
   RESIDENCE_PROOF: "Comprovante de residência",
   SELFIE: "Selfie de confirmação",
+  EMPLOYMENT_PROOF: "Comprovante de trabalho",
 } as const;
 
 const PENDING_DECISION = new Set(["UNDER_REVIEW", "INFO_REQUESTED"]);
@@ -117,7 +118,17 @@ export function CreditoEficazLista({ applications }: { applications: Application
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-md border border-slate-200 p-3 text-sm text-slate-700">
                 <p>
-                  <span className="text-xs text-slate-500">Ocupação:</span> {app.occupation || "—"}
+                  <span className="text-xs text-slate-500">Local de trabalho:</span> {app.workplaceName || "—"}
+                </p>
+                <p>
+                  <span className="text-xs text-slate-500">Endereço do trabalho:</span>{" "}
+                  {app.workplaceAddress || "—"}
+                </p>
+                <p>
+                  <span className="text-xs text-slate-500">Função/cargo:</span> {app.occupation || "—"}
+                </p>
+                <p>
+                  <span className="text-xs text-slate-500">Tempo no trabalho:</span> {app.workplaceTenure || "—"}
                 </p>
                 <p>
                   <span className="text-xs text-slate-500">Renda informada:</span>{" "}
@@ -136,7 +147,7 @@ export function CreditoEficazLista({ applications }: { applications: Application
 
               <div className="rounded-md border border-slate-200 p-3">
                 <p className="mb-2 text-xs font-semibold text-slate-500">Documentos</p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {app.documents.map((doc) => (
                     <a
                       key={doc.id}
@@ -156,7 +167,7 @@ export function CreditoEficazLista({ applications }: { applications: Application
                     </a>
                   ))}
                   {app.documents.length === 0 && (
-                    <p className="col-span-3 text-xs text-slate-400">Nenhum documento enviado.</p>
+                    <p className="col-span-full text-xs text-slate-400">Nenhum documento enviado.</p>
                   )}
                 </div>
               </div>

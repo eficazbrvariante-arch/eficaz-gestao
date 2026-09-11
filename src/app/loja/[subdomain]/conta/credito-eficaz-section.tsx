@@ -31,12 +31,16 @@ export function CreditoEficazSection({
   forceShowForm?: boolean;
 }) {
   const [occupation, setOccupation] = useState("");
+  const [workplaceName, setWorkplaceName] = useState("");
+  const [workplaceAddress, setWorkplaceAddress] = useState("");
+  const [workplaceTenure, setWorkplaceTenure] = useState("");
   const [income, setIncome] = useState("");
   const [bestDueDay, setBestDueDay] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [idDocumentPathname, setIdDocumentPathname] = useState("");
   const [residenceProofPathname, setResidenceProofPathname] = useState("");
   const [selfiePathname, setSelfiePathname] = useState("");
+  const [employmentProofPathname, setEmploymentProofPathname] = useState("");
   const [pin, setPin] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -52,8 +56,22 @@ export function CreditoEficazSection({
       setFeedback({ type: "error", message: "Aceite os termos para continuar." });
       return;
     }
-    if (!idDocumentPathname || !residenceProofPathname || !selfiePathname) {
-      setFeedback({ type: "error", message: "Envie os três documentos pedidos." });
+    if (
+      !occupation.trim() ||
+      !workplaceName.trim() ||
+      !workplaceAddress.trim() ||
+      !workplaceTenure.trim()
+    ) {
+      setFeedback({ type: "error", message: "Preencha todos os dados do seu trabalho." });
+      return;
+    }
+    if (
+      !idDocumentPathname ||
+      !residenceProofPathname ||
+      !employmentProofPathname ||
+      !selfiePathname
+    ) {
+      setFeedback({ type: "error", message: "Envie os quatro documentos pedidos." });
       return;
     }
     if (!/^\d{4}$/.test(pin)) {
@@ -64,12 +82,16 @@ export function CreditoEficazSection({
     startTransition(async () => {
       const result = await submitCreditoEficazApplicationAction(subdomain, {
         occupation,
+        workplaceName,
+        workplaceAddress,
+        workplaceTenure,
         income: income || undefined,
         bestDueDay: bestDueDay || undefined,
         additionalNotes,
         idDocumentPathname,
         residenceProofPathname,
         selfiePathname,
+        employmentProofPathname,
         pin,
         termsAccepted: true,
       });
@@ -177,16 +199,56 @@ export function CreditoEficazSection({
 
       {showFormNow && (
         <div className="space-y-3 rounded-md bg-slate-50 p-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-700">Profissão/ocupação</label>
-            <input
-              type="text"
-              value={occupation}
-              onChange={(e) => setOccupation(e.target.value)}
-              disabled={isPending}
-              className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-            />
-          </div>
+          <fieldset className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+            <legend className="px-1 text-xs font-semibold text-slate-700">Seu trabalho</legend>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Nome do local de trabalho</label>
+              <input
+                type="text"
+                value={workplaceName}
+                onChange={(e) => setWorkplaceName(e.target.value)}
+                maxLength={120}
+                disabled={isPending}
+                className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Endereço do trabalho</label>
+              <input
+                type="text"
+                value={workplaceAddress}
+                onChange={(e) => setWorkplaceAddress(e.target.value)}
+                maxLength={200}
+                disabled={isPending}
+                className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Função/cargo</label>
+                <input
+                  type="text"
+                  value={occupation}
+                  onChange={(e) => setOccupation(e.target.value)}
+                  maxLength={120}
+                  disabled={isPending}
+                  className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Há quanto tempo trabalha lá</label>
+                <input
+                  type="text"
+                  value={workplaceTenure}
+                  onChange={(e) => setWorkplaceTenure(e.target.value)}
+                  placeholder="Ex.: 1 ano e meio"
+                  maxLength={60}
+                  disabled={isPending}
+                  className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+          </fieldset>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -245,6 +307,20 @@ export function CreditoEficazSection({
             <ImageUploadField
               value={residenceProofPathname || undefined}
               onChange={setResidenceProofPathname}
+              uploadUrl={uploadUrl}
+              access="private"
+              disabled={isPending}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Comprovante de trabalho</label>
+            <p className="mb-1 text-xs text-slate-500">
+              Carteira de trabalho, contracheque, crachá ou declaração do empregador.
+            </p>
+            <ImageUploadField
+              value={employmentProofPathname || undefined}
+              onChange={setEmploymentProofPathname}
               uploadUrl={uploadUrl}
               access="private"
               disabled={isPending}
