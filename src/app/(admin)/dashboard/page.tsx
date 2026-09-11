@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, todayRange } from "@/lib/format";
-import { canViewDashboard, canViewReports } from "@/lib/permissions";
+import { canManageStock, canViewDashboard, canViewReports } from "@/lib/permissions";
 import { needsRestock, stockStatusLabel } from "@/modules/products/stock-status";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 
@@ -139,9 +139,11 @@ export default async function DashboardPage() {
             <h2 className="text-sm font-semibold text-slate-900">
               Produtos a repor ({lowStock.length})
             </h2>
-            <Link href="/estoque" className="text-sm text-slate-800 hover:underline">
-              Ver estoque
-            </Link>
+            {canManageStock(user.role) && (
+              <Link href="/estoque" className="text-sm text-slate-800 hover:underline">
+                Ver estoque
+              </Link>
+            )}
           </div>
           {lowStock.length === 0 ? (
             <p className="text-sm text-slate-600">Nenhum produto precisando de reposição.</p>

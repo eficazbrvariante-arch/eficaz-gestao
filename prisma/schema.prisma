@@ -245,6 +245,11 @@ model User {
   /// é registrado no Ponto. Só ADMIN altera (mesma trava de
   /// `Product.commissionPercent` — quem ganha quanto). 0 = não configurado.
   hourlyRate          Decimal   @default(0) @db.Decimal(10, 2)
+  /// Só vale pra Gerente: pode digitar o custo ao CADASTRAR produto novo
+  /// (nunca vê nem altera o custo de produto já salvo — ver
+  /// `canEnterProductCostOnCreate`). Ligado/desligado pelo Admin em
+  /// `/usuarios`, por pessoa: depende de qual gerente está de plantão.
+  canEnterProductCost Boolean   @default(false)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

@@ -16,6 +16,7 @@ import {
   changeUserRoleAction,
   toggleUserActiveAction,
   resetUserPasswordAction,
+  setUserCanEnterProductCostAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -135,12 +136,15 @@ export function UserRowActions({
   role,
   active,
   isSelf,
+  canEnterProductCost,
 }: {
   userId: string;
   userName: string;
   role: UserRole;
   active: boolean;
   isSelf: boolean;
+  /** Só aparece pra Gerente — ver `User.canEnterProductCost`. */
+  canEnterProductCost: boolean;
 }) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [showReset, setShowReset] = useState(false);
@@ -158,6 +162,14 @@ export function UserRowActions({
     setFeedback(undefined);
     startTransition(async () => {
       const result = await toggleUserActiveAction(userId);
+      if (result?.error) setFeedback({ type: "error", message: result.error });
+    });
+  }
+
+  function toggleProductCost(enabled: boolean) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await setUserCanEnterProductCostAction(userId, enabled);
       if (result?.error) setFeedback({ type: "error", message: result.error });
     });
   }
@@ -202,6 +214,18 @@ export function UserRowActions({
           </button>
         )}
       </div>
+
+      {role === "MANAGER" && (
+        <label className="flex items-center justify-end gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={canEnterProductCost}
+            disabled={isPending}
+            onChange={(e) => toggleProductCost(e.target.checked)}
+          />
+          Pode lançar custo no cadastro de produto
+        </label>
+      )}
 
       {feedback && (
         <p className="text-right text-xs text-red-600">{feedback.message}</p>

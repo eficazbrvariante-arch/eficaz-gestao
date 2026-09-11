@@ -32,6 +32,7 @@ export function ProductForm({
   suppliers,
   canManageCommission,
   canEditCommission,
+  showCostField,
 }: {
   productId?: string;
   defaultValues?: Partial<ProductFormValues>;
@@ -42,6 +43,12 @@ export function ProductForm({
   canManageCommission: boolean;
   /** Só ADMIN edita — Gerente vê a seção, mas os campos ficam desabilitados. */
   canEditCommission: boolean;
+  /**
+   * Mostra o campo de custo (ver `getProductCostAccess`). Escondido, o
+   * formulário manda 0 e o servidor ignora — o custo real nunca chega ao
+   * navegador de quem não pode vê-lo.
+   */
+  showCostField: boolean;
 }) {
   const [serverError, setServerError] = useState<string>();
   const [isPending, startTransition] = useTransition();
@@ -224,11 +231,13 @@ export function ProductForm({
         </div>
 
         <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <Label htmlFor="costPrice">Preço de custo (R$)</Label>
-            <Input id="costPrice" type="number" step="0.01" {...register("costPrice")} />
-            <FieldError message={errors.costPrice?.message} />
-          </div>
+          {showCostField && (
+            <div>
+              <Label htmlFor="costPrice">Preço de custo (R$)</Label>
+              <Input id="costPrice" type="number" step="0.01" {...register("costPrice")} />
+              <FieldError message={errors.costPrice?.message} />
+            </div>
+          )}
           <div>
             <Label htmlFor="salePrice">Preço de venda (R$)</Label>
             <Input id="salePrice" type="number" step="0.01" {...register("salePrice")} />

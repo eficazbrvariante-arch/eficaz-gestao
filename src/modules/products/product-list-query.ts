@@ -45,7 +45,6 @@ export type ProductListItem = Omit<
   RawProductListItem,
   "costPrice" | "salePrice" | "promoPrice" | "catalogPrice" | "avgRating"
 > & {
-  costPrice: number;
   salePrice: number;
   promoPrice: number | null;
   catalogPrice: number;
@@ -53,9 +52,13 @@ export type ProductListItem = Omit<
 };
 
 function toProductListItem(product: RawProductListItem): ProductListItem {
+  // O custo fica de fora de propósito: a lista não mostra custo e ela vai
+  // pro navegador de qualquer um que gerencia produtos (inclusive Gerente,
+  // que não pode ver custo — ver `canViewProductCost`).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { costPrice, ...rest } = product;
   return {
-    ...product,
-    costPrice: Number(product.costPrice),
+    ...rest,
     salePrice: Number(product.salePrice),
     promoPrice: product.promoPrice !== null ? Number(product.promoPrice) : null,
     catalogPrice: Number(product.catalogPrice),

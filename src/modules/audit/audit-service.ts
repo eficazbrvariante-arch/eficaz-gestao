@@ -25,6 +25,7 @@ export type AuditAction =
   | "user.deactivate"
   | "user.activate"
   | "user.password_reset"
+  | "user.product_cost_permission_change"
   | "settings.company"
   | "settings.catalog"
   | "settings.delivery"
@@ -74,6 +75,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "user.deactivate": "Usuário desativado",
   "user.activate": "Usuário reativado",
   "user.password_reset": "Senha redefinida",
+  "user.product_cost_permission_change": "Permissão de lançar custo de produto alterada",
   "settings.company": "Dados da empresa alterados",
   "settings.catalog": "Catálogo configurado",
   "settings.delivery": "Entrega configurada",

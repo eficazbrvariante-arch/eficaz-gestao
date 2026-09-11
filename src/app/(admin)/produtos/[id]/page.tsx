@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { toDateTimeLocalValue } from "@/lib/format";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import { getProductCostAccess } from "@/modules/products/product-cost-access";
 import { ProductForm } from "../product-form";
 
 export default async function EditarProdutoPage({
@@ -14,7 +15,7 @@ export default async function EditarProdutoPage({
   const { id } = await params;
   const user = await requireUser();
 
-  const [product, categories, brands, suppliers] = await Promise.all([
+  const [product, categories, brands, suppliers, costAccess] = await Promise.all([
     prisma.product.findFirst({
       where: { id, tenantId: user.tenantId },
       include: { images: { orderBy: { order: "asc" } }, variants: true },
@@ -22,6 +23,7 @@ export default async function EditarProdutoPage({
     prisma.category.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
     prisma.brand.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
     prisma.supplier.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
+    getProductCostAccess(user),
   ]);
 
   if (!product) notFound();
@@ -45,6 +47,7 @@ export default async function EditarProdutoPage({
           suppliers={suppliers}
           canManageCommission={canManageEmployeeLedger(user.role)}
           canEditCommission={canEditCommission(user.role)}
+          showCostField={costAccess.canView}
           defaultValues={{
             name: product.name,
             internalCode: product.internalCode ?? "",
@@ -53,7 +56,8 @@ export default async function EditarProdutoPage({
             brandId: product.brandId ?? "",
             supplierId: product.supplierId ?? "",
             description: product.description ?? "",
-            costPrice: Number(product.costPrice),
+            // Sem acesso, vai 0 (o servidor ignora) — o custo real nunca sai do servidor.
+            costPrice: costAccess.canView ? Number(product.costPrice) : 0,
             salePrice: Number(product.salePrice),
             promoPrice: product.promoPrice ? Number(product.promoPrice) : undefined,
             commissionEnabled: product.commissionEnabled,

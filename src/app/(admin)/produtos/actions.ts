@@ -23,6 +23,7 @@ import { recordPriceSnapshotIfChanged } from "@/modules/products/price-history";
 import { applyStockMovement } from "@/modules/products/stock-movement-service";
 import { checkLimit } from "@/lib/plans";
 import { canEditCommission, canManageProducts } from "@/lib/permissions";
+import { getProductCostAccess } from "@/modules/products/product-cost-access";
 
 /**
  * `requireUser()` só confirma autenticação. As ações abaixo (produtos,
@@ -162,7 +163,7 @@ export async function deleteBrandAction(id: string) {
 
 // --- Produtos ---
 
-function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
+function normalizeProductData(data: ProductInput, canSetCommission: boolean, canSetCost: boolean) {
   const promoPrice = data.promoPrice ?? null;
   return {
     name: data.name,
@@ -172,7 +173,10 @@ function normalizeProductData(data: ProductInput, canSetCommission: boolean) {
     brandId: data.brandId || null,
     supplierId: data.supplierId || null,
     description: data.description || null,
-    costPrice: data.costPrice,
+    // Mesmo esquema da comissão abaixo: sem permissão, `undefined` = o Prisma
+    // não mexe (no cadastro fica o padrão 0). O formulário de quem não vê o
+    // custo manda 0 — nunca pode sobrescrever o custo real (ver `getProductCostAccess`).
+    costPrice: canSetCost ? data.costPrice : undefined,
     salePrice: data.salePrice,
     promoPrice,
     // Sem preço promocional, não faz sentido guardar prazo/início/limite de oferta relâmpago.
@@ -341,10 +345,11 @@ export async function createProductAction(input: ProductInput) {
     if (existing) return { error: "Já existe um produto com este código interno." };
   }
 
+  const costAccess = await getProductCostAccess(user);
   const product = await prisma.product.create({
     data: {
       tenantId: user.tenantId,
-      ...normalizeProductData(parsed.data, canEditCommission(user.role)),
+      ...normalizeProductData(parsed.data, canEditCommission(user.role), costAccess.canEnterOnCreate),
     },
   });
 
@@ -413,9 +418,10 @@ export async function updateProductAction(id: string, input: ProductInput) {
   const stockDelta = parsed.data.stockQty - current.stockQty;
   const newCatalogPrice = computeCatalogPrice(parsed.data.salePrice, parsed.data.promoPrice ?? null);
 
+  const costAccess = await getProductCostAccess(user);
   await prisma.product.update({
     where: { id },
-    data: normalizeProductData(parsed.data, canEditCommission(user.role)),
+    data: normalizeProductData(parsed.data, canEditCommission(user.role), costAccess.canView),
   });
 
   await recordPriceSnapshotIfChanged(
@@ -658,7 +664,12 @@ export async function importProductsAction(
     return { created: 0, updated: 0, errors: ["Selecione um arquivo CSV."] };
   }
 
-  const result = await importProductsFromCsv(user.tenantId, await file.text());
+  // Custo na planilha: quem vê o custo importa normal; Gerente liberado só
+  // grava custo de produto NOVO; os demais têm a coluna ignorada.
+  const costAccess = await getProductCostAccess(user);
+  const result = await importProductsFromCsv(user.tenantId, await file.text(), {
+    costMode: costAccess.canView ? "all" : costAccess.canEnterOnCreate ? "createOnly" : "none",
+  });
 
   revalidatePath("/produtos");
   revalidatePath("/estoque");

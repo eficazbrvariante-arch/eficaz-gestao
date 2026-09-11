@@ -1,14 +1,16 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import { getProductCostAccess } from "@/modules/products/product-cost-access";
 import { ProductForm } from "../product-form";
 
 export default async function NovoProdutoPage() {
   const user = await requireUser();
-  const [categories, brands, suppliers] = await Promise.all([
+  const [categories, brands, suppliers, costAccess] = await Promise.all([
     prisma.category.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
     prisma.brand.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
     prisma.supplier.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: "asc" } }),
+    getProductCostAccess(user),
   ]);
 
   return (
@@ -21,6 +23,7 @@ export default async function NovoProdutoPage() {
           suppliers={suppliers}
           canManageCommission={canManageEmployeeLedger(user.role)}
           canEditCommission={canEditCommission(user.role)}
+          showCostField={costAccess.canEnterOnCreate}
         />
       </div>
     </div>

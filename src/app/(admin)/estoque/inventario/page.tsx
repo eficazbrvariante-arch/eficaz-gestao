@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
+import { canManageStock } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { adjustInventoryAction } from "../actions";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ export default async function InventarioPage({
 }) {
   const { sucesso } = await searchParams;
   const user = await requireUser();
+  if (!canManageStock(user.role)) redirect("/dashboard");
   const products = await prisma.product.findMany({
     where: { tenantId: user.tenantId, active: true },
     orderBy: { name: "asc" },

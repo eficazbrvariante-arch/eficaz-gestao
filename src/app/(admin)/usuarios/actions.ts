@@ -204,3 +204,39 @@ export async function resetUserPasswordAction(input: ResetUserPasswordInput) {
   revalidatePath("/usuarios");
   return { success: `Senha de ${target.name} redefinida.` };
 }
+
+/**
+ * Liga/desliga, por Gerente, a permissão de digitar o custo ao cadastrar
+ * produto novo (`User.canEnterProductCost`) — depende de quem está de
+ * plantão. Nunca libera ver o custo de produto já salvo.
+ */
+export async function setUserCanEnterProductCostAction(userId: string, enabled: boolean) {
+  const actor = await requireUser();
+  if (!canManageSettings(actor.role)) {
+    return { error: "Seu perfil não tem permissão para gerenciar usuários." };
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id: userId, tenantId: actor.tenantId },
+    select: { id: true, name: true, role: true },
+  });
+  if (!target) return { error: "Usuário não encontrado." };
+  if (target.role !== "MANAGER") {
+    return { error: "Essa opção só vale para Gerente." };
+  }
+
+  await prisma.user.update({ where: { id: target.id }, data: { canEnterProductCost: enabled } });
+
+  await recordAudit({
+    tenantId: actor.tenantId,
+    userId: actor.id,
+    userName: actor.name ?? actor.email ?? "Usuário",
+    action: "user.product_cost_permission_change",
+    entity: "User",
+    entityId: target.id,
+    description: `${enabled ? "Liberou" : "Bloqueou"} ${target.name} para lançar custo no cadastro de produto.`,
+  });
+
+  revalidatePath("/usuarios");
+  return { success: `${target.name}: permissão de custo ${enabled ? "liberada" : "bloqueada"}.` };
+}

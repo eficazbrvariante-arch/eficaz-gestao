@@ -119,14 +119,42 @@ export function canManageProducts(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER" || role === "STOCKIST";
 }
 
-/** Lançar movimentações de estoque. */
+/**
+ * Área Estoque (movimentações, inventário, ajuste rápido). Gerente ficou de
+ * fora por decisão do dono (11/09/2026) — continua vendo a quantidade na
+ * lista de produtos e no PDV, que é o que precisa pra vender.
+ */
 export function canManageStock(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER" || role === "STOCKIST";
+  return role === "ADMIN" || role === "STOCKIST";
 }
 
-/** Ver relatórios financeiros e de desempenho. */
+/**
+ * Ver o preço de custo de produto já cadastrado (formulário, exportação,
+ * importação que atualiza). Gerente nunca vê (decisão do dono, 11/09/2026);
+ * no máximo digita o custo ao cadastrar, se liberado — ver
+ * `canEnterProductCostOnCreate`.
+ */
+export function canViewProductCost(role: UserRole) {
+  return role === "ADMIN" || role === "STOCKIST";
+}
+
+/**
+ * Digitar o custo ao CADASTRAR um produto novo. Gerente só quando o Admin
+ * liga `User.canEnterProductCost` pra aquela pessoa (depende de quem está de
+ * plantão) — mesmo espírito de `canEnterRepairOrderCostOnCreate`: lança na
+ * criação, mas depois de salvo não vê mais.
+ */
+export function canEnterProductCostOnCreate(role: UserRole, userCanEnterProductCost: boolean) {
+  return canViewProductCost(role) || (role === "MANAGER" && userCanEnterProductCost);
+}
+
+/**
+ * Ver faturamento: Relatórios, Analytics, números financeiros do dashboard e
+ * total consolidado do caixa. Só ADMIN — Gerente saiu por decisão do dono
+ * (11/09/2026); abre e fecha caixa como o vendedor, sem ver o faturamento.
+ */
 export function canViewReports(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER";
+  return role === "ADMIN";
 }
 
 /** Gerenciar usuários e configurações da empresa. */
@@ -203,15 +231,17 @@ export function canQuickEditStockQty(role: UserRole) {
  * "já conferido" de todos os produtos, enchendo a fila dele de novo).
  */
 export function canResetStockCheckQueue(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER";
+  return role === "ADMIN";
 }
 
 /**
  * Corrigir manualmente uma marcação de ponto de outro colaborador. O próprio
  * colaborador nunca pode alterar o que já registrou — só quem tem este papel.
+ * Só ADMIN: a correção vive dentro do painel de ponto, que o Gerente não vê
+ * mais (ver `canViewAttendancePanel`).
  */
 export function canCorrectAttendance(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER";
+  return role === "ADMIN";
 }
 
 /**
@@ -223,9 +253,13 @@ export function canWaiveAttendanceSelfie(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
 
-/** Ver o painel de ponto de todos os colaboradores (presença, atrasos, horas). */
+/**
+ * Ver o painel de ponto de todos os colaboradores (presença, atrasos, horas).
+ * Só ADMIN desde 11/09/2026 (decisão do dono). Bater o próprio ponto continua
+ * liberado pra todo mundo.
+ */
 export function canViewAttendancePanel(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER";
+  return role === "ADMIN";
 }
 
 /**

@@ -21,6 +21,7 @@ export default async function UsuariosPage() {
       role: true,
       active: true,
       lastLoginAt: true,
+      canEnterProductCost: true,
     },
   });
 
@@ -103,6 +104,7 @@ export default async function UsuariosPage() {
                       role={row.role}
                       active={row.active}
                       isSelf={row.id === user.id}
+                      canEnterProductCost={row.canEnterProductCost}
                     />
                   </td>
                 </tr>

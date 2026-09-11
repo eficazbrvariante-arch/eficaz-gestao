@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { canResetStockCheckQueue } from "@/lib/permissions";
+import { canManageStock, canResetStockCheckQueue } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { needsRestock, stockStatusLabel } from "@/modules/products/stock-status";
 import { ResetStockCheckButton } from "./reset-stock-check-button";
@@ -17,6 +18,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default async function EstoquePage() {
   const user = await requireUser();
+  if (!canManageStock(user.role)) redirect("/dashboard");
   const canResetQueue = canResetStockCheckQueue(user.role);
 
   const [lowStockProducts, movements, pendingStockCheck, totalActive] = await Promise.all([

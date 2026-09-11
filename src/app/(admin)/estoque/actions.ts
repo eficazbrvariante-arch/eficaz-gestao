@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { canResetStockCheckQueue } from "@/lib/permissions";
+import { canManageStock, canResetStockCheckQueue } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { recordAudit } from "@/modules/audit/audit-service";
 import { applyStockMovement } from "@/modules/products/stock-movement-service";
@@ -11,6 +11,8 @@ import { stockMovementSchema, type StockMovementInput } from "@/lib/validations/
 
 export async function createStockMovementAction(input: StockMovementInput) {
   const user = await requireUser();
+  // Antes só o menu escondia o Estoque — a action aceitava qualquer perfil.
+  if (!canManageStock(user.role)) return { error: "Seu perfil não tem acesso ao estoque." };
   const parsed = stockMovementSchema.safeParse(input);
   if (!parsed.success) return { error: "Dados inválidos." };
 
@@ -27,6 +29,7 @@ export async function createStockMovementAction(input: StockMovementInput) {
 
 export async function adjustInventoryAction(formData: FormData) {
   const user = await requireUser();
+  if (!canManageStock(user.role)) redirect("/dashboard");
   const entries = Array.from(formData.entries()).filter(([key]) => key.startsWith("qty_"));
 
   const productIds = entries.map(([key]) => key.replace("qty_", ""));

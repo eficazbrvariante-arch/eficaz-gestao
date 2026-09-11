@@ -30,7 +30,14 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
  */
 export async function importProductsFromCsv(
   tenantId: string,
-  csvText: string
+  csvText: string,
+  /**
+   * O que fazer com a coluna `preco_custo` (ver `getProductCostAccess`):
+   * `all` grava sempre; `createOnly` só em produto novo (Gerente liberado
+   * lança o custo no cadastro, nunca altera o de produto existente); `none`
+   * ignora a coluna.
+   */
+  { costMode = "all" }: { costMode?: "all" | "createOnly" | "none" } = {}
 ): Promise<ImportResult> {
   let rows: Record<string, string>[];
   try {
@@ -120,7 +127,10 @@ export async function importProductsFromCsv(
           : null;
 
       if (existing) {
-        await prisma.product.update({ where: { id: existing.id }, data });
+        await prisma.product.update({
+          where: { id: existing.id },
+          data: { ...data, costPrice: costMode === "all" ? data.costPrice : undefined },
+        });
         await recordPriceSnapshotIfChanged(
           tenantId,
           existing.id,
@@ -129,7 +139,9 @@ export async function importProductsFromCsv(
         );
         result.updated += 1;
       } else {
-        const created = await prisma.product.create({ data: { tenantId, ...data } });
+        const created = await prisma.product.create({
+          data: { tenantId, ...data, costPrice: costMode === "none" ? undefined : data.costPrice },
+        });
         await recordPriceSnapshotIfChanged(tenantId, created.id, data.catalogPrice);
         result.created += 1;
       }
