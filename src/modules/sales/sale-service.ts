@@ -13,8 +13,10 @@ import {
   verifyCreditoEficazPin,
   computeCreditoEficazDueDate,
   recordCreditoEficazUsageInTx,
+  resolveCreditoEficazSurchargePercent,
   reverseCreditoEficazUsageInTx,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import { computeCreditoEficazSurcharge } from "@/modules/credito-eficaz/credito-eficaz-surcharge";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -357,10 +359,13 @@ export async function createSale(
   // transação — não é dado financeiro, só autorização. O que realmente
   // impede duas vendas gastarem o mesmo limite é o débito atômico dentro da
   // transação (`recordCreditoEficazUsageInTx`), nunca esta checagem prévia.
-  const creditoEficazAmount = round2(
+  // Os `payments` chegam SEM acréscimo (fecham com `total` acima); o
+  // acréscimo é calculado aqui, só sobre a parte no crédito, e somado nela.
+  const creditoEficazBase = round2(
     input.payments.filter((p) => p.method === "CREDITO_EFICAZ").reduce((sum, p) => sum + p.amount, 0)
   );
-  if (creditoEficazAmount > 0) {
+  let creditoEficazSurcharge = 0;
+  if (creditoEficazBase > 0) {
     if (!customerId) {
       return { ok: false, error: "Selecione um cliente para usar o Crédito Eficaz." };
     }
@@ -371,7 +376,24 @@ export async function createSale(
     if (!pinValid) {
       return { ok: false, error: "PIN do Crédito Eficaz incorreto." };
     }
+    const surcharge = await resolveCreditoEficazSurchargePercent(
+      ctx.tenantId,
+      input.creditoEficazSurchargePercent
+    );
+    if (!surcharge.ok) return { ok: false, error: surcharge.error };
+    creditoEficazSurcharge = computeCreditoEficazSurcharge(creditoEficazBase, surcharge.percent);
   }
+  /** O que o cliente fica devendo no crédito (base + acréscimo). */
+  const creditoEficazAmount = round2(creditoEficazBase + creditoEficazSurcharge);
+  const saleTotal = round2(total + creditoEficazSurcharge);
+  // Uma linha por forma de pagamento; a de Crédito Eficaz já com acréscimo,
+  // pra soma dos `Payment` continuar batendo com `Sale.total`.
+  const paymentsToCreate = [
+    ...input.payments
+      .filter((p) => p.method !== "CREDITO_EFICAZ")
+      .map((p) => ({ method: p.method, amount: round2(p.amount) })),
+    ...(creditoEficazAmount > 0 ? [{ method: "CREDITO_EFICAZ" as const, amount: creditoEficazAmount }] : []),
+  ];
   const creditoEficazDueDate =
     creditoEficazAmount > 0 && customerId
       ? await computeCreditoEficazDueDate(ctx.tenantId, customerId)
@@ -397,7 +419,8 @@ export async function createSale(
           subtotal,
           discount,
           convenioDiscount,
-          total,
+          creditoEficazSurcharge,
+          total: saleTotal,
           costTotal,
           cashReceived,
           changeAmount,
@@ -415,12 +438,7 @@ export async function createSale(
               total: item.total,
             })),
           },
-          payments: {
-            create: input.payments.map((p) => ({
-              method: p.method,
-              amount: round2(p.amount),
-            })),
-          },
+          payments: { create: paymentsToCreate },
         },
         select: { id: true, number: true },
       });
@@ -457,7 +475,7 @@ export async function createSale(
         await tx.customer.update({
           where: { id: customerId },
           data: {
-            totalSpent: { increment: total },
+            totalSpent: { increment: saleTotal },
             lastPurchaseAt: new Date(),
           },
         });
@@ -573,10 +591,21 @@ export async function cancelSale(
 ): Promise<CancelSaleResult> {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId },
-    include: { items: true },
+    include: { items: true, payments: { select: { method: true, amount: true } } },
   });
   if (!sale) return { ok: false, error: "Venda não encontrada." };
   if (sale.status === "CANCELLED") return { ok: false, error: "Esta venda já está cancelada." };
+
+  // A parte paga no Crédito Eficaz é devolvida ao LIMITE do cliente
+  // (`reverseCreditoEficazUsageInTx` abaixo) — não pode virar crédito de
+  // loja também, senão o cliente recebe duas vezes por algo que nem pagou.
+  // O crédito de loja cobre só o que entrou de verdade (dinheiro, Pix, cartão…).
+  const creditoEficazPaid = round2(
+    sale.payments
+      .filter((p) => p.method === "CREDITO_EFICAZ")
+      .reduce((sum, p) => sum + Number(p.amount), 0)
+  );
+  const storeCreditRefund = round2(Math.max(0, Number(sale.total) - creditoEficazPaid));
 
   const customerId = skipCredit ? null : (sale.customerId ?? creditCustomerId ?? null);
   if (!skipCredit && !customerId) {
@@ -652,17 +681,17 @@ export async function cancelSale(
         });
       }
 
-      if (!skipCredit) {
+      if (!skipCredit && storeCreditRefund > 0) {
         await tx.customer.update({
           where: { id: customerId! },
-          data: { creditBalance: { increment: sale.total } },
+          data: { creditBalance: { increment: storeCreditRefund } },
         });
         await tx.customerCreditMovement.create({
           data: {
             tenantId,
             customerId: customerId!,
             type: "GRANTED",
-            amount: sale.total,
+            amount: storeCreditRefund,
             saleId: sale.id,
             userId,
             reason: `Cancelamento da venda #${sale.number}`,
@@ -766,7 +795,9 @@ export async function editSaleItems(
 
   if (changes.length === 0) return { ok: false, error: "Nenhuma alteração informada." };
 
-  const newTotal = round2(newSubtotal - newDiscount - Number(sale.convenioDiscount));
+  const newTotal = round2(
+    newSubtotal - newDiscount - Number(sale.convenioDiscount) + Number(sale.creditoEficazSurcharge)
+  );
   if (Math.abs(newTotal - Number(sale.total)) > CENT) {
     return {
       ok: false,

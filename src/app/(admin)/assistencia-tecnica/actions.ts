@@ -165,6 +165,7 @@ export async function receiveRepairOrderPaymentAction(
       creditoEficazPin: parsed.data.creditoEficazPin || undefined,
       creditoEficazInstallments: parsed.data.creditoEficazInstallments,
       creditoEficazWouldBeLost: parsed.data.creditoEficazWouldBeLost,
+      creditoEficazSurchargePercent: parsed.data.creditoEficazSurchargePercent,
     }
   );
   if (!result.ok) return { error: result.error };
@@ -223,6 +224,7 @@ export async function deliverRepairOrderAction(id: string, input: DeliverRepairO
       creditoEficazPin: parsed.data.creditoEficazPin || undefined,
       creditoEficazInstallments: parsed.data.creditoEficazInstallments,
       creditoEficazWouldBeLost: parsed.data.creditoEficazWouldBeLost,
+      creditoEficazSurchargePercent: parsed.data.creditoEficazSurchargePercent,
     }
   );
   if (!result.ok) return { error: result.error };

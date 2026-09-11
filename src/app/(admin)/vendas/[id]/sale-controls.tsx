@@ -86,6 +86,8 @@ export function PrintButton() {
 export function SaleActions({
   saleId,
   saleTotal,
+  totalAdjustment = 0,
+  creditoEficazPaid = 0,
   existingCustomer,
   canCancel,
   canEdit,
@@ -99,6 +101,11 @@ export function SaleActions({
 }: {
   saleId: string;
   saleTotal: number;
+  /** O que o total da venda tem além dos itens (acréscimo do Crédito Eficaz
+   *  menos o benefício de convênio) — mesma conta de `editSaleItems`. */
+  totalAdjustment?: number;
+  /** Parte paga no Crédito Eficaz — no cancelamento volta pro limite, não vira crédito de loja. */
+  creditoEficazPaid?: number;
   /** Cliente já vinculado à venda, se houver — recebe o crédito automaticamente. */
   existingCustomer: { id: string; name: string } | null;
   canCancel: boolean;
@@ -133,8 +140,9 @@ export function SaleActions({
       const unitPrice = Number(editValues[index]?.unitPrice) || 0;
       const discount = Number(editValues[index]?.discount) || 0;
       return sum + round2(unitPrice * item.quantity - discount);
-    }, 0)
+    }, totalAdjustment)
   );
+  const storeCreditRefund = round2(Math.max(0, saleTotal - creditoEficazPaid));
   const editedTotalMatches = Math.abs(editedTotal - saleTotal) <= CENT;
 
   function openEdit() {
@@ -489,8 +497,14 @@ export function SaleActions({
           <p className="mb-3 text-sm text-red-900">
             O cancelamento devolve os itens ao estoque, mantém a venda no histórico como cancelada
             {skipCredit
-              ? ". Esta ação não pode ser desfeita."
-              : ` e gera ${formatBRL(saleTotal)} de crédito de loja para o cliente. Esta ação não pode ser desfeita.`}
+              ? ""
+              : storeCreditRefund > 0
+                ? ` e gera ${formatBRL(storeCreditRefund)} de crédito de loja para o cliente`
+                : ""}
+            {creditoEficazPaid > 0
+              ? `. Os ${formatBRL(creditoEficazPaid)} pagos no Crédito Eficaz voltam para o limite do cliente (não viram crédito de loja)`
+              : ""}
+            . Esta ação não pode ser desfeita.
           </p>
           <FormBanner message={serverError} variant="error" />
 

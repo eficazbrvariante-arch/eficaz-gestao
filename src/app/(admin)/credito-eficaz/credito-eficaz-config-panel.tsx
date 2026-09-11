@@ -5,7 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { FormBanner } from "@/components/ui/form-banner";
-import { setCreditoEficazExposureLimitAction, setCreditoEficazMaxInstallmentsAction } from "./actions";
+import {
+  setCreditoEficazExposureLimitAction,
+  setCreditoEficazMaxInstallmentsAction,
+  setCreditoEficazSurchargePercentAction,
+} from "./actions";
 
 /**
  * Configuração numérica simples do programa (Adendo) — mesmo padrão de
@@ -14,14 +18,17 @@ import { setCreditoEficazExposureLimitAction, setCreditoEficazMaxInstallmentsAct
 export function CreditoEficazConfigPanel({
   initialExposureLimit,
   initialMaxInstallments,
+  initialSurchargePercent,
 }: {
   initialExposureLimit: number | null;
   initialMaxInstallments: number;
+  initialSurchargePercent: number;
 }) {
   const [exposureLimit, setExposureLimit] = useState(
     initialExposureLimit != null ? String(initialExposureLimit) : ""
   );
   const [maxInstallments, setMaxInstallments] = useState(String(initialMaxInstallments));
+  const [surchargePercent, setSurchargePercent] = useState(String(initialSurchargePercent));
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
 
@@ -45,8 +52,50 @@ export function CreditoEficazConfigPanel({
     });
   }
 
+  function handleSaveSurchargePercent() {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await setCreditoEficazSurchargePercentAction({ percent: Number(surchargePercent) });
+      setFeedback(
+        result.error ? { type: "error", message: result.error } : { type: "success", message: result.success! }
+      );
+    });
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="rounded-md border border-slate-200 p-4 sm:col-span-2">
+        <h3 className="mb-1 text-sm font-semibold text-slate-900">Acréscimo nas compras no crédito</h3>
+        <p className="mb-3 text-xs text-slate-500">
+          Percentual somado só à parte paga com Crédito Eficaz, no PDV e no parcelamento de OS. O que o
+          cliente paga em dinheiro, Pix ou cartão na mesma compra não tem acréscimo. Use 0 para desligar.
+        </p>
+        <div className="flex max-w-xs gap-2">
+          <div className="flex-1">
+            <Label htmlFor="ce-surcharge-percent">Acréscimo (%)</Label>
+            <Input
+              id="ce-surcharge-percent"
+              type="number"
+              min={0}
+              max={100}
+              step="0.5"
+              value={surchargePercent}
+              onChange={(e) => setSurchargePercent(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            fullWidth={false}
+            disabled={isPending}
+            onClick={handleSaveSurchargePercent}
+            className="mt-5 h-fit shrink-0 px-4"
+          >
+            Salvar
+          </Button>
+        </div>
+      </div>
+
       <div className="rounded-md border border-slate-200 p-4">
         <h3 className="mb-1 text-sm font-semibold text-slate-900">Teto global de exposição</h3>
         <p className="mb-3 text-xs text-slate-500">

@@ -36,7 +36,7 @@ export default async function OrdemServicoPage({
 
   const tenant = await prisma.tenant.findUniqueOrThrow({
     where: { id: user.tenantId },
-    select: { creditoEficazMaxInstallments: true },
+    select: { creditoEficazMaxInstallments: true, creditoEficazSurchargePercent: true },
   });
 
   const creditoEficazFinancingRaw = await prisma.creditoEficazServiceFinancing.findUnique({
@@ -185,6 +185,7 @@ export default async function OrdemServicoPage({
       canGrantCourtesy={canGrantRepairOrderCourtesy(user.role)}
       canCancelWithoutBilling={canCancelRepairOrderWithoutBilling(user.role)}
       creditoEficazMaxInstallments={tenant.creditoEficazMaxInstallments}
+      creditoEficazSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
       creditoEficazFinancing={creditoEficazFinancing}
     />
   );

@@ -14,7 +14,7 @@
  * `createSale` cobrando `CREDITO_EFICAZ` como forma de pagamento (PIN,
  * débito, criação da obrigação) e `cancelSale` estornando.
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createSale, cancelSale } from "@/modules/sales/sale-service";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
@@ -43,6 +43,7 @@ import {
   setCreditLimit,
   setCreditoEficazPin,
   setCreditoEficazExposureLimit,
+  setCreditoEficazSurchargePercent,
   getExposureSummary,
   setCreditoEficazPaused,
   financeRepairOrderBalanceInTx,
@@ -134,6 +135,9 @@ beforeAll(async () => {
       phone: "(47) 3000-0000",
       subdomain: SUBDOMAIN,
       email: `admin@${SUBDOMAIN}.qa.test`,
+      // Os testes 1–27 são do motor sem acréscimo; o acréscimo tem bloco
+      // próprio no fim (liga 10% no `beforeAll` dele e desliga no `afterAll`).
+      creditoEficazSurchargePercent: 0,
     },
   });
   tenantId = tenant.id;
@@ -975,6 +979,164 @@ describe("Crédito Eficaz — Adendo: Assistência Técnica, fluxo real (Fase 5)
     expect(currentCohort).toBeDefined();
     expect(currentCohort!.approvedCustomers).toBeGreaterThan(0);
     expect(currentCohort!.totalUsed).toBeGreaterThanOrEqual(120);
+  });
+});
+
+describe("Crédito Eficaz — acréscimo sobre a parte no crédito e cancelamento", () => {
+  const saleCtx = () => ({
+    tenantId,
+    sellerId: adminId,
+    cashRegisterId,
+    allowDiscount: true,
+    allowFreeDiscount: true,
+    allowFiado: true,
+    operatorId: adminId,
+  });
+  const repairCtx = (): RepairPaymentContext => ({ tenantId, userId: adminId, cashRegisterId, allowFiado: true });
+
+  beforeAll(async () => {
+    expect((await setCreditoEficazSurchargePercent(tenantId, 10)).ok).toBe(true);
+  });
+  afterAll(async () => {
+    await setCreditoEficazSurchargePercent(tenantId, 0);
+  });
+
+  it("28) venda 100% no crédito: +10% no total, no pagamento e na obrigação; itens intocados", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA Acréscimo", 500, "1234");
+    const result = await createSale(saleCtx(), {
+      customerId: buyerId,
+      sellerId: adminId,
+      items: saleItems(1),
+      payments: [{ method: "CREDITO_EFICAZ", amount: UNIT_PRICE }],
+      creditoEficazPin: "1234",
+      creditoEficazSurchargePercent: 10,
+    } as never);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const sale = await prisma.sale.findUniqueOrThrow({
+      where: { id: result.saleId },
+      include: { payments: true, items: true },
+    });
+    expect(Number(sale.creditoEficazSurcharge)).toBe(10);
+    expect(Number(sale.total)).toBe(110);
+    expect(Number(sale.items[0].total)).toBe(UNIT_PRICE); // comissão sai daqui — não muda
+    expect(sale.payments.map((p) => [p.method, Number(p.amount)])).toEqual([["CREDITO_EFICAZ", 110]]);
+
+    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+    expect(Number(usage.amount)).toBe(110);
+    expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(390);
+  });
+
+  it("29) pagamento dividido: acréscimo só na parte do crédito", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA Acréscimo Dividido", 500, "1234");
+    const result = await createSale(saleCtx(), {
+      customerId: buyerId,
+      sellerId: adminId,
+      items: saleItems(1),
+      payments: [
+        { method: "PIX", amount: 40 },
+        { method: "CREDITO_EFICAZ", amount: 60 },
+      ],
+      creditoEficazPin: "1234",
+      creditoEficazSurchargePercent: 10,
+    } as never);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const sale = await prisma.sale.findUniqueOrThrow({ where: { id: result.saleId }, include: { payments: true } });
+    expect(Number(sale.creditoEficazSurcharge)).toBe(6);
+    expect(Number(sale.total)).toBe(106);
+    const byMethod = Object.fromEntries(sale.payments.map((p) => [p.method, Number(p.amount)]));
+    expect(byMethod).toEqual({ PIX: 40, CREDITO_EFICAZ: 66 });
+    expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(434);
+  });
+
+  it("30) tela desatualizada (percentual diferente ou ausente) é recusada sem debitar nada", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA Tela Desatualizada", 500, "1234");
+    for (const displayed of [5, undefined]) {
+      const result = await createSale(saleCtx(), {
+        customerId: buyerId,
+        sellerId: adminId,
+        items: saleItems(1),
+        payments: [{ method: "CREDITO_EFICAZ", amount: UNIT_PRICE }],
+        creditoEficazPin: "1234",
+        creditoEficazSurchargePercent: displayed,
+      } as never);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain("desatualizada");
+    }
+    expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(500);
+  });
+
+  it("31) cancelamento: a parte no crédito volta ao limite e NÃO vira crédito de loja", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA Cancelamento Sem Dobro", 500, "1234");
+    const result = await createSale(saleCtx(), {
+      customerId: buyerId,
+      sellerId: adminId,
+      items: saleItems(1),
+      payments: [
+        { method: "PIX", amount: 40 },
+        { method: "CREDITO_EFICAZ", amount: 60 },
+      ],
+      creditoEficazPin: "1234",
+      creditoEficazSurchargePercent: 10,
+    } as never);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const cancelled = await cancelSale(tenantId, result.saleId, adminId, "QA — cancelamento sem devolução em dobro");
+    expect(cancelled.ok).toBe(true);
+
+    const customer = await prisma.customer.findUniqueOrThrow({ where: { id: buyerId } });
+    expect(Number(customer.creditBalance)).toBe(40); // só o Pix vira crédito de loja
+    expect(Number(customer.creditoEficazAvailableAmount)).toBe(500); // os 66 voltam ao limite
+    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+    expect(usage.status).toBe("CANCELLED");
+  });
+
+  it("32) OS financiada: parcelas somam o valor com acréscimo; o saldo da OS fecha sem acréscimo", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA OS Acréscimo", 1000, "1234");
+    const repairOrder = await createBillableRepairOrder(buyerId, adminId, 300);
+
+    const result = await receiveRepairOrderPayment(
+      repairCtx(),
+      repairOrder.id,
+      [{ method: "CREDITO_EFICAZ", amount: 300 }],
+      { creditoEficazPin: "1234", creditoEficazInstallments: 3, creditoEficazSurchargePercent: 10 }
+    );
+    expect(result.ok).toBe(true);
+
+    const financials = await getRepairOrderFinancials(tenantId, repairOrder.id);
+    expect(financials?.balance).toBe(0);
+
+    const financing = await prisma.creditoEficazServiceFinancing.findUniqueOrThrow({
+      where: { repairOrderId: repairOrder.id },
+    });
+    expect(Number(financing.surchargeAmount)).toBe(30);
+    expect(Number(financing.financedAmount)).toBe(330);
+    expect(Number(financing.downPayment)).toBe(0);
+
+    const usages = await prisma.creditoEficazUsage.findMany({
+      where: { financingId: financing.id },
+      orderBy: { installmentNumber: "asc" },
+    });
+    expect(usages.map((u) => Number(u.amount))).toEqual([110, 110, 110]);
+    expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(670);
+  });
+
+  it("33) OS com mais parcelas que o máximo configurado é recusada sem financiar", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA OS Parcelas Demais", 1000, "1234");
+    const repairOrder = await createBillableRepairOrder(buyerId, adminId, 300);
+
+    const result = await receiveRepairOrderPayment(
+      repairCtx(),
+      repairOrder.id,
+      [{ method: "CREDITO_EFICAZ", amount: 300 }],
+      { creditoEficazPin: "1234", creditoEficazInstallments: 4, creditoEficazSurchargePercent: 10 }
+    );
+    expect(result.ok).toBe(false);
+    expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(1000);
   });
 });
 

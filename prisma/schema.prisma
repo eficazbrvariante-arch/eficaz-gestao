@@ -123,6 +123,12 @@ model Tenant {
   /// Crédito Eficaz (Adendo) — configurável pelo Admin, nunca hardcoded na
   /// tela. Piloto conservador: começa em 3.
   creditoEficazMaxInstallments Int              @default(3)
+  /// Acréscimo (%) sobre a parte paga com Crédito Eficaz — no PDV
+  /// (`Sale.creditoEficazSurcharge`) e no financiamento de OS
+  /// (`CreditoEficazServiceFinancing.surchargeAmount`). Só a parte no
+  /// crédito paga acréscimo, nunca o que o cliente paga em dinheiro/Pix/cartão
+  /// na mesma compra. Decisão do dono: começa em 10%, configurável no painel.
+  creditoEficazSurchargePercent Decimal         @default(10) @db.Decimal(5, 2)
   /// Reservado para jornada/escala/tolerância de atraso/banco de horas
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
@@ -1140,6 +1146,14 @@ model Sale {
   /// em cima de `SaleItem.total`, que este campo nunca toca). Ver
   /// `ConvenioRedemption`, a linha que registra o uso em si.
   convenioDiscount      Decimal    @default(0) @db.Decimal(12, 2)
+  /// Acréscimo do Crédito Eficaz (ver `Tenant.creditoEficazSurchargePercent`)
+  /// — calculado só sobre a parte paga no crédito e SOMADO ao `total`
+  /// (`total = subtotal - discount - convenioDiscount + creditoEficazSurcharge`).
+  /// Separado de `discount`/`SaleItem.total` de propósito, mesmo motivo do
+  /// `convenioDiscount`: nunca mexe no valor dos itens nem na comissão. Já
+  /// está incluído no `Payment` de `CREDITO_EFICAZ` e na obrigação
+  /// (`CreditoEficazUsage.amount`).
+  creditoEficazSurcharge Decimal   @default(0) @db.Decimal(12, 2)
   /// Cliente abriu mão do desconto de película pra ganhar direito à
   /// Proteção Eficaz (troca da película em até 30 dias da venda) — marcado
   /// pelo vendedor no PDV, nunca inferido. Impresso no cupom; validado
@@ -2381,6 +2395,11 @@ model CreditoEficazServiceFinancing {
   totalAmount              Decimal   @db.Decimal(12, 2)
   downPayment              Decimal   @default(0) @db.Decimal(12, 2)
   financedAmount           Decimal   @db.Decimal(12, 2)
+  /// Acréscimo do Crédito Eficaz (ver `Tenant.creditoEficazSurchargePercent`)
+  /// já INCLUÍDO em `financedAmount` e nas parcelas. O saldo da OS em si
+  /// (`RepairOrderPayment` de `CREDITO_EFICAZ`) fecha pelo valor sem
+  /// acréscimo — o acréscimo é custo do financiamento, não do serviço.
+  surchargeAmount          Decimal   @default(0) @db.Decimal(12, 2)
   installmentCount         Int
   /// Avaliação opcional do vendedor: "sem o Crédito Eficaz, esse serviço
   /// provavelmente seria perdido?" — nunca obrigatório, `null` = não

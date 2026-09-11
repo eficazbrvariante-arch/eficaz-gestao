@@ -424,6 +424,49 @@ export async function setCreditoEficazMaxInstallments(
   return { ok: true };
 }
 
+/** Acréscimo (%) sobre a parte paga no crédito — 0 desliga. Ver `credito-eficaz-surcharge.ts`. */
+export async function setCreditoEficazSurchargePercent(tenantId: string, percent: number): Promise<SimpleResult> {
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    return { ok: false, error: "Informe um acréscimo entre 0% e 100%." };
+  }
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: { creditoEficazSurchargePercent: round2(percent) },
+  });
+  return { ok: true };
+}
+
+export async function getCreditoEficazSurchargePercent(tenantId: string): Promise<number> {
+  const tenant = await prisma.tenant.findUniqueOrThrow({
+    where: { id: tenantId },
+    select: { creditoEficazSurchargePercent: true },
+  });
+  return Number(tenant.creditoEficazSurchargePercent);
+}
+
+/**
+ * Confere que o percentual que a TELA mostrou ao cliente (antes do PIN) é o
+ * que está valendo agora — se o Admin mudou o acréscimo com o PDV/OS aberto,
+ * ou a aba é de antes do acréscimo existir, recusa em vez de cobrar um valor
+ * diferente do que o cliente viu. Devolve o percentual vigente.
+ */
+export async function resolveCreditoEficazSurchargePercent(
+  tenantId: string,
+  displayedPercent: number | undefined
+): Promise<{ ok: true; percent: number } | { ok: false; error: string }> {
+  const percent = await getCreditoEficazSurchargePercent(tenantId);
+  // Tela antiga (sem o campo) só é problema se houver acréscimo pra cobrar.
+  const mismatch =
+    displayedPercent === undefined ? percent > 0 : Math.abs(displayedPercent - percent) > 0.001;
+  if (mismatch) {
+    return {
+      ok: false,
+      error: `O acréscimo do Crédito Eficaz é de ${percent.toLocaleString("pt-BR")}% e a tela está desatualizada. Atualize a página, confira o novo valor com o cliente e tente de novo.`,
+    };
+  }
+  return { ok: true, percent };
+}
+
 // ---------------------------------------------------------------------------
 // Uso no PDV (débito atômico) — chamado por `sale-service.ts` (Fase 6)
 // ---------------------------------------------------------------------------
@@ -607,6 +650,8 @@ export async function financeRepairOrderBalanceInTx(
     repairOrderId: string;
     totalAmount: number;
     downPayment: number;
+    /** Acréscimo já incluído nas `installments` (só registrado aqui, pra consulta). */
+    surchargeAmount?: number;
     installments: { amount: number; dueDate: Date }[];
     createdById: string;
     wouldBeLostWithoutCredit?: boolean | null;
@@ -626,6 +671,7 @@ export async function financeRepairOrderBalanceInTx(
       totalAmount: params.totalAmount,
       downPayment: params.downPayment,
       financedAmount,
+      surchargeAmount: params.surchargeAmount ?? 0,
       installmentCount: params.installments.length,
       wouldBeLostWithoutCredit: params.wouldBeLostWithoutCredit ?? null,
       createdById: params.createdById,

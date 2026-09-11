@@ -7,8 +7,13 @@ import {
   verifyCreditoEficazPin,
   computeCreditoEficazDueDate,
   financeRepairOrderBalanceInTx,
+  resolveCreditoEficazSurchargePercent,
   reverseServiceFinancingInTx,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import {
+  computeCreditoEficazSurcharge,
+  splitCreditoEficazInstallments,
+} from "@/modules/credito-eficaz/credito-eficaz-surcharge";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
 const CENT = 0.005;
@@ -97,6 +102,8 @@ export type RepairPaymentOptions = {
   creditoEficazInstallments?: number;
   /** Avaliação opcional do vendedor (Adendo, item 11) — nunca obrigatória. */
   creditoEficazWouldBeLost?: boolean;
+  /** Percentual de acréscimo que a tela mostrou (ver `resolveCreditoEficazSurchargePercent`). */
+  creditoEficazSurchargePercent?: number;
 };
 
 export type RepairPaymentResult = { ok: true } | { ok: false; error: string };
@@ -181,6 +188,7 @@ async function applyRepairOrderPayments(
       const creditoEficazAmount = round2(
         realEntries.filter((e) => e.method === "CREDITO_EFICAZ").reduce((sum, e) => sum + e.amount, 0)
       );
+      let creditoEficazSurchargePercent = 0;
       if (creditoEficazAmount > 0) {
         if (!order.customerId) {
           throw new RepairPaymentError("Selecione um cliente para usar o Crédito Eficaz.");
@@ -191,6 +199,23 @@ async function applyRepairOrderPayments(
         const pinValid = await verifyCreditoEficazPin(ctx.tenantId, order.customerId, options.creditoEficazPin);
         if (!pinValid) {
           throw new RepairPaymentError("PIN do Crédito Eficaz incorreto.");
+        }
+        const surcharge = await resolveCreditoEficazSurchargePercent(
+          ctx.tenantId,
+          options.creditoEficazSurchargePercent
+        );
+        if (!surcharge.ok) throw new RepairPaymentError(surcharge.error);
+        creditoEficazSurchargePercent = surcharge.percent;
+
+        // O limite de parcelas antes só era respeitado no <select> da tela.
+        const { creditoEficazMaxInstallments } = await tx.tenant.findUniqueOrThrow({
+          where: { id: ctx.tenantId },
+          select: { creditoEficazMaxInstallments: true },
+        });
+        if ((options.creditoEficazInstallments ?? 1) > creditoEficazMaxInstallments) {
+          throw new RepairPaymentError(
+            `O máximo é de ${creditoEficazMaxInstallments} parcela(s) no Crédito Eficaz.`
+          );
         }
       }
 
@@ -283,14 +308,17 @@ async function applyRepairOrderPayments(
         // inclusive quando a entrada foi registrada dias antes, num
         // `receiveRepairOrderPayment` separado (ver `applyRepairOrderPayments`).
         const downPayment = round2(total - creditoEficazAmount);
+        // Acréscimo sobre a parte financiada: o saldo da OS fecha pelo valor
+        // sem acréscimo (`RepairOrderPayment` acima), mas o cliente fica
+        // devendo, nas parcelas, o valor COM acréscimo.
+        const surchargeAmount = computeCreditoEficazSurcharge(creditoEficazAmount, creditoEficazSurchargePercent);
         const installmentCount = Math.max(1, options.creditoEficazInstallments ?? 1);
         const baseDueDate = await computeCreditoEficazDueDate(ctx.tenantId, order.customerId);
-        const perInstallment = round2(creditoEficazAmount / installmentCount);
-        const installments = Array.from({ length: installmentCount }, (_, index) => ({
-          amount:
-            index === installmentCount - 1
-              ? round2(creditoEficazAmount - perInstallment * (installmentCount - 1))
-              : perInstallment,
+        const installments = splitCreditoEficazInstallments(
+          round2(creditoEficazAmount + surchargeAmount),
+          installmentCount
+        ).map((amount, index) => ({
+          amount,
           dueDate: new Date(baseDueDate.getTime() + index * 30 * 24 * 60 * 60 * 1000),
         }));
 
@@ -300,6 +328,7 @@ async function applyRepairOrderPayments(
           repairOrderId,
           totalAmount: total,
           downPayment,
+          surchargeAmount,
           installments,
           createdById: ctx.userId,
           wouldBeLostWithoutCredit: options.creditoEficazWouldBeLost ?? null,

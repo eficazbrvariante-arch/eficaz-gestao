@@ -14,6 +14,11 @@ import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field"
 import { MixedPaymentPanel, type PaymentPanelSlot } from "@/components/payments/mixed-payment-panel";
 import { formatBRL, formatDate } from "@/lib/format";
 import {
+  computeCreditoEficazSurcharge,
+  formatSurchargePercent,
+  splitCreditoEficazInstallments,
+} from "@/modules/credito-eficaz/credito-eficaz-surcharge";
+import {
   PAYMENT_SLOTS,
   EMPTY_PAYMENT_AMOUNTS,
   sumPaymentAmounts,
@@ -164,6 +169,7 @@ export function RepairOrderWorkspace({
   canCancelWithoutBilling,
   warrantyOriginal,
   creditoEficazMaxInstallments = 3,
+  creditoEficazSurchargePercent = 0,
   creditoEficazFinancing = null,
 }: {
   defaults: RepairOrderDefaults;
@@ -186,6 +192,9 @@ export function RepairOrderWorkspace({
    *  com a OS já salva (pagamento não existe na criação), por isso opcional
    *  com valor padrão nas telas de criação, que nunca renderizam o painel. */
   creditoEficazMaxInstallments?: number;
+  /** Acréscimo (%) sobre a parte financiada no Crédito Eficaz — mesma regra
+   *  do PDV; reconferido no servidor. Mesma lógica de opcional do campo acima. */
+  creditoEficazSurchargePercent?: number;
   /** Presente só quando esta OS já tem um financiamento de Crédito Eficaz registrado. */
   creditoEficazFinancing?: CreditoEficazFinancingView | null;
 }) {
@@ -323,6 +332,7 @@ export function RepairOrderWorkspace({
         creditoEficazPin: paymentHasCreditoEficaz ? paymentCreditoEficazPin : undefined,
         creditoEficazInstallments: paymentHasCreditoEficaz ? paymentCreditoEficazInstallments : undefined,
         creditoEficazWouldBeLost: paymentHasCreditoEficaz ? paymentCreditoEficazWouldBeLost : undefined,
+        creditoEficazSurchargePercent: paymentHasCreditoEficaz ? creditoEficazSurchargePercent : undefined,
       });
       if (result?.error) {
         setError(result.error);
@@ -368,6 +378,7 @@ export function RepairOrderWorkspace({
         creditoEficazPin: deliveryHasCreditoEficaz ? deliveryCreditoEficazPin : undefined,
         creditoEficazInstallments: deliveryHasCreditoEficaz ? deliveryCreditoEficazInstallments : undefined,
         creditoEficazWouldBeLost: deliveryHasCreditoEficaz ? deliveryCreditoEficazWouldBeLost : undefined,
+        creditoEficazSurchargePercent: deliveryHasCreditoEficaz ? creditoEficazSurchargePercent : undefined,
       });
       if (result?.error) {
         setError(result.error);
@@ -1213,6 +1224,11 @@ export function RepairOrderWorkspace({
                                   ))}
                                 </Select>
                               </div>
+                              <CreditoEficazSurchargeNote
+                                amount={paymentAmounts.credito_eficaz || 0}
+                                percent={creditoEficazSurchargePercent}
+                                installmentCount={paymentCreditoEficazInstallments}
+                              />
                               <label className="flex items-center gap-2 text-xs text-text-muted">
                                 <input
                                   type="checkbox"
@@ -1335,6 +1351,11 @@ export function RepairOrderWorkspace({
                               ))}
                             </Select>
                           </div>
+                          <CreditoEficazSurchargeNote
+                            amount={deliveryAmounts.credito_eficaz || 0}
+                            percent={creditoEficazSurchargePercent}
+                            installmentCount={deliveryCreditoEficazInstallments}
+                          />
                           <label className="flex items-center gap-2 text-xs text-text-muted">
                             <input
                               type="checkbox"
@@ -1525,5 +1546,41 @@ export function RepairOrderWorkspace({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Antes do PIN: quanto o cliente fica devendo no Crédito Eficaz, já com o
+ * acréscimo e dividido nas parcelas escolhidas — mesma conta do servidor
+ * (`applyRepairOrderPayments`), pra o valor mostrado ser o valor cobrado.
+ */
+function CreditoEficazSurchargeNote({
+  amount,
+  percent,
+  installmentCount,
+}: {
+  amount: number;
+  percent: number;
+  installmentCount: number;
+}) {
+  if (amount <= 0) return null;
+  const surcharge = computeCreditoEficazSurcharge(amount, percent);
+  const owed = round2(amount + surcharge);
+  const installments = splitCreditoEficazInstallments(owed, installmentCount);
+  const first = installments[0];
+  const last = installments[installments.length - 1];
+  return (
+    <p className="text-xs text-foreground">
+      No Crédito Eficaz:{" "}
+      {surcharge > 0 && (
+        <>
+          {formatBRL(amount)} + acréscimo de {formatSurchargePercent(percent)} ({formatBRL(surcharge)}) ={" "}
+        </>
+      )}
+      <strong>{formatBRL(owed)}</strong>
+      {installments.length > 1 &&
+        ` em ${installments.length}x de ${formatBRL(first)}${last !== first ? ` (a última de ${formatBRL(last)})` : ""}`}
+      . Confirme com o cliente antes de pedir o PIN.
+    </p>
   );
 }
