@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
+import { upload, uploadPresigned } from "@vercel/blob/client";
 import { Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormBanner } from "@/components/ui/form-banner";
@@ -240,11 +240,17 @@ export function SelfieCaptureField({
     setUploading(true);
     setError(undefined);
     try {
-      const blob = await upload(`selfie-${Date.now()}.jpg`, capturedBlob, {
+      // Store privado autentica por OIDC (sem read-write token), então só
+      // aceita o fluxo pré-assinado — ver rota `credito-eficaz/upload`.
+      const uploadFn = access === "private" ? uploadPresigned : upload;
+      const blob = await uploadFn(`selfie-${Date.now()}.jpg`, capturedBlob, {
         access,
         handleUploadUrl: uploadUrl,
         contentType: capturedBlob.type || "image/jpeg",
         clientPayload,
+        // Mesmo motivo de `UPLOAD_TIMEOUT_MS` em `ImageUploadField`: sem
+        // corte, uma recusa do Blob sem CORS virava minutos de retentativa.
+        abortSignal: AbortSignal.timeout(90_000),
       });
       onCaptured(access === "private" ? blob.pathname : blob.url);
     } catch {

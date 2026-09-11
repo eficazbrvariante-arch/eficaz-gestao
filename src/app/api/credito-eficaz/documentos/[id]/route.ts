@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { canViewCreditoEficazDocuments } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getCreditoEficazBlobStoreId } from "@/modules/credito-eficaz/credito-eficaz-blob";
 
 /**
  * Única forma de ler um documento/selfie de Crédito Eficaz — nunca uma URL
@@ -29,7 +30,10 @@ export async function GET(
     return NextResponse.json({ error: "Documento não encontrado." }, { status: 404 });
   }
 
-  const result = await get(document.blobPathname, { access: "private" });
+  const result = await get(document.blobPathname, {
+    access: "private",
+    storeId: getCreditoEficazBlobStoreId(),
+  });
   if (!result || result.statusCode !== 200) {
     return NextResponse.json({ error: "Documento não encontrado no armazenamento." }, { status: 404 });
   }

@@ -1,8 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
+import { upload, uploadPresigned } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
+
+/**
+ * Teto do envio inteiro. O SDK do Blob trata qualquer resposta sem CORS
+ * (inclusive erro de configuração do store) como falha de rede e retenta
+ * com espera crescente por vários minutos — sem esse corte, o botão ficava
+ * em "Enviando..." como se estivesse travado. Folgado o bastante pra uma
+ * foto de 5MB em dados móveis lentos.
+ */
+const UPLOAD_TIMEOUT_MS = 90_000;
 
 export function ImageUploadField({
   value,
@@ -58,11 +67,15 @@ export function ImageUploadField({
     setPreview(objectUrl);
     setIsUploading(true);
     try {
-      const blob = await upload(file.name, file, {
+      // Store privado autentica por OIDC (sem read-write token), então só
+      // aceita o fluxo pré-assinado — ver rota `credito-eficaz/upload`.
+      const uploadFn = access === "private" ? uploadPresigned : upload;
+      const blob = await uploadFn(file.name, file, {
         access,
         handleUploadUrl: uploadUrl,
         contentType: file.type,
         clientPayload,
+        abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
       });
       if (access === "private") {
         // Blob privado não carrega via <img src> sem passar por uma rota
