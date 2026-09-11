@@ -17,6 +17,7 @@ import {
   Plus,
   Power,
   PowerOff,
+  Printer,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ import {
   quickAdjustStockAction,
   toggleProductActiveAction,
 } from "./actions";
+import { ProductLabelDialog, type LabelTarget } from "./product-label-dialog";
 
 type ActionResult = { error?: string; success?: string } | void;
 
@@ -223,6 +225,7 @@ export function ProdutosTabela({
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<ProductListItem | null>(null);
+  const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkField, setBulkField] = useState<"category" | "brand" | null>(null);
   const [bulkValue, setBulkValue] = useState("");
@@ -428,6 +431,9 @@ export function ProdutosTabela({
                       >
                         <Copy className="h-4 w-4" /> Duplicar
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setLabelTarget(product)}>
+                        <Printer className="h-4 w-4" /> Imprimir etiqueta
+                      </DropdownMenuItem>
                       {storeHref ? (
                         <a
                           href={storeHref}
@@ -515,6 +521,9 @@ export function ProdutosTabela({
                     }
                   >
                     <Copy className="h-4 w-4" /> Duplicar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLabelTarget(product)}>
+                    <Printer className="h-4 w-4" /> Imprimir etiqueta
                   </DropdownMenuItem>
                   {storeHref ? (
                     <a href={storeHref} target="_blank" rel="noopener noreferrer" className={dropdownItemClassName()}>
@@ -616,6 +625,12 @@ export function ProdutosTabela({
           </div>
         </div>
       )}
+
+      <ProductLabelDialog
+        target={labelTarget}
+        onClose={() => setLabelTarget(null)}
+        onCodeGenerated={() => router.refresh()}
+      />
 
       <Dialog
         open={deleteTarget !== null}

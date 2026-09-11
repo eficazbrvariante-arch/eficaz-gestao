@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { Prisma } from "@/generated/prisma/client";
 import { requireUser } from "@/lib/session";
 import { deleteBlob } from "@/lib/blob";
 import { prisma } from "@/lib/prisma";
@@ -209,8 +210,12 @@ export async function generateInternalCodeAction() {
   if ("error" in auth) return { error: auth.error };
   const { user } = auth;
 
+  return { code: await nextInternalCode(user.tenantId) };
+}
+
+async function nextInternalCode(tenantId: string) {
   const existingCodes = await prisma.product.findMany({
-    where: { tenantId: user.tenantId, internalCode: { startsWith: "INT-" } },
+    where: { tenantId, internalCode: { startsWith: "INT-" } },
     select: { internalCode: true },
   });
   const maxSequence = existingCodes.reduce((max, product) => {
@@ -220,14 +225,54 @@ export async function generateInternalCodeAction() {
 
   let sequence = maxSequence + 1;
   let code = `INT-${String(sequence).padStart(6, "0")}`;
-  while (
-    await prisma.product.findFirst({ where: { tenantId: user.tenantId, internalCode: code } })
-  ) {
+  while (await prisma.product.findFirst({ where: { tenantId, internalCode: code } })) {
     sequence += 1;
     code = `INT-${String(sequence).padStart(6, "0")}`;
   }
+  return code;
+}
 
-  return { code };
+/**
+ * Pra impressão de etiqueta: devolve o código interno do produto e, se ele
+ * ainda não tiver um, gera e JÁ GRAVA no produto — diferente do botão "Gerar"
+ * do formulário, que só preenche o campo. Etiqueta impressa com código que
+ * não ficou salvo seria lida pelo PDV como "produto não encontrado" (ou, pior,
+ * como outro produto que ganhasse aquele código depois).
+ * O `internalCode: null` no `where` impede sobrescrever um código gravado por
+ * outra pessoa no meio do caminho; o índice único (tenant + código) cobre a
+ * corrida de dois produtos pegando o mesmo número — aí tenta o próximo.
+ */
+export async function ensureInternalCodeAction(productId: string) {
+  const auth = await requireProductManager();
+  if ("error" in auth) return { error: auth.error };
+  const { user } = auth;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, tenantId: user.tenantId },
+      select: { internalCode: true },
+    });
+    if (!product) return { error: "Produto não encontrado." };
+    if (product.internalCode) return { code: product.internalCode, generated: false };
+
+    const code = await nextInternalCode(user.tenantId);
+    try {
+      const updated = await prisma.product.updateMany({
+        where: { id: productId, tenantId: user.tenantId, internalCode: null },
+        data: { internalCode: code },
+      });
+      if (updated.count === 0) continue;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+      throw error;
+    }
+
+    revalidatePath("/produtos");
+    revalidatePath(`/produtos/${productId}`);
+    return { code, generated: true };
+  }
+
+  return { error: "Não foi possível gerar o código agora. Tente novamente." };
 }
 
 /**
