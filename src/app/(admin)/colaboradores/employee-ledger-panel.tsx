@@ -13,7 +13,9 @@ import { FormBanner } from "@/components/ui/form-banner";
 import { EmptyState } from "@/components/admin/stat-card";
 import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
+  MANUAL_EMPLOYEE_LEDGER_TYPES,
   type EmployeeLedgerTypeValue,
+  type ManualEmployeeLedgerTypeValue,
 } from "@/lib/validations/employee-ledger";
 import {
   createEmployeeLedgerEntryAction,
@@ -104,7 +106,7 @@ export function EmployeeLedgerPanel({
   }, []);
 
   const [userId, setUserId] = useState("");
-  const [type, setType] = useState<EmployeeLedgerTypeValue>("ADVANCE");
+  const [type, setType] = useState<ManualEmployeeLedgerTypeValue>("ADVANCE");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
@@ -347,11 +349,11 @@ export function EmployeeLedgerPanel({
             <Select
               id="type"
               value={type}
-              onChange={(e) => setType(e.target.value as EmployeeLedgerTypeValue)}
+              onChange={(e) => setType(e.target.value as ManualEmployeeLedgerTypeValue)}
             >
-              {Object.entries(EMPLOYEE_LEDGER_TYPE_LABELS).map(([value, label]) => (
+              {MANUAL_EMPLOYEE_LEDGER_TYPES.map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {EMPLOYEE_LEDGER_TYPE_LABELS[value]}
                 </option>
               ))}
             </Select>

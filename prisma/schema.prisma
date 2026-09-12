@@ -1179,6 +1179,7 @@ model Sale {
   itemDefects        SaleItemDefect[]
   convenioRedemption ConvenioRedemption?
   creditoEficazUsage CreditoEficazUsage?
+  commissionPayment  CommissionPaymentSale?
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -1338,6 +1339,10 @@ enum EmployeeLedgerType {
   /// Lançamento livre (vale-transporte, comissão avulsa, etc.) — valor e
   /// descrição digitados pelo Admin/Gerente, descrição obrigatória.
   OTHER
+  /// Pagamento da comissão de venda de um período — valor sempre recalculado
+  /// no servidor (ver `commission-payment-service.ts`), só pelo Admin, já
+  /// nasce PAGO. As vendas cobertas ficam em `CommissionPaymentSale`.
+  COMMISSION_PAYMENT
 }
 
 /// PAID é estado final, igual `FiadoStatus` — nunca some da lista, só muda o status.
@@ -1370,17 +1375,46 @@ model EmployeeLedgerEntry {
   /// lançamento (pendente ou pago) — ver `computeHourlyPaymentPreview`.
   hourlyPeriodFrom DateTime?
   hourlyPeriodTo   DateTime?
+  /// Início/fim (inclusive) do filtro usado ao pagar a comissão — só
+  /// informativo (`type = COMMISSION_PAYMENT`). O que impede pagar a mesma
+  /// venda duas vezes é `CommissionPaymentSale.saleId @unique`, não o período.
+  commissionPeriodFrom DateTime?
+  commissionPeriodTo   DateTime?
   createdById   String
   createdAt     DateTime             @default(now())
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User   @relation("EmployeeLedgerUser", fields: [userId], references: [id])
-  createdBy User   @relation("EmployeeLedgerCreatedBy", fields: [createdById], references: [id])
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User                    @relation("EmployeeLedgerUser", fields: [userId], references: [id])
+  createdBy       User                    @relation("EmployeeLedgerCreatedBy", fields: [createdById], references: [id])
+  commissionSales CommissionPaymentSale[]
 
   @@index([tenantId, userId, status])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, userId, type, hourlyPeriodTo])
   @@map("employee_ledger_entries")
+}
+
+/// Cada venda coberta por um pagamento de comissão (`EmployeeLedgerEntry` do
+/// tipo COMMISSION_PAYMENT), com a comissão paga naquela hora. `saleId`
+/// único: a mesma venda nunca é paga duas vezes, mesmo com períodos
+/// sobrepostos ou dois cliques simultâneos. Excluir o lançamento libera as
+/// vendas de novo (cascade).
+model CommissionPaymentSale {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// Vendedor da venda — duplicado aqui pra somar "já pago" sem passar pela venda.
+  userId    String
+  entryId   String
+  saleId    String   @unique
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  entry EmployeeLedgerEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  sale  Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([entryId])
+  @@map("commission_payment_sales")
 }
 
 // ---------------------------------------------------------------------------

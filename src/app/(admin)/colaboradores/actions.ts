@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger, canPayCommission } from "@/lib/permissions";
+import { registerCommissionPayment } from "@/modules/employees/commission-payment-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
   createEmployeeLedgerEntry,
@@ -137,6 +138,15 @@ export async function deleteEmployeeLedgerEntryAction(id: string) {
   if (!canManageEmployeeLedger(user.role)) {
     return { error: "Seu perfil não tem permissão para excluir lançamentos de colaboradores." };
   }
+  // Excluir pagamento de comissão libera as vendas pra serem pagas de novo —
+  // mesma trava de quem paga (só Admin).
+  const target = await prisma.employeeLedgerEntry.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { type: true },
+  });
+  if (target?.type === "COMMISSION_PAYMENT" && !canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode excluir um pagamento de comissão." };
+  }
 
   const result = await deleteEmployeeLedgerEntry(user.tenantId, id);
   if (!result.ok) return { error: result.error };
@@ -152,6 +162,8 @@ export async function deleteEmployeeLedgerEntryAction(id: string) {
   });
 
   revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
   return { success: "Lançamento excluído." };
 }
 
@@ -319,4 +331,43 @@ export async function registerHourlyPaymentAction(input: RegisterHourlyPaymentIn
   revalidatePath("/colaboradores");
   revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
   return { success: `Pagamento de ${result.amount.toFixed(2)} registrado.` };
+}
+
+/**
+ * "Pagar comissão" na tela do vendedor — só Admin (decisão do dono), valor
+ * sempre recalculado no servidor, já nasce pago (ver `registerCommissionPayment`).
+ */
+export async function registerCommissionPaymentAction(input: {
+  userId: string;
+  from: string;
+  to: string;
+}): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode pagar comissão." };
+  }
+  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  if (!input.userId || !isoDate.test(input.from) || !isoDate.test(input.to) || input.from > input.to) {
+    return { error: "Período inválido." };
+  }
+
+  const result = await registerCommissionPayment({ tenantId: user.tenantId, createdById: user.id }, input);
+  if (!result.ok) return { error: result.error };
+
+  const seller = await prisma.user.findUnique({ where: { id: input.userId }, select: { name: true } });
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "commission.payment",
+    entity: "User",
+    entityId: input.userId,
+    description: `Pagou ${formatBRL(result.amount)} de comissão a ${seller?.name ?? "colaborador"} (${result.saleCount} venda(s), ${input.from} a ${input.to}).`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${input.userId}/comissao`);
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
+  return { success: `Comissão de ${formatBRL(result.amount)} paga (${result.saleCount} venda(s)).` };
 }

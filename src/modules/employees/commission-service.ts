@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { todayISO, startOfMonthISO, nextMonthStartISO } from "@/lib/format";
 import { COMMISSION_POLICY_EFFECTIVE_AT_ISO, COMMISSION_POLICY_EFFECTIVE_AT } from "./commission-policy";
 import { getMonthlySaleCommissionsByUsers } from "./commission-tier-service";
+import { getCommissionPaidStatusByUsers } from "./commission-payment-service";
 
 export { COMMISSION_POLICY_EFFECTIVE_AT_ISO };
 
@@ -154,6 +155,10 @@ export type CommissionRankingRow = {
   totalCommission: number;
   /** Comissão efetiva: quanto do total vendido virou comissão, em %. */
   percent: number;
+  /** Quanto da comissão do período já foi pago (ver `commission-payment-service.ts`). */
+  paidCommission: number;
+  /** Períodos de pagamento de comissão que tocam o período consultado. */
+  paidPeriods: { from: string; to: string }[];
 };
 
 /**
@@ -180,7 +185,7 @@ export async function getCommissionRanking(
 
   const { start, end } = range;
 
-  const [commissionTotals, salesTotals] = await Promise.all([
+  const [commissionTotals, salesTotals, paidStatus] = await Promise.all([
     getCommissionTotalsByUsers(tenantId, userIds, { start, end }),
     prisma.sale.groupBy({
       by: ["sellerId"],
@@ -198,6 +203,7 @@ export async function getCommissionRanking(
       },
       _sum: { total: true },
     }),
+    getCommissionPaidStatusByUsers(tenantId, userIds, { start, end }),
   ]);
   const salesByUser = new Map(salesTotals.map((row) => [row.sellerId, Number(row._sum.total ?? 0)]));
 
@@ -211,6 +217,8 @@ export async function getCommissionRanking(
         totalSales,
         totalCommission,
         percent: totalSales > 0 ? round2((totalCommission / totalSales) * 100) : 0,
+        paidCommission: paidStatus.get(seller.id)?.paidAmount ?? 0,
+        paidPeriods: paidStatus.get(seller.id)?.paidPeriods ?? [],
       };
     })
     .filter((row) => row.totalSales > 0)
