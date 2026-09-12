@@ -3,7 +3,22 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canApplyDiscount, canDiscountFreely, canManageFiado, canSell } from "@/lib/permissions";
+import {
+  canApplyDiscount,
+  canDiscountFreely,
+  canManageFiado,
+  canReviewConvenioSignups,
+  canSell,
+} from "@/lib/permissions";
+import { recordAudit } from "@/modules/audit/audit-service";
+import {
+  listConvenioSignupLinks,
+  listPendingConvenioMembers,
+  reviewPendingConvenioMember,
+  type ConvenioSignupLink,
+  type PendingConvenioMember,
+  type ReviewDecision,
+} from "@/modules/convenios/convenio-member-review-service";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
 import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
@@ -240,4 +255,63 @@ export async function createSaleAction(
   revalidatePath("/dashboard");
 
   return { saleId: result.saleId, number: result.number, changeAmount: result.changeAmount };
+}
+
+/**
+ * Janela "Cadastros de convênio" do PDV: pendentes de TODOS os convênios e o
+ * link de cadastro ativo de cada um (só pra copiar e repassar).
+ */
+export async function listConvenioSignupReviewAction(): Promise<
+  | { error: string }
+  | { ok: true; pending: PendingConvenioMember[]; links: ConvenioSignupLink[] }
+> {
+  const user = await requireUser();
+  if (!canReviewConvenioSignups(user.role)) return { error: "Seu perfil não pode analisar cadastros de convênio." };
+
+  const [pending, links] = await Promise.all([
+    listPendingConvenioMembers(user.tenantId),
+    listConvenioSignupLinks(user.tenantId),
+  ]);
+  return { ok: true, pending, links };
+}
+
+export async function reviewConvenioSignupAction(
+  memberId: string,
+  decision: ReviewDecision,
+  reason?: string
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canReviewConvenioSignups(user.role)) return { error: "Seu perfil não pode analisar cadastros de convênio." };
+  if (decision !== "APPROVE" && decision !== "REJECT") return { error: "Decisão inválida." };
+
+  const result = await reviewPendingConvenioMember(
+    user.tenantId,
+    memberId,
+    user.id,
+    decision,
+    reason?.trim() || null
+  );
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: decision === "APPROVE" ? "convenio.member_approve" : "convenio.member_reject",
+    entity: "ConvenioMember",
+    entityId: memberId,
+    description:
+      decision === "APPROVE"
+        ? `Aprovou pelo PDV o cadastro de ${result.memberName} no convênio ${result.convenioName}.`
+        : `Recusou pelo PDV o cadastro de ${result.memberName} no convênio ${result.convenioName}: ${reason?.trim()}`,
+  });
+
+  revalidatePath("/pdv");
+  revalidatePath(`/convenios/${result.convenioId}`);
+  return {
+    success:
+      decision === "APPROVE"
+        ? `${result.memberName} aprovado(a) — o QR do convênio já vale no caixa.`
+        : `Cadastro de ${result.memberName} recusado.`,
+  };
 }

@@ -314,6 +314,16 @@ export function canManageConvenios(role: UserRole) {
 }
 
 /**
+ * Pelo PDV: aprovar/recusar cadastro PENDENTE de colaborador de convênio e
+ * ver/copiar o link de cadastro ativo. Qualquer um que vende (pedido do dono,
+ * 11/09/2026) — mas só a revisão do pendente, nunca o resto de
+ * `canManageConvenios` (gerar link, suspender, reativar, editar convênio).
+ */
+export function canReviewConvenioSignups(role: UserRole) {
+  return canSell(role);
+}
+
+/**
  * Validar manualmente os cadastros de Proteção Eficaz (comparar a foto da
  * nota do cliente com o rascunho da venda, aprovar/rejeitar, marcar como
  * trocado). Só ADMIN — é o próprio dono quem faz essa conferência.

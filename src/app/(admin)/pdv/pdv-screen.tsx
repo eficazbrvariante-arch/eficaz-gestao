@@ -32,6 +32,7 @@ import { searchProductsAction, createSaleAction, type PdvProduct } from "./actio
 import { searchCustomersAction } from "../clientes/actions";
 import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
+import { ConvenioSignupsModal } from "./convenio-signups-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import { CashMovementModal } from "./cash-movement-modal";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
@@ -162,6 +163,7 @@ export function PdvScreen({
   canFiado,
   canMoveCash,
   autoPrintReceipt,
+  pendingConvenioSignups,
 }: {
   canDiscount: boolean;
   /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
@@ -173,6 +175,8 @@ export function PdvScreen({
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
    *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */
   autoPrintReceipt: boolean;
+  /** Cadastros de convênio aguardando aprovação (todos os convênios) — ver `ConvenioSignupsModal`. */
+  pendingConvenioSignups: number;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -215,6 +219,13 @@ export function PdvScreen({
   // no servidor no momento de fechar (ver `revalidateConvenioMember`).
   const [convenioMember, setConvenioMember] = useState<ConvenioCredential | null>(null);
   const [convenioModalOpen, setConvenioModalOpen] = useState(false);
+  const [convenioSignupsOpen, setConvenioSignupsOpen] = useState(false);
+  // Enquanto a janela de cadastros está aberta, a recarga por inatividade
+  // espera (ver efeito abaixo) — nunca fecha a revisão no meio.
+  const convenioSignupsOpenRef = useRef(false);
+  useEffect(() => {
+    convenioSignupsOpenRef.current = convenioSignupsOpen;
+  }, [convenioSignupsOpen]);
 
   // Proteção Eficaz: cliente abre mão do desconto de película em troca da
   // garantia de troca em 30 dias (ver `Sale.protecaoEficazOptedIn`). Marcação
@@ -298,7 +309,7 @@ export function PdvScreen({
   useEffect(() => {
     let timer: number;
     function reloadIfIdleAndEmpty() {
-      if (cartRef.current.length === 0) {
+      if (cartRef.current.length === 0 && !convenioSignupsOpenRef.current) {
         window.location.reload();
         return;
       }
@@ -1180,6 +1191,20 @@ export function PdvScreen({
                 Escanear QR do convênio
               </Button>
             )}
+            <button
+              type="button"
+              onClick={() => setConvenioSignupsOpen(true)}
+              className="mt-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-sm font-medium text-text-secondary hover:bg-surface-hover"
+            >
+              <span>Cadastros pendentes e links</span>
+              {pendingConvenioSignups > 0 ? (
+                <span className="rounded-full bg-warning px-2 py-0.5 text-xs font-bold text-white">
+                  {pendingConvenioSignups}
+                </span>
+              ) : (
+                <span className="text-xs text-text-muted">nenhum pendente</span>
+              )}
+            </button>
           </PdvPanel>
 
           {protecaoEficazEligible && (
@@ -1391,6 +1416,12 @@ export function PdvScreen({
           setSellerName(seller.name);
           setSellerModalOpen(false);
         }}
+      />
+
+      <ConvenioSignupsModal
+        open={convenioSignupsOpen}
+        onClose={() => setConvenioSignupsOpen(false)}
+        onReviewed={() => router.refresh()}
       />
 
       <ConvenioModal
