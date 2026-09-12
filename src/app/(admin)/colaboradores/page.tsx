@@ -1,12 +1,13 @@
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import { canEditCommission, canManageEmployeeLedger, canManageSettings } from "@/lib/permissions";
 import { formatBRL } from "@/lib/format";
 import { StatCard } from "@/components/admin/stat-card";
 import { getEmployeeLedgerSummary } from "@/modules/employees/employee-ledger-service";
 import { getCommissionTotalsByUsers } from "@/modules/employees/commission-service";
 import {
   EmployeeLedgerPanel,
+  type ArchivedEmployeeRow,
   type EmployeeCardRow,
   type EmployeeLedgerEntryRow,
 } from "./employee-ledger-panel";
@@ -21,10 +22,17 @@ export default async function ColaboradoresPage() {
     );
   }
 
-  const [sellers, tenant, debtSummary, entries, totalActiveProducts, commissionedProducts] =
+  const [sellers, archivedUsers, tenant, debtSummary, entries, totalActiveProducts, commissionedProducts] =
     await Promise.all([
       prisma.user.findMany({
         where: { tenantId: user.tenantId, active: true, role: { in: ["SELLER", "MANAGER"] } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      // Arquivados = inativos (ver `setEmployeeArchivedAction`) — fora dos
+      // cards e do Ranking, listados à parte pra reativar quando voltarem.
+      prisma.user.findMany({
+        where: { tenantId: user.tenantId, active: false, role: { in: ["SELLER", "MANAGER"] } },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),
@@ -79,6 +87,21 @@ export default async function ColaboradoresPage() {
 
   const totalPending = debtSummary.reduce((sum, row) => sum + row.totalPending, 0);
 
+  const archivedRows: ArchivedEmployeeRow[] = archivedUsers.map((archived) => {
+    const debt = debtByUser.get(archived.id);
+    return {
+      userId: archived.id,
+      userName: archived.name,
+      // Mesma conta do "Total pendente" do card — pra não esquecer de acertar
+      // com quem foi arquivado com algo em aberto.
+      netPending: debt
+        ? Math.round(
+            (debt.hourlyPending + debt.otherPending - debt.advancePending - debt.purchasePending) * 100
+          ) / 100
+        : 0,
+    };
+  });
+
   return (
     <div>
       <h1 className="mb-1 text-xl font-semibold text-foreground">Colaboradores</h1>
@@ -101,6 +124,8 @@ export default async function ColaboradoresPage() {
         canEditCommission={canEditCommission(user.role)}
         totalActiveProducts={totalActiveProducts}
         commissionedProducts={commissionedProducts}
+        archivedRows={archivedRows}
+        canArchive={canManageSettings(user.role)}
       />
     </div>
   );

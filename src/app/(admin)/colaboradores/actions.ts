@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canEditCommission, canManageEmployeeLedger, canPayCommission } from "@/lib/permissions";
+import {
+  canEditCommission,
+  canManageEmployeeLedger,
+  canManageSettings,
+  canPayCommission,
+} from "@/lib/permissions";
 import { registerCommissionPayment } from "@/modules/employees/commission-payment-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
@@ -370,4 +375,52 @@ export async function registerCommissionPaymentAction(input: {
   revalidatePath("/colaboradores/ranking-comissao");
   revalidatePath("/pdv");
   return { success: `Comissão de ${formatBRL(result.amount)} paga (${result.saleCount} venda(s)).` };
+}
+
+/**
+ * Arquivar/reativar colaborador direto em Colaboradores (pedido do dono:
+ * freelancer que não volta mais ou que só vem em temporada). Mesmo efeito do
+ * "Desativar" de Usuários — `active = false` bloqueia o login na hora (ver
+ * `requireUser`) e tira do painel e do Ranking; reativar devolve tudo como
+ * estava (histórico, comissão, lançamentos). Só ADMIN, igual a Usuários.
+ */
+export async function setEmployeeArchivedAction(
+  userId: string,
+  archived: boolean
+): Promise<{ error: string } | { success: string }> {
+  const actor = await requireUser();
+  if (!canManageSettings(actor.role)) {
+    return { error: "Só o Administrador pode arquivar ou reativar colaboradores." };
+  }
+  if (userId === actor.id) return { error: "Você não pode arquivar a própria conta." };
+
+  const target = await prisma.user.findFirst({
+    where: { id: userId, tenantId: actor.tenantId },
+    select: { id: true, name: true, role: true, active: true },
+  });
+  if (!target) return { error: "Colaborador não encontrado." };
+  if (target.role === "ADMIN") {
+    return { error: "Administrador não é arquivado por aqui — use Usuários." };
+  }
+  if (target.active === !archived) {
+    return { success: archived ? `${target.name} já está arquivado(a).` : `${target.name} já está ativo(a).` };
+  }
+
+  await prisma.user.update({ where: { id: target.id }, data: { active: !archived } });
+
+  await recordAudit({
+    tenantId: actor.tenantId,
+    userId: actor.id,
+    userName: actor.name ?? actor.email ?? "Usuário",
+    action: archived ? "user.deactivate" : "user.activate",
+    entity: "User",
+    entityId: target.id,
+    description: `${archived ? "Arquivou" : "Reativou"} o colaborador ${target.name} (em Colaboradores).`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/usuarios");
+  revalidatePath("/pdv");
+  return { success: archived ? `${target.name} arquivado(a).` : `${target.name} reativado(a).` };
 }
