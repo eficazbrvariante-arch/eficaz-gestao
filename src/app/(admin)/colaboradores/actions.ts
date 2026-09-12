@@ -424,3 +424,53 @@ export async function setEmployeeArchivedAction(
   revalidatePath("/pdv");
   return { success: archived ? `${target.name} arquivado(a).` : `${target.name} reativado(a).` };
 }
+
+/**
+ * "Desfazer pagamento" na tela de comissão — corrige pagamento feito no
+ * período errado: apaga o lançamento e as vendas voltam pra "A pagar"
+ * (cascade em `CommissionPaymentSale`). Só Admin, mesma trava de pagar.
+ */
+export async function undoCommissionPaymentAction(
+  entryId: string
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode desfazer pagamento de comissão." };
+  }
+
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id: entryId, tenantId: user.tenantId, type: "COMMISSION_PAYMENT" },
+    select: {
+      id: true,
+      userId: true,
+      amount: true,
+      commissionPeriodFrom: true,
+      commissionPeriodTo: true,
+      user: { select: { name: true } },
+      _count: { select: { commissionSales: true } },
+    },
+  });
+  if (!entry) return { error: "Pagamento de comissão não encontrado." };
+
+  await prisma.employeeLedgerEntry.delete({ where: { id: entry.id } });
+
+  const period =
+    entry.commissionPeriodFrom && entry.commissionPeriodTo
+      ? `${entry.commissionPeriodFrom.toISOString().slice(0, 10)} a ${entry.commissionPeriodTo.toISOString().slice(0, 10)}`
+      : "período não registrado";
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "commission.payment_undo",
+    entity: "User",
+    entityId: entry.userId,
+    description: `Desfez o pagamento de comissão de ${entry.user.name} (${period}, ${formatBRL(Number(entry.amount))}, ${entry._count.commissionSales} venda(s)).`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${entry.userId}/comissao`);
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
+  return { success: `Pagamento desfeito — ${entry._count.commissionSales} venda(s) voltaram para "A pagar".` };
+}

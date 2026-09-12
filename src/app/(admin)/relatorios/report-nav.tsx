@@ -40,6 +40,15 @@ export function ReportTabs({ period }: { period: Period }) {
   );
 }
 
+/**
+ * Evento disparado quando as datas digitadas no `PeriodPicker` ficam
+ * diferentes do período aplicado (ainda sem clicar em "Aplicar"). Quem age
+ * sobre o período da tela escuta pra não agir num período diferente do que a
+ * pessoa está vendo nos campos (ex.: `CommissionPaymentPanel` — pagamento de
+ * comissão já saiu do período antigo por isso).
+ */
+export const PERIOD_PICKER_DIRTY_EVENT = "period-picker:dirty";
+
 export function PeriodPicker({
   period,
   extraParams,
@@ -49,6 +58,13 @@ export function PeriodPicker({
   extraParams?: Record<string, string | undefined>;
 }) {
   const pathname = usePathname();
+
+  function notifyDirty(form: HTMLFormElement | null) {
+    if (!form) return;
+    const data = new FormData(form);
+    const dirty = data.get("de") !== period.from || data.get("ate") !== period.to;
+    window.dispatchEvent(new CustomEvent(PERIOD_PICKER_DIRTY_EVENT, { detail: dirty }));
+  }
   const shortcuts = periodShortcuts();
   const extraQuery = Object.entries(extraParams ?? {})
     .filter(([, value]) => value)
@@ -58,7 +74,7 @@ export function PeriodPicker({
   return (
     <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-end gap-4">
-        <form className="flex flex-wrap items-end gap-3">
+        <form className="flex flex-wrap items-end gap-3" onChange={(e) => notifyDirty(e.currentTarget)}>
           {Object.entries(extraParams ?? {})
             .filter(([, value]) => value)
             .map(([key, value]) => (

@@ -8,7 +8,7 @@ import {
   getCommissionPaymentPreview,
   listCommissionPayments,
 } from "@/modules/employees/commission-payment-service";
-import { CommissionPaymentPanel } from "./commission-payment-panel";
+import { CommissionPaymentHistory, CommissionPaymentPanel } from "./commission-payment-panel";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
 import { TierBadge, TierProgressBar, TierIndicators } from "@/components/employees/tier-progress-ui";
 import { resolvePeriod } from "../../../relatorios/period";
@@ -93,6 +93,7 @@ export default async function ComissaoColaboradorPage({
         unpaidCount={payment.unpaidSaleIds.length}
         paidAmount={payment.paidAmount}
         paidCount={payment.paidCount}
+        payments={payments}
         canPay={canPayCommission(user.role)}
       />
 
@@ -158,33 +159,7 @@ export default async function ComissaoColaboradorPage({
         </table>
       </div>
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <p className="text-sm font-semibold text-slate-900">Pagamentos de comissão</p>
-        </div>
-        {payments.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-400">Nenhuma comissão paga ainda.</p>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {payments.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium text-slate-900">
-                    {entry.from && entry.to
-                      ? `${formatISODate(entry.from)} a ${formatISODate(entry.to)}`
-                      : "Período não registrado"}{" "}
-                    <span className="font-normal text-slate-500">· {entry.saleCount} venda(s)</span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Pago em {formatDateTime(entry.createdAt)} por {entry.createdByName}
-                  </p>
-                </div>
-                <span className="font-semibold text-slate-900">{formatBRL(entry.amount)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <CommissionPaymentHistory payments={payments} canUndo={canPayCommission(user.role)} />
     </div>
   );
 }

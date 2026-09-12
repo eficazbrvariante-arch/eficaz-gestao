@@ -130,7 +130,7 @@ function shortDate(iso: string) {
 function PaidStatusLine({ row }: { row: RankingComissaoRow }) {
   if (row.paidPeriods.length === 0 && row.paidCommission <= 0) return null;
   const unpaid = Math.round((row.totalCommission - row.paidCommission) * 100) / 100;
-  const periods = row.paidPeriods.map((p) => `${shortDate(p.from)}–${shortDate(p.to)}`).join(", ");
+  const periods = row.paidPeriods.map((p) => `de ${shortDate(p.from)} até ${shortDate(p.to)}`).join(" · ");
   return (
     <p className="mt-1 font-mono text-[11px]">
       <span className="text-[#39ff88]">✓ Pago{periods ? ` ${periods}` : ""}</span>
