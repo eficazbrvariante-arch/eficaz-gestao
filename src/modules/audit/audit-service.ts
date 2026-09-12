@@ -57,7 +57,9 @@ export type AuditAction =
   | "credito_eficaz.exposure_limit_change"
   | "credito_eficaz.pause_toggle"
   | "credito_eficaz.max_installments_change"
-  | "credito_eficaz.surcharge_change";
+  | "credito_eficaz.surcharge_change"
+  | "convenio.member_approve"
+  | "convenio.member_reject";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
@@ -109,6 +111,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "credito_eficaz.pause_toggle": "Crédito Eficaz pausado/despausado",
   "credito_eficaz.max_installments_change": "Máximo de parcelas do Crédito Eficaz alterado",
   "credito_eficaz.surcharge_change": "Acréscimo do Crédito Eficaz alterado",
+  "convenio.member_approve": "Cadastro de colaborador de convênio aprovado",
+  "convenio.member_reject": "Cadastro de colaborador de convênio recusado",
 };
 
 export type AuditEntry = {

@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/session";
 import { canApplyDiscount, canDiscountFreely, canManageFiado, canMoveCash, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
+import { countPendingConvenioMembers } from "@/modules/convenios/convenio-member-review-service";
 import { formatDateTime, todayISO, periodRange, currentMonthStartISO } from "@/lib/format";
 import { getCommissionRanking } from "@/modules/employees/commission-service";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
@@ -54,7 +55,10 @@ export default async function PdvPage() {
     );
   }
 
-  const birthdayAlerts = await getBirthdayAlerts(user.tenantId);
+  const [birthdayAlerts, pendingConvenioSignups] = await Promise.all([
+    getBirthdayAlerts(user.tenantId),
+    countPendingConvenioMembers(user.tenantId),
+  ]);
 
   // Permanente por padrão — só pula a consulta quando o Admin desligou o
   // botão em "Ranking de Comissão" (interruptor temporário, ex.: pra não
@@ -122,6 +126,7 @@ export default async function PdvPage() {
         canMoveCash={canMoveCash(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
         creditoEficazSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
+        pendingConvenioSignups={pendingConvenioSignups}
       />
 
       {/* Rodapé, nunca a área operacional do topo — permanente por padrão,
