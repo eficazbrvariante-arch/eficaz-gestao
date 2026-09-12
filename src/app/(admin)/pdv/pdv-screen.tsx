@@ -34,6 +34,10 @@ import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import { CashMovementModal } from "./cash-movement-modal";
+import {
+  computeCreditoEficazSurcharge,
+  formatSurchargePercent,
+} from "@/modules/credito-eficaz/credito-eficaz-surcharge";
 import type { ConvenioCredential } from "@/modules/convenios/convenio-redemption-service";
 import type { ProtecaoEficazRedemptionCredential } from "@/modules/protecao-eficaz/protecao-eficaz-service";
 import {
@@ -162,6 +166,7 @@ export function PdvScreen({
   canFiado,
   canMoveCash,
   autoPrintReceipt,
+  creditoEficazSurchargePercent,
 }: {
   canDiscount: boolean;
   /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
@@ -173,6 +178,9 @@ export function PdvScreen({
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
    *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */
   autoPrintReceipt: boolean;
+  /** Acréscimo (%) sobre a parte paga no Crédito Eficaz (Configurações do
+   *  Crédito Eficaz) — mostrado antes do PIN e reconferido no servidor. */
+  creditoEficazSurchargePercent: number;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -428,6 +436,15 @@ export function PdvScreen({
   const storeCreditPortion = round2(amounts.store_credit || 0);
   const fiadoPortion = round2(amounts.fiado || 0);
   const creditoEficazPortion = round2(amounts.credito_eficaz || 0);
+  // As formas de pagamento fecham com `total` (sem acréscimo); o acréscimo
+  // entra só em cima da parte no crédito e vira o total a pagar de verdade
+  // (mesma conta de `createSale`, via `computeCreditoEficazSurcharge`).
+  const creditoEficazSurcharge = computeCreditoEficazSurcharge(
+    creditoEficazPortion,
+    creditoEficazSurchargePercent
+  );
+  const creditoEficazOwed = round2(creditoEficazPortion + creditoEficazSurcharge);
+  const totalToPay = round2(total + creditoEficazSurcharge);
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
 
@@ -635,6 +652,12 @@ export function PdvScreen({
       setError("Informe o PIN de 4 dígitos do Crédito Eficaz.");
       return;
     }
+    if (customer && creditoEficazOwed > customer.creditoEficazAvailableAmount + 0.005) {
+      setError(
+        `Limite do Crédito Eficaz insuficiente: com o acréscimo, a parte no crédito fica ${formatBRL(creditoEficazOwed)} e o cliente tem ${formatBRL(customer.creditoEficazAvailableAmount)} disponível.`
+      );
+      return;
+    }
     if (protecaoEficazRedemption && !protecaoEficazRedemptionReady) {
       setError(
         peliculaUnits === 0
@@ -661,6 +684,7 @@ export function PdvScreen({
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
         creditoEficazPin: creditoEficazPortion > 0 ? creditoEficazPin : undefined,
+        creditoEficazSurchargePercent: creditoEficazPortion > 0 ? creditoEficazSurchargePercent : undefined,
         convenioMemberId: convenioMember?.member.id ?? "",
         protecaoEficazOptedIn,
         protecaoEficazRedemptionSaleNumber: protecaoEficazRedemption?.saleNumber,
@@ -1267,9 +1291,15 @@ export function PdvScreen({
                   <span className="font-bold text-foreground">-{formatBRL(protecaoEficazRedemptionAmount)}</span>
                 </div>
               )}
+              {creditoEficazSurcharge > 0 && (
+                <div className="flex justify-between font-medium text-text-secondary">
+                  <span>Acréscimo Crédito Eficaz ({formatSurchargePercent(creditoEficazSurchargePercent)})</span>
+                  <span className="font-bold text-foreground">+{formatBRL(creditoEficazSurcharge)}</span>
+                </div>
+              )}
               <div className="flex justify-between border-t border-border pt-2 text-xl font-bold text-foreground">
                 <span>Total</span>
-                <span>{formatBRL(total)}</span>
+                <span>{formatBRL(totalToPay)}</span>
               </div>
             </div>
           </PdvPanel>
@@ -1333,6 +1363,14 @@ export function PdvScreen({
                   onChange={(e) => setCreditoEficazPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   className="h-9 w-28 rounded border border-border bg-surface px-2 text-sm tracking-widest text-foreground disabled:bg-surface-hover"
                 />
+                {creditoEficazSurcharge > 0 && (
+                  <p className="mt-2 text-sm text-foreground">
+                    No Crédito Eficaz: {formatBRL(creditoEficazPortion)} + acréscimo de{" "}
+                    {formatSurchargePercent(creditoEficazSurchargePercent)} ({formatBRL(creditoEficazSurcharge)}) ={" "}
+                    <strong>{formatBRL(creditoEficazOwed)}</strong> — é o que o cliente fica devendo. Confirme
+                    com ele antes de pedir o PIN.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1377,7 +1415,7 @@ export function PdvScreen({
               variant={Math.abs(remaining) <= 0.005 ? "primary" : "secondary"}
               className="py-3 text-base"
             >
-              {isPending ? "Finalizando..." : `Finalizar venda · ${formatBRL(total)}`}
+              {isPending ? "Finalizando..." : `Finalizar venda · ${formatBRL(totalToPay)}`}
             </Button>
           </div>
         </div>

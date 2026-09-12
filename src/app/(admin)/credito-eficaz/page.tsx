@@ -171,6 +171,7 @@ export default async function CreditoEficazPage() {
         <CreditoEficazConfigPanel
           initialExposureLimit={exposureLimit}
           initialMaxInstallments={tenant.creditoEficazMaxInstallments}
+          initialSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
         />
       </div>
 

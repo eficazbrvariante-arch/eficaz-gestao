@@ -26,8 +26,11 @@ export const submitCreditoEficazApplicationSchema = z.object({
 export type SubmitCreditoEficazApplicationInput = z.infer<typeof submitCreditoEficazApplicationSchema>;
 export type SubmitCreditoEficazApplicationFormValues = z.input<typeof submitCreditoEficazApplicationSchema>;
 
-/** Versão vigente dos termos do Crédito Eficaz — mudar aqui é lançar uma versão nova, nunca reescrever o texto de uma aceita. */
-export const CREDITO_EFICAZ_TERMS_VERSION = "v1";
+/**
+ * Versão vigente dos termos do Crédito Eficaz — mudar aqui é lançar uma versão nova, nunca reescrever o texto de uma aceita.
+ * v2 (11/09/2026): passa a informar o acréscimo sobre compras no crédito.
+ */
+export const CREDITO_EFICAZ_TERMS_VERSION = "v2";
 
 export const approveCreditoEficazApplicationSchema = z.object({
   limitAmount: z.coerce.number().positive("Informe um limite maior que zero."),
@@ -83,3 +86,12 @@ export const setCreditoEficazMaxInstallmentsSchema = z.object({
     .max(12, "Máximo 12 parcelas."),
 });
 export type SetCreditoEficazMaxInstallmentsInput = z.infer<typeof setCreditoEficazMaxInstallmentsSchema>;
+
+/** Acréscimo (%) sobre a parte paga no Crédito Eficaz — 0 desliga. */
+export const setCreditoEficazSurchargePercentSchema = z.object({
+  percent: z.coerce
+    .number({ message: "Informe o acréscimo em %." })
+    .min(0, "O acréscimo não pode ser negativo.")
+    .max(100, "O acréscimo máximo é 100%."),
+});
+export type SetCreditoEficazSurchargePercentInput = z.infer<typeof setCreditoEficazSurchargePercentSchema>;

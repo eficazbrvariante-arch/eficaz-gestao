@@ -38,6 +38,9 @@ export const createSaleSchema = z.object({
    *  "CREDITO_EFICAZ" (checado em `createSale`). Nunca substitui a checagem
    *  de saldo/bloqueio, só autoriza o uso. */
   creditoEficazPin: z.string().trim().optional().or(z.literal("")),
+  /** Percentual de acréscimo do Crédito Eficaz que o PDV MOSTROU ao cliente —
+   *  conferido com o vigente em `createSale` (nunca usado pra calcular). */
+  creditoEficazSurchargePercent: z.coerce.number().min(0).max(100).optional(),
   notes: z.string().trim().optional().or(z.literal("")),
   /** Colaborador de Convênio Corporativo já validado no PDV (ver
    *  `validateConvenioCredentialAction`) — revalidado de novo aqui dentro de

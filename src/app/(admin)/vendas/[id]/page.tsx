@@ -14,6 +14,7 @@ const METHOD_LABELS: Record<string, string> = {
   CREDIT: "Cartão de crédito",
   STORE_CREDIT: "Crédito de loja",
   FIADO: "Fiado",
+  CREDITO_EFICAZ: "Crédito Eficaz",
 };
 
 export default async function ComprovantePage({
@@ -80,12 +81,20 @@ export default async function ComprovantePage({
     amount: Number(payment.amount),
   }));
 
+  // Mesma conta de `cancelSale`: a parte no Crédito Eficaz volta pro limite,
+  // só o resto vira crédito de loja.
+  const creditoEficazPaid = sale.payments
+    .filter((payment) => payment.method === "CREDITO_EFICAZ")
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+
   return (
     <div>
       <div className="mb-4 print:hidden">
         <SaleActions
           saleId={sale.id}
           saleTotal={Number(sale.total)}
+          totalAdjustment={Number(sale.creditoEficazSurcharge) - Number(sale.convenioDiscount)}
+          creditoEficazPaid={creditoEficazPaid}
           existingCustomer={sale.customer ? { id: sale.customer.id, name: sale.customer.name } : null}
           canCancel={canCancelSale(user.role)}
           canEdit={canEdit}
@@ -218,6 +227,12 @@ export default async function ComprovantePage({
                 {sale.convenioRedemption.reversedAt ? " (revertido)" : ""}
               </span>
               <span>-{formatBRL(sale.convenioDiscount)}</span>
+            </div>
+          )}
+          {Number(sale.creditoEficazSurcharge) > 0 && (
+            <div className="flex justify-between text-slate-600">
+              <span>Acréscimo Crédito Eficaz</span>
+              <span>+{formatBRL(sale.creditoEficazSurcharge)}</span>
             </div>
           )}
           <div className="receipt-total flex justify-between border-t border-slate-200 pt-1 text-base font-semibold text-slate-900">

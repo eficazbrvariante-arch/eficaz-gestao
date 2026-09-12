@@ -121,6 +121,7 @@ export default async function PdvPage() {
         canFiado={canManageFiado(user.role)}
         canMoveCash={canMoveCash(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
+        creditoEficazSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
       />
 
       {/* Rodapé, nunca a área operacional do topo — permanente por padrão,

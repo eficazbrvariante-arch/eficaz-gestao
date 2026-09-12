@@ -3,6 +3,7 @@ import { requireCustomerAccountSession } from "../require-customer-account";
 import { CreditoEficazExperience } from "./credito-eficaz-experience";
 import type { PactoVariant } from "./pacto-de-confianca";
 import {
+  getCreditoEficazSurchargePercent,
   getCustomerCreditSummary,
   listCustomerApplications,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
@@ -18,9 +19,10 @@ export default async function CreditoEficazAccountPage({
     `/loja/${subdomain}/conta/credito-eficaz`
   );
 
-  const [summary, applications] = await Promise.all([
+  const [summary, applications, surchargePercent] = await Promise.all([
     getCustomerCreditSummary(store.id, session.customerId),
     listCustomerApplications(store.id, session.customerId),
+    getCreditoEficazSurchargePercent(store.id),
   ]);
   const latestApplication = applications[0] ?? null;
   const hasApprovedCredit = !!summary && summary.limitAmount > 0;
@@ -49,6 +51,7 @@ export default async function CreditoEficazAccountPage({
         variant={variant}
         summary={summary}
         latestApplication={latestApplication}
+        surchargePercent={surchargePercent}
       />
     </div>
   );

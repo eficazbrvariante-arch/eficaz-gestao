@@ -15,6 +15,8 @@ import {
   registerCreditoEficazPaymentSchema,
   setCreditoEficazExposureLimitSchema,
   setCreditoEficazMaxInstallmentsSchema,
+  setCreditoEficazSurchargePercentSchema,
+  type SetCreditoEficazSurchargePercentInput,
   type ApproveCreditoEficazApplicationInput,
   type RejectCreditoEficazApplicationInput,
   type RequestCreditoEficazInfoInput,
@@ -36,6 +38,7 @@ import {
   setCreditoEficazExposureLimit,
   setCreditoEficazPaused,
   setCreditoEficazMaxInstallments,
+  setCreditoEficazSurchargePercent,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
 
 const PERMISSION_ERROR = "Seu perfil não tem permissão para gerenciar o Crédito Eficaz.";
@@ -353,4 +356,29 @@ export async function setCreditoEficazMaxInstallmentsAction(input: SetCreditoEfi
 
   revalidatePath("/credito-eficaz");
   return { success: "Configuração de parcelas atualizada." };
+}
+
+export async function setCreditoEficazSurchargePercentAction(input: SetCreditoEficazSurchargePercentInput) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = setCreditoEficazSurchargePercentSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const result = await setCreditoEficazSurchargePercent(user.tenantId, parsed.data.percent);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.surcharge_change",
+    entity: "Tenant",
+    entityId: user.tenantId,
+    description: `Definiu o acréscimo de ${parsed.data.percent.toLocaleString("pt-BR")}% sobre compras no Crédito Eficaz.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  revalidatePath("/pdv");
+  return { success: "Acréscimo do Crédito Eficaz atualizado." };
 }

@@ -15,11 +15,13 @@ export function CreditoEficazExperience({
   variant,
   summary,
   latestApplication,
+  surchargePercent,
 }: {
   subdomain: string;
   variant: PactoVariant;
   summary: CustomerCreditSummary | null;
   latestApplication: ApplicationRow | null;
+  surchargePercent: number;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -39,6 +41,7 @@ export function CreditoEficazExperience({
           subdomain={subdomain}
           summary={summary}
           latestApplication={latestApplication}
+          surchargePercent={surchargePercent}
           forceShowForm={formOpen}
         />
       </div>

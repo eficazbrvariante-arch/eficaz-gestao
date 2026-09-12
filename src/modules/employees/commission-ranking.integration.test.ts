@@ -346,6 +346,9 @@ describe("Ranking de Comissão — faixas progressivas (integração)", () => {
         items: itemsForUnits(2), // R$100
         payments: [{ method: "CREDITO_EFICAZ", amount: 100 }],
         creditoEficazPin: "1234",
+        // Tenant de teste usa o acréscimo padrão (10%): a venda sai R$110 e
+        // mesmo assim não pode gerar comissão nenhuma.
+        creditoEficazSurchargePercent: 10,
       } as never
     );
     expect(result.ok).toBe(true);

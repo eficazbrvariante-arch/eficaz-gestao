@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { ImageUploadField } from "@/components/ui/image-upload-field";
 import { SelfieCaptureField } from "@/components/ui/selfie-capture-field";
 import { formatBRL, formatDate } from "@/lib/format";
+import { formatSurchargePercent } from "@/modules/credito-eficaz/credito-eficaz-surcharge";
 import { submitCreditoEficazApplicationAction } from "./actions";
 import type { CustomerCreditSummary } from "@/modules/credito-eficaz/credito-eficaz-service";
 
@@ -20,11 +21,14 @@ export function CreditoEficazSection({
   subdomain,
   summary,
   latestApplication,
+  surchargePercent,
   forceShowForm,
 }: {
   subdomain: string;
   summary: CustomerCreditSummary | null;
   latestApplication: ApplicationRow | null;
+  /** Acréscimo (%) sobre compras no crédito — informado nos termos (v2). */
+  surchargePercent: number;
   /** Abre o formulário direto, sem passar pelo botão "Solicitar Crédito
    *  Eficaz" — usado pelo Pacto de Confiança, que já cobre essa etapa
    *  intermediária com o próprio CTA (um clique só, sem duplicar formulário). */
@@ -366,6 +370,14 @@ export function CreditoEficazSection({
                 uma obrigação de pagamento com vencimento definido pela loja; atraso pode bloquear
                 temporariamente novos usos, sem afetar suas compras já feitas.
               </p>
+              {surchargePercent > 0 && (
+                <p>
+                  Compras pagas com o Crédito Eficaz têm acréscimo de{" "}
+                  {formatSurchargePercent(surchargePercent)} sobre o valor pago no crédito (o que você
+                  pagar em dinheiro, Pix ou cartão na mesma compra não tem acréscimo). O valor final, já
+                  com o acréscimo, é mostrado no caixa antes de você confirmar com o PIN.
+                </p>
+              )}
               <p>
                 Seus documentos e selfie ficam armazenados de forma privada, acessíveis só à loja
                 pra fins de análise de crédito — nunca publicados ou compartilhados.

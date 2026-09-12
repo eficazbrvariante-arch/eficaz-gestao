@@ -15,6 +15,8 @@ export const receiveRepairOrderPaymentSchema = z.object({
   creditoEficazInstallments: z.coerce.number().int().positive().optional(),
   /** Avaliação opcional do vendedor (Adendo, item 11) — nunca obrigatória. */
   creditoEficazWouldBeLost: z.boolean().optional(),
+  /** Percentual de acréscimo que a tela MOSTROU ao cliente — conferido com o vigente no servidor. */
+  creditoEficazSurchargePercent: z.coerce.number().min(0).max(100).optional(),
 });
 export type ReceiveRepairOrderPaymentInput = z.infer<typeof receiveRepairOrderPaymentSchema>;
 
@@ -24,6 +26,8 @@ export const deliverRepairOrderSchema = z.object({
   creditoEficazPin: z.string().trim().optional().or(z.literal("")),
   creditoEficazInstallments: z.coerce.number().int().positive().optional(),
   creditoEficazWouldBeLost: z.boolean().optional(),
+  /** Percentual de acréscimo que a tela MOSTROU ao cliente — conferido com o vigente no servidor. */
+  creditoEficazSurchargePercent: z.coerce.number().min(0).max(100).optional(),
 });
 export type DeliverRepairOrderInput = z.infer<typeof deliverRepairOrderSchema>;
 
