@@ -46,6 +46,7 @@ export type AuditAction =
   | "employee_ledger.revert_to_pending"
   | "commission.tiers_update"
   | "commission.pdv_ranking_toggle"
+  | "commission.payment"
   | "credito_eficaz.approve"
   | "credito_eficaz.reject"
   | "credito_eficaz.info_request"
@@ -99,6 +100,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "employee_ledger.revert_to_pending": "Lançamento de colaborador revertido de pago para pendente",
   "commission.tiers_update": "Faixas de comissão progressiva alteradas",
   "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
+  "commission.payment": "Comissão de venda paga",
   "credito_eficaz.approve": "Solicitação de Crédito Eficaz aprovada",
   "credito_eficaz.reject": "Solicitação de Crédito Eficaz recusada",
   "credito_eficaz.info_request": "Informação adicional solicitada em pedido de Crédito Eficaz",

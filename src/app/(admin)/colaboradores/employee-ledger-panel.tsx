@@ -13,7 +13,9 @@ import { FormBanner } from "@/components/ui/form-banner";
 import { EmptyState } from "@/components/admin/stat-card";
 import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
+  MANUAL_EMPLOYEE_LEDGER_TYPES,
   type EmployeeLedgerTypeValue,
+  type ManualEmployeeLedgerTypeValue,
 } from "@/lib/validations/employee-ledger";
 import {
   createEmployeeLedgerEntryAction,
@@ -24,6 +26,7 @@ import {
   setAllProductsCommissionEnabledAction,
   setDefaultCommissionPercentAction,
   settleEmployeeLedgerEntryAction,
+  setEmployeeArchivedAction,
   type EmployeeOption,
 } from "./actions";
 
@@ -37,6 +40,14 @@ export type EmployeeCardRow = {
   totalPending: number;
   /** Acumulado de todas as vendas concluídas — não é "pendente", é o total já ganho. */
   commissionTotal: number;
+};
+
+/** Colaborador arquivado (inativo) — só pra listar em "Arquivados" e reativar. */
+export type ArchivedEmployeeRow = {
+  userId: string;
+  userName: string;
+  /** Mesmo "Total pendente" do card — algo em aberto não some ao arquivar. */
+  netPending: number;
 };
 
 export type EmployeeLedgerEntryRow = {
@@ -65,7 +76,13 @@ export function EmployeeLedgerPanel({
   canEditCommission,
   totalActiveProducts,
   commissionedProducts,
+  archivedRows,
+  canArchive,
 }: {
+  /** Arquivados (inativos) — ver `setEmployeeArchivedAction`. */
+  archivedRows: ArchivedEmployeeRow[];
+  /** Só ADMIN arquiva/reativa (bloqueia o login, igual a Usuários). */
+  canArchive: boolean;
   cardRows: EmployeeCardRow[];
   entries: EmployeeLedgerEntryRow[];
   defaultCommissionPercent: number;
@@ -83,6 +100,20 @@ export function EmployeeLedgerPanel({
     null
   );
   const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<EmployeeLedgerEntryRow | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState<EmployeeCardRow | null>(null);
+
+  function setArchived(userId: string, archived: boolean) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await setEmployeeArchivedAction(userId, archived);
+      setConfirmArchive(null);
+      setFeedback(
+        "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
+      );
+      router.refresh();
+    });
+  }
   const [confirmBulkRevert, setConfirmBulkRevert] = useState<{
     userId: string;
     userName: string;
@@ -104,7 +135,7 @@ export function EmployeeLedgerPanel({
   }, []);
 
   const [userId, setUserId] = useState("");
-  const [type, setType] = useState<EmployeeLedgerTypeValue>("ADVANCE");
+  const [type, setType] = useState<ManualEmployeeLedgerTypeValue>("ADVANCE");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
@@ -347,11 +378,11 @@ export function EmployeeLedgerPanel({
             <Select
               id="type"
               value={type}
-              onChange={(e) => setType(e.target.value as EmployeeLedgerTypeValue)}
+              onChange={(e) => setType(e.target.value as ManualEmployeeLedgerTypeValue)}
             >
-              {Object.entries(EMPLOYEE_LEDGER_TYPE_LABELS).map(([value, label]) => (
+              {MANUAL_EMPLOYEE_LEDGER_TYPES.map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {EMPLOYEE_LEDGER_TYPE_LABELS[value]}
                 </option>
               ))}
             </Select>
@@ -391,7 +422,54 @@ export function EmployeeLedgerPanel({
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-semibold text-foreground">Colaboradores</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-foreground">Colaboradores</p>
+          {archivedRows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowArchived((v) => !v)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {showArchived ? "Esconder arquivados" : `Arquivados (${archivedRows.length})`}
+            </button>
+          )}
+        </div>
+
+        {showArchived && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-2 text-xs text-slate-500">
+              Arquivados não entram no sistema, nem aparecem no painel e no Ranking. Ao reativar, volta tudo
+              como estava (histórico, comissão e lançamentos).
+            </p>
+            <ul className="divide-y divide-slate-200">
+              {archivedRows.map((row) => (
+                <li key={row.userId} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span className="font-medium text-slate-900">
+                    {row.userName}
+                    {row.netPending !== 0 && (
+                      <span className={`ml-2 text-xs ${row.netPending < 0 ? "text-red-600" : "text-amber-700"}`}>
+                        pendente {formatBRL(row.netPending)}
+                      </span>
+                    )}
+                  </span>
+                  {canArchive && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      fullWidth={false}
+                      disabled={isPending}
+                      onClick={() => setArchived(row.userId, false)}
+                      className="px-3 py-1 text-xs"
+                    >
+                      Reativar
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {cardRows.length === 0 ? (
           <EmptyState message="Nenhum Vendedor ou Gerente ativo cadastrado." />
         ) : (
@@ -458,6 +536,45 @@ export function EmployeeLedgerPanel({
                   <span>Pagamento por horas</span>
                   <span>Calcular →</span>
                 </Link>
+                {canArchive &&
+                  (confirmArchive?.userId === row.userId ? (
+                    <div className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-700">
+                      <p className="mb-2">
+                        Arquivar {row.userName}? Sai do painel e do Ranking e não entra mais no sistema até
+                        ser reativado(a).
+                        {netPending !== 0 && ` Ainda tem ${formatBRL(netPending)} pendente.`}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          fullWidth={false}
+                          disabled={isPending}
+                          onClick={() => setArchived(row.userId, true)}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Arquivar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          fullWidth={false}
+                          onClick={() => setConfirmArchive(null)}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmArchive(row)}
+                      className="mt-2 w-full border-t border-slate-100 pt-2 text-left text-xs text-slate-500 hover:underline"
+                    >
+                      Arquivar colaborador
+                    </button>
+                  ))}
               </div>
               );
             })}

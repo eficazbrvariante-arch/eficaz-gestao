@@ -294,6 +294,15 @@ export function canEditCommission(role: UserRole) {
 }
 
 /**
+ * Registrar o pagamento da comissão de venda de um período (e excluir um
+ * pagamento já registrado, que libera as vendas de novo). Só ADMIN —
+ * decisão do dono (11/09/2026); Gerente continua vendo a comissão.
+ */
+export function canPayCommission(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Mesclar dois cadastros de cliente duplicados (ex.: um criado no PDV e outro
  * pelo próprio cliente no catálogo online). Reatribui vendas, pedidos, fiado,
  * crédito de loja e login de um cadastro pro outro, e apaga o absorvido —

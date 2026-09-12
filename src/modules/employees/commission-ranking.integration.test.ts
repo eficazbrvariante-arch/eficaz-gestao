@@ -23,6 +23,10 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createSale, cancelSale } from "@/modules/sales/sale-service";
 import { getCommissionRanking, getSellerCommissionHistory } from "@/modules/employees/commission-service";
+import {
+  getCommissionPaymentPreview,
+  registerCommissionPayment,
+} from "@/modules/employees/commission-payment-service";
 import { getSellerTierProgressByUsers, saveTiersForMonth } from "@/modules/employees/commission-tier-service";
 import { currentMonthStartISO, periodRange, todayISO, addDaysISO } from "@/lib/format";
 import { computeCatalogPrice } from "@/modules/products/catalog-price";
@@ -367,6 +371,77 @@ describe("Ranking de Comissão — faixas progressivas (integração)", () => {
     // sempre consistente com o motor de faixas (ver teste 10).
     const sellerRankingRow = rankingBefore.find((r) => r.userId === sellerId);
     expect(sellerRankingRow?.totalSales ?? 0).toBe(round2(after.totalSales));
+  });
+});
+
+describe("Pagamento de comissão (integração)", () => {
+  const today = () => ({ from: todayISO(), to: todayISO() });
+  const ctx = () => ({ tenantId, createdById: adminId });
+
+  it("12) paga só o que falta, uma vez: segunda tentativa no mesmo período é recusada", async () => {
+    await sellUnits(2);
+    const before = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(before.unpaidAmount).toBeGreaterThan(0);
+
+    const paid = await registerCommissionPayment(ctx(), { userId: sellerId, ...today() });
+    expect(paid.ok).toBe(true);
+    if (paid.ok) expect(paid.amount).toBe(before.unpaidAmount);
+
+    const after = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(after.unpaidAmount).toBe(0);
+    expect(after.paidAmount).toBe(round2(before.paidAmount + before.unpaidAmount));
+
+    const again = await registerCommissionPayment(ctx(), { userId: sellerId, ...today() });
+    expect(again.ok).toBe(false);
+
+    const entry = await prisma.employeeLedgerEntry.findFirstOrThrow({
+      where: { tenantId, userId: sellerId, type: "COMMISSION_PAYMENT" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(entry.status).toBe("PAID");
+  });
+
+  it("13) venda nova depois do pagamento: só ela fica a pagar — nunca repaga as antigas", async () => {
+    const saleId = await sellUnits(1);
+    const preview = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(preview.unpaidSaleIds).toEqual([saleId]);
+
+    const history = await getSellerCommissionHistory(tenantId, sellerId, periodRange(todayISO(), todayISO()));
+    const newSaleCommission = history.sales.find((s) => s.saleId === saleId)!.commission;
+    const paid = await registerCommissionPayment(ctx(), { userId: sellerId, ...today() });
+    expect(paid.ok && paid.amount).toBe(newSaleCommission);
+  });
+
+  it("14) Ranking mostra o que já foi pago e o período pago", async () => {
+    const range = periodRange(todayISO(), todayISO());
+    const row = (await getCommissionRanking(tenantId, range)).find((r) => r.userId === sellerId)!;
+    expect(row.paidCommission).toBe(row.totalCommission);
+    expect(row.paidPeriods.some((p) => p.from === todayISO() && p.to === todayISO())).toBe(true);
+  });
+
+  it("15) excluir o lançamento de pagamento libera as vendas pra pagar de novo", async () => {
+    const saleId = await sellUnits(1);
+    const paid = await registerCommissionPayment(ctx(), { userId: sellerId, ...today() });
+    expect(paid.ok).toBe(true);
+    const link = await prisma.commissionPaymentSale.findUniqueOrThrow({ where: { saleId } });
+
+    await prisma.employeeLedgerEntry.delete({ where: { id: link.entryId } });
+
+    const preview = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(preview.unpaidSaleIds).toContain(saleId);
+    await registerCommissionPayment(ctx(), { userId: sellerId, ...today() });
+  });
+
+  it("16) venda paga e cancelada depois aparece no aviso de desconto", async () => {
+    const saleId = await sellUnits(1);
+    expect((await registerCommissionPayment(ctx(), { userId: sellerId, ...today() })).ok).toBe(true);
+    const sale = await prisma.sale.findUniqueOrThrow({ where: { id: saleId }, select: { number: true } });
+
+    const cancelled = await cancelSale(tenantId, saleId, adminId, "QA — cancelada depois de paga", null, true);
+    expect(cancelled.ok).toBe(true);
+
+    const preview = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(preview.cancelledAfterPayment.map((s) => s.number)).toContain(sale.number);
   });
 });
 

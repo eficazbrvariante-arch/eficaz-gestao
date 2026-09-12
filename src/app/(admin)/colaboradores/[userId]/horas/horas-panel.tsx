@@ -9,7 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormBanner } from "@/components/ui/form-banner";
-import { setHourlyRateAction, registerHourlyPaymentAction } from "../../actions";
+import {
+  setHourlyRateAction,
+  registerHourlyPaymentAction,
+  settleEmployeeLedgerEntryAction,
+  deleteEmployeeLedgerEntryAction,
+} from "../../actions";
 import type { DayWorkedMinutes, HourlyPaymentHistoryEntry } from "@/modules/employees/hourly-payment-service";
 
 export function HorasPanel({
@@ -67,6 +72,7 @@ export function HorasPanel({
   const [rateInput, setRateInput] = useState(String(hourlyRate));
   const [transportInput, setTransportInput] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
+  const [confirmNotPaidId, setConfirmNotPaidId] = useState<string | null>(null);
 
   const transportAmount = Math.max(0, Number(transportInput) || 0);
   const totalWithTransport = amount + transportAmount;
@@ -94,15 +100,99 @@ export function HorasPanel({
         setFeedback({ type: "error", message: result.error });
         return;
       }
-      setFeedback({ type: "success", message: result?.success ?? "Pagamento registrado." });
+      setFeedback({
+        type: "success",
+        message: `${result?.success ?? "Pagamento registrado."} Ficou como Pendente no histórico abaixo — marque "Foi pago" ou "Não foi pago".`,
+      });
       setTransportInput("");
       router.refresh();
     });
   }
 
+  function handleMarkPaid(entryId: string) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await settleEmployeeLedgerEntryAction(entryId);
+      setFeedback(
+        result?.error
+          ? { type: "error", message: result.error }
+          : { type: "success", message: "Pagamento marcado como pago." }
+      );
+      router.refresh();
+    });
+  }
+
+  function handleMarkNotPaid(entryId: string) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await deleteEmployeeLedgerEntryAction(entryId);
+      setConfirmNotPaidId(null);
+      setFeedback(
+        result?.error
+          ? { type: "error", message: result.error }
+          : { type: "success", message: "Pagamento desfeito — essas horas voltaram a contar como pendentes." }
+      );
+      router.refresh();
+    });
+  }
+
+  // "Não foi pago" só no pagamento mais recente: apagar um do meio deixaria
+  // um buraco que nunca mais voltaria a contar (a contagem recomeça depois do
+  // último período registrado — ver `getHourlyPaymentCoveredThrough`).
+  const latestEntryId =
+    history
+      .filter((entry) => entry.to)
+      .reduce<HourlyPaymentHistoryEntry | null>(
+        (latest, entry) => (!latest || (entry.to ?? "") > (latest.to ?? "") ? entry : latest),
+        null
+      )?.id ?? null;
+
+  const cannotPayReason = hasIncompleteDays
+    ? "Tem dia com marcação incompleta no período (sem saída batida) — corrija no Ponto antes, senão o total fica menor do que o real."
+    : hasOpenToday
+      ? "O expediente de hoje ainda está aberto (sem saída batida) — espere o colaborador bater a saída. Pagando agora, as horas depois deste momento nunca entrariam em nenhum pagamento."
+      : null;
+
   return (
     <div className="space-y-6">
       <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-slate-500">Horas a pagar no período</p>
+            <p className="text-lg font-bold text-slate-900">
+              {formatWorkedMinutes(totalMinutes)} · {formatBRL(amount)}
+            </p>
+          </div>
+          <div className="w-36">
+            <Label htmlFor="transport-amount">Passagem (opcional)</Label>
+            <Input
+              id="transport-amount"
+              type="number"
+              step="0.01"
+              min={0}
+              value={transportInput}
+              onChange={(e) => setTransportInput(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="brand"
+            disabled={isPending || totalWithTransport <= 0 || cannotPayReason !== null}
+            onClick={handleRegister}
+            fullWidth={false}
+            className="px-5"
+          >
+            {isPending ? "Registrando..." : `Pagar horas · ${formatBRL(totalWithTransport)}`}
+          </Button>
+        </div>
+        {cannotPayReason && <p className="mt-3 text-sm text-red-600">{cannotPayReason}</p>}
+        <p className="mt-3 text-xs text-slate-500">
+          Ao clicar, o pagamento entra como <strong>Pendente</strong> no histórico abaixo. Depois é só marcar
+          &quot;Foi pago&quot; ou &quot;Não foi pago&quot; — se não foi pago, as horas voltam a contar.
+        </p>
+      </div>
 
       {coveredThrough && (
         <p className="rounded-md bg-info/10 px-3 py-2 text-sm text-info">
@@ -188,39 +278,15 @@ export function HorasPanel({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="mb-1 text-sm font-semibold text-slate-900">Passagem (opcional)</p>
-        <p className="mb-3 text-xs text-slate-900">
-          Valor fixo somado ao pagamento por horas — entra no mesmo lançamento e na mesma
-          confirmação/comprovante, sem precisar registrar à parte.
-        </p>
-        <div className="w-40">
-          <Label htmlFor="transport-amount">Passagem (R$)</Label>
-          <Input
-            id="transport-amount"
-            type="number"
-            step="0.01"
-            min={0}
-            value={transportInput}
-            onChange={(e) => setTransportInput(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-black shadow-sm">
-        <span>Total a pagar</span>
-        <span>{formatBRL(totalWithTransport)}</span>
-      </div>
-
       {deductionsPending > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="mb-1 text-sm font-semibold text-slate-900">
             Descontos pendentes (o que ela deve à loja)
           </p>
           <p className="mb-3 text-xs text-slate-500">
-            Só informativo — não muda o que é registrado ao clicar em &quot;Registrar
-            pagamento&quot; abaixo. Pra quitar de fato, marque o Adiantamento/Mercadoria como
-            pago na tabela de Lançamentos, em Colaboradores.
+            Só informativo — não muda o que é registrado ao clicar em &quot;Pagar horas&quot;.
+            Pra quitar de fato, marque o Adiantamento/Mercadoria como pago na tabela de
+            Lançamentos, em Colaboradores.
           </p>
           <div className="space-y-1 text-sm">
             {advancePending > 0 && (
@@ -249,31 +315,6 @@ export function HorasPanel({
           </div>
         </div>
       )}
-
-      {hasIncompleteDays && (
-        <p className="text-sm text-red-600">
-          Tem dia com marcação incompleta no período (sem saída batida) — corrija no Ponto antes
-          de registrar, senão o total fica menor do que o real.
-        </p>
-      )}
-
-      {hasOpenToday && (
-        <p className="text-sm text-red-600">
-          O expediente de hoje ainda está aberto (sem saída batida) — espere o colaborador bater a
-          saída antes de registrar. Registrando agora, as horas trabalhadas depois deste momento
-          nunca entrariam em nenhum pagamento futuro.
-        </p>
-      )}
-
-      <Button
-        type="button"
-        disabled={isPending || totalWithTransport <= 0 || hasIncompleteDays || hasOpenToday}
-        onClick={handleRegister}
-        fullWidth={false}
-        className="px-4"
-      >
-        {isPending ? "Registrando..." : `Registrar pagamento de ${formatBRL(totalWithTransport)}`}
-      </Button>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3">
@@ -309,11 +350,60 @@ export function HorasPanel({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <span className="text-sm font-semibold text-slate-900">{formatBRL(entry.amount)}</span>
                   <Badge variant={entry.status === "PAID" ? "success" : "warning"}>
                     {entry.status === "PAID" ? "Pago" : "Pendente"}
                   </Badge>
+                  {entry.status === "PENDING" && confirmNotPaidId !== entry.id && (
+                    <>
+                      <Button
+                        type="button"
+                        fullWidth={false}
+                        disabled={isPending}
+                        onClick={() => handleMarkPaid(entry.id)}
+                        className="px-3 py-1 text-xs"
+                      >
+                        Foi pago
+                      </Button>
+                      {entry.id === latestEntryId && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          fullWidth={false}
+                          disabled={isPending}
+                          onClick={() => setConfirmNotPaidId(entry.id)}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Não foi pago
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  {confirmNotPaidId === entry.id && (
+                    <span className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                      As horas desse período voltam a contar como pendentes.
+                      <Button
+                        type="button"
+                        variant="danger"
+                        fullWidth={false}
+                        disabled={isPending}
+                        onClick={() => handleMarkNotPaid(entry.id)}
+                        className="px-3 py-1 text-xs"
+                      >
+                        Confirmar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        fullWidth={false}
+                        onClick={() => setConfirmNotPaidId(null)}
+                        className="px-3 py-1 text-xs"
+                      >
+                        Voltar
+                      </Button>
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

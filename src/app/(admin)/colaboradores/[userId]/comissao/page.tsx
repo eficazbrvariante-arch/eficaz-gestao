@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
-import { canManageEmployeeLedger } from "@/lib/permissions";
+import { canManageEmployeeLedger, canPayCommission } from "@/lib/permissions";
 import { formatBRL, formatDateTime, formatISODate, periodRange, currentMonthStartISO } from "@/lib/format";
 import { getSellerCommissionHistory } from "@/modules/employees/commission-service";
+import {
+  getCommissionPaymentPreview,
+  listCommissionPayments,
+} from "@/modules/employees/commission-payment-service";
+import { CommissionPaymentPanel } from "./commission-payment-panel";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
 import { TierBadge, TierProgressBar, TierIndicators } from "@/components/employees/tier-progress-ui";
 import { resolvePeriod } from "../../../relatorios/period";
@@ -32,11 +37,13 @@ export default async function ComissaoColaboradorPage({
 
   const period = resolvePeriod(await searchParams);
   const { start, end } = periodRange(period.from, period.to);
-  const [history, tierProgress] = await Promise.all([
+  const [history, tierProgress, payment, payments] = await Promise.all([
     getSellerCommissionHistory(user.tenantId, userId, { start, end }).catch(() => null),
     getSellerTierProgressByUsers(user.tenantId, [userId], currentMonthStartISO()).then((m) => m.get(userId) ?? null),
+    getCommissionPaymentPreview(user.tenantId, userId, period).catch(() => null),
+    listCommissionPayments(user.tenantId, userId),
   ]);
-  if (!history) notFound();
+  if (!history || !payment) notFound();
 
   return (
     <div>
@@ -77,6 +84,34 @@ export default async function ComissaoColaboradorPage({
 
       <PeriodPicker period={period} />
 
+      <CommissionPaymentPanel
+        userId={userId}
+        sellerName={history.sellerName}
+        from={period.from}
+        to={period.to}
+        unpaidAmount={payment.unpaidAmount}
+        unpaidCount={payment.unpaidSaleIds.length}
+        paidAmount={payment.paidAmount}
+        paidCount={payment.paidCount}
+        canPay={canPayCommission(user.role)}
+      />
+
+      {payment.cancelledAfterPayment.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Venda cancelada depois de a comissão ser paga:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {payment.cancelledAfterPayment.map((sale) => (
+              <li key={sale.number}>
+                Venda #{sale.number} — {formatBRL(sale.amount)} de comissão já paga
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs">
+            Esse valor já saiu — se for o caso, desconte à parte (ex.: lançamento de adiantamento).
+          </p>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
@@ -85,6 +120,7 @@ export default async function ComissaoColaboradorPage({
               <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium text-right">Total da venda</th>
               <th className="px-4 py-3 font-medium text-right">Comissão</th>
+              <th className="px-4 py-3 font-medium text-right">Situação</th>
             </tr>
           </thead>
           <tbody>
@@ -100,17 +136,54 @@ export default async function ComissaoColaboradorPage({
                 <td className="px-4 py-3 text-right font-medium text-emerald-700">
                   {formatBRL(sale.commission)}
                 </td>
+                <td className="px-4 py-3 text-right text-xs">
+                  {payment.paidBySale.has(sale.saleId) ? (
+                    <span className="rounded bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Paga</span>
+                  ) : sale.commission > 0 ? (
+                    <span className="rounded bg-amber-50 px-2 py-0.5 font-medium text-amber-700">A pagar</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {history.sales.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
                   Nenhuma venda concluída ainda.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <p className="text-sm font-semibold text-slate-900">Pagamentos de comissão</p>
+        </div>
+        {payments.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">Nenhuma comissão paga ainda.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {payments.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {entry.from && entry.to
+                      ? `${formatISODate(entry.from)} a ${formatISODate(entry.to)}`
+                      : "Período não registrado"}{" "}
+                    <span className="font-normal text-slate-500">· {entry.saleCount} venda(s)</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Pago em {formatDateTime(entry.createdAt)} por {entry.createdByName}
+                  </p>
+                </div>
+                <span className="font-semibold text-slate-900">{formatBRL(entry.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -40,6 +40,10 @@ function SellerDetailCard({ row }: { row: RankingComissaoRow }) {
             {formatBRL(row.totalCommission)} ({formatPercent(row.percent)})
           </span>
         </div>
+        <div className="flex justify-between">
+          <span>Comissão já paga</span>
+          <span className="text-white">{formatBRL(row.paidCommission)}</span>
+        </div>
       </div>
 
       {tp && (
@@ -106,8 +110,32 @@ function SellerRow({ row, rank, period }: { row: RankingComissaoRow; rank: numbe
         </p>
       )}
 
+      <PaidStatusLine row={row} />
+
       {open && <SellerDetailCard row={row} />}
     </li>
+  );
+}
+
+function shortDate(iso: string) {
+  const [, month, day] = iso.split("-");
+  return `${day}/${month}`;
+}
+
+/**
+ * Aviso de comissão paga (pedido do dono: o Ranking mostra quando um período
+ * já foi pago). "Pago dd/mm–dd/mm" pra cada pagamento que toca o período, e
+ * quanto ainda falta pagar, se faltar.
+ */
+function PaidStatusLine({ row }: { row: RankingComissaoRow }) {
+  if (row.paidPeriods.length === 0 && row.paidCommission <= 0) return null;
+  const unpaid = Math.round((row.totalCommission - row.paidCommission) * 100) / 100;
+  const periods = row.paidPeriods.map((p) => `${shortDate(p.from)}–${shortDate(p.to)}`).join(", ");
+  return (
+    <p className="mt-1 font-mono text-[11px]">
+      <span className="text-[#39ff88]">✓ Pago{periods ? ` ${periods}` : ""}</span>
+      {unpaid > 0.005 && <span className="text-amber-300"> · falta {formatBRL(unpaid)}</span>}
+    </p>
   );
 }
 

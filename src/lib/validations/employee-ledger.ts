@@ -1,19 +1,35 @@
 import { z } from "zod";
 
-export const EMPLOYEE_LEDGER_TYPES = ["ADVANCE", "PURCHASE", "HOURLY_PAYMENT", "OTHER"] as const;
+/** Todos os tipos do livro — espelha o enum `EmployeeLedgerType` do banco. */
+export const EMPLOYEE_LEDGER_TYPES = [
+  "ADVANCE",
+  "PURCHASE",
+  "HOURLY_PAYMENT",
+  "OTHER",
+  "COMMISSION_PAYMENT",
+] as const;
 export type EmployeeLedgerTypeValue = (typeof EMPLOYEE_LEDGER_TYPES)[number];
+
+/**
+ * Tipos que dá pra lançar à mão em "Registrar lançamento". Pagamento de
+ * comissão fica de fora: o valor é sempre calculado pelo sistema, venda por
+ * venda (ver `commission-payment-service.ts`).
+ */
+export const MANUAL_EMPLOYEE_LEDGER_TYPES = ["ADVANCE", "PURCHASE", "HOURLY_PAYMENT", "OTHER"] as const;
+export type ManualEmployeeLedgerTypeValue = (typeof MANUAL_EMPLOYEE_LEDGER_TYPES)[number];
 
 export const EMPLOYEE_LEDGER_TYPE_LABELS: Record<EmployeeLedgerTypeValue, string> = {
   ADVANCE: "Adiantamento de salário",
   PURCHASE: "Compra de mercadoria",
   HOURLY_PAYMENT: "Pagamento por horas",
   OTHER: "Outro (lançamento livre)",
+  COMMISSION_PAYMENT: "Pagamento de comissão",
 };
 
 export const createEmployeeLedgerEntrySchema = z
   .object({
     userId: z.string().trim().min(1, "Selecione o colaborador"),
-    type: z.enum(EMPLOYEE_LEDGER_TYPES),
+    type: z.enum(MANUAL_EMPLOYEE_LEDGER_TYPES),
     amount: z.coerce.number().positive("Informe um valor maior que zero"),
     description: z.string().trim().optional().or(z.literal("")),
   })

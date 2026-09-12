@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import type { CreateEmployeeLedgerEntryInput } from "@/lib/validations/employee-ledger";
+import type {
+  CreateEmployeeLedgerEntryInput,
+  EmployeeLedgerTypeValue,
+} from "@/lib/validations/employee-ledger";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -64,10 +67,15 @@ export async function revertEmployeeLedgerEntryToPending(
 ): Promise<EmployeeLedgerResult> {
   const entry = await prisma.employeeLedgerEntry.findFirst({
     where: { id, tenantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, type: true },
   });
   if (!entry) return { ok: false, error: "Lançamento não encontrado." };
   if (entry.status === "PENDING") return { ok: true, id: entry.id };
+  // Pagamento de comissão não tem "pendente": as vendas continuariam marcadas
+  // como pagas. Pra desfazer, exclui o lançamento (libera as vendas de novo).
+  if (entry.type === "COMMISSION_PAYMENT") {
+    return { ok: false, error: "Pagamento de comissão não volta pra pendente — exclua o lançamento pra desfazer." };
+  }
 
   await prisma.employeeLedgerEntry.update({
     where: { id },
@@ -211,7 +219,7 @@ export async function getEmployeeDeductionsPending(
 
 export type PendingLedgerEntry = {
   id: string;
-  type: CreateEmployeeLedgerEntryInput["type"];
+  type: EmployeeLedgerTypeValue;
   amount: number;
   description: string | null;
   createdAt: Date;

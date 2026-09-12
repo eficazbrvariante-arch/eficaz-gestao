@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
+import {
+  canEditCommission,
+  canManageEmployeeLedger,
+  canManageSettings,
+  canPayCommission,
+} from "@/lib/permissions";
+import { registerCommissionPayment } from "@/modules/employees/commission-payment-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
   createEmployeeLedgerEntry,
@@ -137,6 +143,15 @@ export async function deleteEmployeeLedgerEntryAction(id: string) {
   if (!canManageEmployeeLedger(user.role)) {
     return { error: "Seu perfil não tem permissão para excluir lançamentos de colaboradores." };
   }
+  // Excluir pagamento de comissão libera as vendas pra serem pagas de novo —
+  // mesma trava de quem paga (só Admin).
+  const target = await prisma.employeeLedgerEntry.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { type: true },
+  });
+  if (target?.type === "COMMISSION_PAYMENT" && !canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode excluir um pagamento de comissão." };
+  }
 
   const result = await deleteEmployeeLedgerEntry(user.tenantId, id);
   if (!result.ok) return { error: result.error };
@@ -152,6 +167,8 @@ export async function deleteEmployeeLedgerEntryAction(id: string) {
   });
 
   revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
   return { success: "Lançamento excluído." };
 }
 
@@ -319,4 +336,91 @@ export async function registerHourlyPaymentAction(input: RegisterHourlyPaymentIn
   revalidatePath("/colaboradores");
   revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
   return { success: `Pagamento de ${result.amount.toFixed(2)} registrado.` };
+}
+
+/**
+ * "Pagar comissão" na tela do vendedor — só Admin (decisão do dono), valor
+ * sempre recalculado no servidor, já nasce pago (ver `registerCommissionPayment`).
+ */
+export async function registerCommissionPaymentAction(input: {
+  userId: string;
+  from: string;
+  to: string;
+}): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode pagar comissão." };
+  }
+  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  if (!input.userId || !isoDate.test(input.from) || !isoDate.test(input.to) || input.from > input.to) {
+    return { error: "Período inválido." };
+  }
+
+  const result = await registerCommissionPayment({ tenantId: user.tenantId, createdById: user.id }, input);
+  if (!result.ok) return { error: result.error };
+
+  const seller = await prisma.user.findUnique({ where: { id: input.userId }, select: { name: true } });
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "commission.payment",
+    entity: "User",
+    entityId: input.userId,
+    description: `Pagou ${formatBRL(result.amount)} de comissão a ${seller?.name ?? "colaborador"} (${result.saleCount} venda(s), ${input.from} a ${input.to}).`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath(`/colaboradores/${input.userId}/comissao`);
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
+  return { success: `Comissão de ${formatBRL(result.amount)} paga (${result.saleCount} venda(s)).` };
+}
+
+/**
+ * Arquivar/reativar colaborador direto em Colaboradores (pedido do dono:
+ * freelancer que não volta mais ou que só vem em temporada). Mesmo efeito do
+ * "Desativar" de Usuários — `active = false` bloqueia o login na hora (ver
+ * `requireUser`) e tira do painel e do Ranking; reativar devolve tudo como
+ * estava (histórico, comissão, lançamentos). Só ADMIN, igual a Usuários.
+ */
+export async function setEmployeeArchivedAction(
+  userId: string,
+  archived: boolean
+): Promise<{ error: string } | { success: string }> {
+  const actor = await requireUser();
+  if (!canManageSettings(actor.role)) {
+    return { error: "Só o Administrador pode arquivar ou reativar colaboradores." };
+  }
+  if (userId === actor.id) return { error: "Você não pode arquivar a própria conta." };
+
+  const target = await prisma.user.findFirst({
+    where: { id: userId, tenantId: actor.tenantId },
+    select: { id: true, name: true, role: true, active: true },
+  });
+  if (!target) return { error: "Colaborador não encontrado." };
+  if (target.role === "ADMIN") {
+    return { error: "Administrador não é arquivado por aqui — use Usuários." };
+  }
+  if (target.active === !archived) {
+    return { success: archived ? `${target.name} já está arquivado(a).` : `${target.name} já está ativo(a).` };
+  }
+
+  await prisma.user.update({ where: { id: target.id }, data: { active: !archived } });
+
+  await recordAudit({
+    tenantId: actor.tenantId,
+    userId: actor.id,
+    userName: actor.name ?? actor.email ?? "Usuário",
+    action: archived ? "user.deactivate" : "user.activate",
+    entity: "User",
+    entityId: target.id,
+    description: `${archived ? "Arquivou" : "Reativou"} o colaborador ${target.name} (em Colaboradores).`,
+  });
+
+  revalidatePath("/colaboradores");
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/usuarios");
+  revalidatePath("/pdv");
+  return { success: archived ? `${target.name} arquivado(a).` : `${target.name} reativado(a).` };
 }
