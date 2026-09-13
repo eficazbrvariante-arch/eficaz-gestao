@@ -23,7 +23,13 @@ import {
   mergeCustomers,
   nextEficazNumber,
 } from "@/modules/customers/customer-service";
-import { createFiadoEntry, markFiadoEntryPaid } from "@/modules/fiado/fiado-service";
+import {
+  createFiadoEntry,
+  receiveFiadoPayment,
+  revertFiadoPayment,
+  type FiadoReceiptMethod,
+} from "@/modules/fiado/fiado-service";
+import { formatBRL } from "@/lib/format";
 import { buildWhatsappLink } from "@/lib/whatsapp";
 import { recordAudit } from "@/modules/audit/audit-service";
 
@@ -236,18 +242,71 @@ export async function createFiadoEntryAction(customerId: string, input: CreateFi
   return { success: true as const };
 }
 
-/** Marca um lançamento de fiado como pago. Só ADMIN. */
-export async function markFiadoEntryPaidAction(customerId: string, entryId: string) {
+const FIADO_METHOD_LABELS: Record<FiadoReceiptMethod, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Cartão de débito",
+  CREDIT: "Cartão de crédito",
+};
+
+/**
+ * Recebe um fiado: data/horário gravados na hora do clique, forma de
+ * pagamento e caixa do dia (ver `receiveFiadoPayment`). Só ADMIN.
+ */
+export async function receiveFiadoPaymentAction(
+  customerId: string,
+  entryId: string,
+  method: FiadoReceiptMethod
+): Promise<{ error: string } | { success: string }> {
   const user = await requireUser();
   if (!canManageFiado(user.role)) {
     return { error: "Seu perfil não tem permissão para gerenciar fiado." };
   }
 
-  const result = await markFiadoEntryPaid(user.tenantId, entryId);
+  const result = await receiveFiadoPayment(user.tenantId, entryId, { method, receivedById: user.id });
   if (!result.ok) return { error: result.error };
 
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "fiado.receive",
+    entity: "FiadoEntry",
+    entityId: entryId,
+    description: `Recebeu fiado de ${formatBRL(result.amount)} em ${FIADO_METHOD_LABELS[method]}.`,
+  });
+
   revalidatePath(`/clientes/${customerId}`);
-  return { success: true as const };
+  revalidatePath("/caixa");
+  return { success: `Fiado de ${formatBRL(result.amount)} recebido em ${FIADO_METHOD_LABELS[method]}.` };
+}
+
+/** Volta um fiado recebido por engano pra pendente (só com o caixa do recebimento aberto). Só ADMIN. */
+export async function revertFiadoPaymentAction(
+  customerId: string,
+  entryId: string
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canManageFiado(user.role)) {
+    return { error: "Seu perfil não tem permissão para gerenciar fiado." };
+  }
+
+  const result = await revertFiadoPayment(user.tenantId, entryId);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "fiado.revert",
+    entity: "FiadoEntry",
+    entityId: entryId,
+    description: `Voltou para pendente um fiado de ${formatBRL(result.amount)} marcado como pago.`,
+  });
+
+  revalidatePath(`/clientes/${customerId}`);
+  revalidatePath("/caixa");
+  return { success: "Fiado voltou para pendente." };
 }
 
 /**

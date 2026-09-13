@@ -27,7 +27,12 @@ export type CashSummary = {
   repairPixReceipts: number;
   repairDebitReceipts: number;
   repairCreditReceipts: number;
-  /** Soma de vendas + assistência técnica, por forma de pagamento — para relatórios. */
+  /** Fiado recebido neste caixa, por forma de pagamento (ver `receiveFiadoPayment`). */
+  fiadoCashReceipts: number;
+  fiadoPixReceipts: number;
+  fiadoDebitReceipts: number;
+  fiadoCreditReceipts: number;
+  /** Soma de vendas + assistência técnica + fiado recebido, por forma de pagamento — para relatórios. */
   totalCash: number;
   totalPix: number;
   totalDebit: number;
@@ -60,7 +65,7 @@ export async function getCashSummary(
     where: { id: cashRegisterId, tenantId },
   });
 
-  const [payments, repairPayments, movements, salesCount] = await Promise.all([
+  const [payments, repairPayments, fiadoReceipts, movements, salesCount] = await Promise.all([
     prisma.payment.groupBy({
       by: ["method"],
       where: { sale: { cashRegisterId, status: "COMPLETED" } },
@@ -69,6 +74,12 @@ export async function getCashSummary(
     prisma.repairOrderPayment.groupBy({
       by: ["method"],
       where: { cashRegisterId },
+      _sum: { amount: true },
+    }),
+    // Fiado recebido neste caixa (ver `receiveFiadoPayment`) — mesma gaveta.
+    prisma.fiadoEntry.groupBy({
+      by: ["paymentMethod"],
+      where: { paidCashRegisterId: cashRegisterId, status: "PAID" },
       _sum: { amount: true },
     }),
     prisma.cashMovement.groupBy({
@@ -96,13 +107,20 @@ export async function getCashSummary(
   const repairDebitReceipts = sumByMethod(repairPayments, "DEBIT");
   const repairCreditReceipts = sumByMethod(repairPayments, "CREDIT");
 
+  const fiadoByMethod = (method: string) =>
+    Number(fiadoReceipts.find((f) => f.paymentMethod === method)?._sum.amount ?? 0);
+  const fiadoCashReceipts = fiadoByMethod("CASH");
+  const fiadoPixReceipts = fiadoByMethod("PIX");
+  const fiadoDebitReceipts = fiadoByMethod("DEBIT");
+  const fiadoCreditReceipts = fiadoByMethod("CREDIT");
+
   const supplies = sumByType("SUPPLY");
   const withdrawals = sumByType("WITHDRAWAL");
 
-  const totalCash = round2(cashSales + repairCashReceipts);
-  const totalPix = round2(pixSales + repairPixReceipts);
-  const totalDebit = round2(debitSales + repairDebitReceipts);
-  const totalCredit = round2(creditSales + repairCreditReceipts);
+  const totalCash = round2(cashSales + repairCashReceipts + fiadoCashReceipts);
+  const totalPix = round2(pixSales + repairPixReceipts + fiadoPixReceipts);
+  const totalDebit = round2(debitSales + repairDebitReceipts + fiadoDebitReceipts);
+  const totalCredit = round2(creditSales + repairCreditReceipts + fiadoCreditReceipts);
 
   return {
     openingAmount,
@@ -115,13 +133,19 @@ export async function getCashSummary(
     repairPixReceipts,
     repairDebitReceipts,
     repairCreditReceipts,
+    fiadoCashReceipts,
+    fiadoPixReceipts,
+    fiadoDebitReceipts,
+    fiadoCreditReceipts,
     totalCash,
     totalPix,
     totalDebit,
     totalCredit,
     supplies,
     withdrawals,
-    expectedInDrawer: round2(openingAmount + cashSales + repairCashReceipts + supplies - withdrawals),
+    expectedInDrawer: round2(
+      openingAmount + cashSales + repairCashReceipts + fiadoCashReceipts + supplies - withdrawals
+    ),
     grandTotal: round2(totalCash + totalPix + totalDebit + totalCredit),
     salesCount,
   };

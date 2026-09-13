@@ -57,25 +57,88 @@ export async function createFiadoEntry(
 export async function listFiadoEntriesByCustomer(tenantId: string, customerId: string) {
   return prisma.fiadoEntry.findMany({
     where: { tenantId, customerId },
-    include: { sale: { select: { number: true } }, createdBy: { select: { name: true } } },
+    include: {
+      sale: { select: { number: true } },
+      createdBy: { select: { name: true } },
+      paidBy: { select: { name: true } },
+      paidCashRegister: { select: { status: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export type MarkFiadoPaidResult = { ok: true } | { ok: false; error: string };
+/** Formas aceitas pra receber um fiado — as que entram no caixa do dia. */
+export const FIADO_RECEIPT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
+export type FiadoReceiptMethod = (typeof FIADO_RECEIPT_METHODS)[number];
 
-/** Marca um lançamento PENDING como pago. Não mexe em `creditBalance` — fiado e crédito de loja são saldos separados. */
-export async function markFiadoEntryPaid(tenantId: string, entryId: string): Promise<MarkFiadoPaidResult> {
+export type FiadoResult = { ok: true; amount: number } | { ok: false; error: string };
+
+/**
+ * Recebe um fiado pendente (pedido do dono): grava na hora data/horário do
+ * recebimento, forma de pagamento, quem recebeu e o caixa aberto em que o
+ * dinheiro entrou — o valor passa a somar nos totais daquele caixa (ver
+ * `getCashSummary`), senão o fechamento acusaria sobra na gaveta. Exige caixa
+ * aberto. Não mexe em `creditBalance` — fiado e crédito de loja são saldos
+ * separados.
+ */
+export async function receiveFiadoPayment(
+  tenantId: string,
+  entryId: string,
+  input: { method: FiadoReceiptMethod; receivedById: string }
+): Promise<FiadoResult> {
+  if (!FIADO_RECEIPT_METHODS.includes(input.method)) {
+    return { ok: false, error: "Escolha a forma de pagamento." };
+  }
+  const register = await prisma.cashRegister.findFirst({
+    where: { tenantId, status: "OPEN" },
+    select: { id: true },
+  });
+  if (!register) return { ok: false, error: "Abra o caixa antes de receber o fiado — o valor entra no caixa do dia." };
+
   const entry = await prisma.fiadoEntry.findFirst({
     where: { id: entryId, tenantId },
-    select: { id: true, status: true },
+    select: { amount: true },
   });
   if (!entry) return { ok: false, error: "Lançamento de fiado não encontrado." };
-  if (entry.status === "PAID") return { ok: false, error: "Esse lançamento já está pago." };
+
+  // `status: PENDING` no WHERE: dois cliques (ou dois caixas) nunca recebem o mesmo fiado duas vezes.
+  const updated = await prisma.fiadoEntry.updateMany({
+    where: { id: entryId, tenantId, status: "PENDING" },
+    data: {
+      status: "PAID",
+      paidAt: new Date(),
+      paymentMethod: input.method,
+      paidById: input.receivedById,
+      paidCashRegisterId: register.id,
+    },
+  });
+  if (updated.count === 0) return { ok: false, error: "Esse fiado já está pago." };
+  return { ok: true, amount: Number(entry.amount) };
+}
+
+/**
+ * Desfaz um recebimento marcado por engano — volta pra pendente e sai do
+ * caixa. Só enquanto o caixa em que entrou continua aberto: mexer num caixa
+ * já fechado mudaria um fechamento já conferido. Fiado pago antes do
+ * registro de caixa existir (sem caixa) pode voltar a qualquer momento.
+ */
+export async function revertFiadoPayment(tenantId: string, entryId: string): Promise<FiadoResult> {
+  const entry = await prisma.fiadoEntry.findFirst({
+    where: { id: entryId, tenantId },
+    select: { status: true, amount: true, paidCashRegister: { select: { status: true } } },
+  });
+  if (!entry) return { ok: false, error: "Lançamento de fiado não encontrado." };
+  if (entry.status !== "PAID") return { ok: false, error: "Esse fiado já está pendente." };
+  if (entry.paidCashRegister && entry.paidCashRegister.status !== "OPEN") {
+    return {
+      ok: false,
+      error: "O caixa em que esse pagamento entrou já foi fechado — não dá pra voltar pra pendente por aqui.",
+    };
+  }
 
   await prisma.fiadoEntry.update({
     where: { id: entryId },
-    data: { status: "PAID" },
+    data: { status: "PENDING", paidAt: null, paymentMethod: null, paidById: null, paidCashRegisterId: null },
   });
-  return { ok: true };
+  return { ok: true, amount: Number(entry.amount) };
 }

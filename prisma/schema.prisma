@@ -277,6 +277,7 @@ model User {
   repairOrderPayments          RepairOrderPayment[]
   creditMovements              CustomerCreditMovement[]
   fiadoEntriesCreated          FiadoEntry[]
+  fiadoEntriesPaid             FiadoEntry[]             @relation("FiadoPaidBy")
   employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
   employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
   commissionTierSetsCreated    CommissionTierSet[]      @relation("CommissionTierSetCreatedBy")
@@ -1088,6 +1089,7 @@ model CashRegister {
   movements           CashMovement[]
   sales               Sale[]
   repairOrderPayments RepairOrderPayment[]
+  fiadoReceipts       FiadoEntry[]
 
   @@index([tenantId, status])
   @@map("cash_registers")
@@ -1326,6 +1328,15 @@ model FiadoEntry {
   /// Preenchido quando o lançamento nasceu do acerto financeiro de uma OS
   /// (saldo resolvido como fiado na entrega); nulo nos demais casos.
   repairOrderId String?
+  /// Recebimento (preenchido ao marcar como pago pela ficha do cliente):
+  /// quando, como e quem recebeu, e em qual caixa entrou — o valor soma nos
+  /// totais daquele caixa por forma de pagamento (ver `getCashSummary`).
+  /// Fiado pago antes destes campos existirem tem só `paidAt` (= última
+  /// alteração, preenchido na migration).
+  paidAt             DateTime?
+  paymentMethod      PaymentMethod?
+  paidById           String?
+  paidCashRegisterId String?
   createdById   String
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -1335,9 +1346,12 @@ model FiadoEntry {
   sale        Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
   repairOrder RepairOrder? @relation(fields: [repairOrderId], references: [id], onDelete: SetNull)
   createdBy   User         @relation(fields: [createdById], references: [id])
+  paidBy           User?         @relation("FiadoPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+  paidCashRegister CashRegister? @relation(fields: [paidCashRegisterId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, status, dueDate])
+  @@index([paidCashRegisterId])
   @@map("fiado_entries")
 }
 

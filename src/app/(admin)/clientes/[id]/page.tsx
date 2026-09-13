@@ -72,6 +72,11 @@ export default async function FichaClientePage({
     createdAt: entry.createdAt,
     saleId: entry.saleId,
     saleNumber: entry.sale?.number ?? null,
+    paidAt: entry.paidAt,
+    paymentMethod: entry.paymentMethod,
+    paidByName: entry.paidBy?.name ?? null,
+    // Voltar pra pendente só com o caixa do recebimento ainda aberto (ou sem caixa — fiado antigo).
+    canRevert: entry.status === "PAID" && (!entry.paidCashRegister || entry.paidCashRegister.status === "OPEN"),
   }));
 
   const CREDIT_MOVEMENT_LABELS: Record<string, string> = {

@@ -15,6 +15,8 @@ export type AuditAction =
   | "sale.item_defect"
   | "customer.merge"
   | "customer.credit_adjust"
+  | "fiado.receive"
+  | "fiado.revert"
   | "order.status_change"
   | "order.cancel"
   | "stock.adjust"
@@ -70,6 +72,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.item_defect": "Troca por defeito registrada",
   "customer.merge": "Cadastros de cliente mesclados",
   "customer.credit_adjust": "Crédito de loja ajustado manualmente pelo Admin",
+  "fiado.receive": "Fiado recebido",
+  "fiado.revert": "Fiado voltou para pendente",
   "order.status_change": "Status de pedido alterado",
   "order.cancel": "Pedido cancelado",
   "stock.adjust": "Estoque ajustado",

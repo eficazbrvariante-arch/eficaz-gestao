@@ -6,7 +6,8 @@ import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import {
   createFiadoEntryAction,
   grantStoreCreditAction,
-  markFiadoEntryPaidAction,
+  receiveFiadoPaymentAction,
+  revertFiadoPaymentAction,
   zeroStoreCreditAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,23 @@ export type FiadoEntryRow = {
   createdAt: Date;
   saleId: string | null;
   saleNumber: number | null;
+  /** Quando foi recebido — gravado na hora do clique em "Receber" (fiado antigo: última alteração). */
+  paidAt: Date | null;
+  /** `null` em fiado pago antes da forma de pagamento ser registrada. */
+  paymentMethod: string | null;
+  paidByName: string | null;
+  /** Só enquanto o caixa em que o pagamento entrou continua aberto. */
+  canRevert: boolean;
 };
+
+const METHOD_LABEL: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  DEBIT: "Débito",
+  CREDIT: "Crédito",
+};
+
+const RECEIPT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
 
 const STATUS_BADGE: Record<string, string> = {
   PAID: "bg-emerald-50 text-emerald-700",
@@ -61,6 +78,10 @@ export function FiadoPanel({
 
   const [zeroReason, setZeroReason] = useState("");
 
+  // Recebimento: a linha abre a escolha da forma de pagamento; a data/hora é do servidor, no clique.
+  const [receivingId, setReceivingId] = useState<string | null>(null);
+  const [receiveMethod, setReceiveMethod] = useState<(typeof RECEIPT_METHODS)[number] | "">("");
+
   function handleCreateEntry() {
     setFeedback(undefined);
     startTransition(async () => {
@@ -76,11 +97,31 @@ export function FiadoPanel({
     });
   }
 
-  function handleMarkPaid(entryId: string) {
+  function handleReceive(entryId: string) {
+    if (!receiveMethod) {
+      setFeedback({ type: "error", message: "Escolha a forma de pagamento." });
+      return;
+    }
     setFeedback(undefined);
     startTransition(async () => {
-      const result = await markFiadoEntryPaidAction(customerId, entryId);
-      if (result?.error) setFeedback({ type: "error", message: result.error });
+      const result = await receiveFiadoPaymentAction(customerId, entryId, receiveMethod);
+      setFeedback(
+        "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
+      );
+      if (!("error" in result)) {
+        setReceivingId(null);
+        setReceiveMethod("");
+      }
+    });
+  }
+
+  function handleRevert(entryId: string) {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await revertFiadoPaymentAction(customerId, entryId);
+      setFeedback(
+        "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
+      );
     });
   }
 
@@ -145,6 +186,14 @@ export function FiadoPanel({
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[statusKey]}`}>
                       {STATUS_LABEL[statusKey]}
                     </span>
+                    {entry.status === "PAID" && entry.paidAt && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        em {formatDateTime(entry.paidAt)}
+                        {" · "}
+                        {entry.paymentMethod ? METHOD_LABEL[entry.paymentMethod] ?? entry.paymentMethod : "forma não registrada"}
+                        {entry.paidByName ? ` · por ${entry.paidByName}` : ""}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-slate-500">{entry.note ?? "-"}</td>
                   <td className="px-3 py-2 text-slate-500">
@@ -157,14 +206,62 @@ export function FiadoPanel({
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {entry.status === "PENDING" && (
+                    {entry.status === "PENDING" && receivingId !== entry.id && (
+                      <Button
+                        type="button"
+                        fullWidth={false}
+                        disabled={isPending}
+                        onClick={() => {
+                          setFeedback(undefined);
+                          setReceiveMethod("");
+                          setReceivingId(entry.id);
+                        }}
+                        className="px-3 py-1 text-xs"
+                      >
+                        Receber pagamento
+                      </Button>
+                    )}
+                    {entry.status === "PENDING" && receivingId === entry.id && (
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <select
+                          aria-label="Forma de pagamento"
+                          value={receiveMethod}
+                          onChange={(e) => setReceiveMethod(e.target.value as (typeof RECEIPT_METHODS)[number])}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs"
+                        >
+                          <option value="">Forma de pagamento…</option>
+                          {RECEIPT_METHODS.map((method) => (
+                            <option key={method} value={method}>
+                              {METHOD_LABEL[method]}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          fullWidth={false}
+                          disabled={isPending || !receiveMethod}
+                          onClick={() => handleReceive(entry.id)}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Confirmar pago
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setReceivingId(null)}
+                          className="text-xs text-slate-500 hover:underline"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+                    {entry.status === "PAID" && entry.canRevert && (
                       <button
                         type="button"
                         disabled={isPending}
-                        onClick={() => handleMarkPaid(entry.id)}
-                        className="text-xs font-medium text-slate-700 hover:underline disabled:opacity-50"
+                        onClick={() => handleRevert(entry.id)}
+                        className="text-xs text-slate-500 hover:underline disabled:opacity-50"
                       >
-                        Marcar como pago
+                        Voltar para pendente
                       </button>
                     )}
                   </td>
