@@ -3,6 +3,7 @@ import {
   canManageConvenios,
   canManageCreditoEficaz,
   canManageEmployeeLedger,
+  canManageFiado,
   canManageFlashDeals,
   canManageProducts,
   canManageProtecaoEficaz,
@@ -82,6 +83,7 @@ export const NAV_ITEMS: NavItem[] = [
     available: true,
     visibleTo: canManageCreditoEficaz,
   },
+  { label: "Fiado", href: "/fiado", available: true, visibleTo: canManageFiado },
   { label: "Dispositivos", href: "/dispositivos", available: true, visibleTo: canManageSettings },
   {
     label: "Plano e uso",

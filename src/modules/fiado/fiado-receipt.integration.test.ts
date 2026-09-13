@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { getCashSummary } from "@/modules/cash/cash-service";
 import { createFiadoEntry, receiveFiadoPayment, revertFiadoPayment } from "./fiado-service";
+import { getFiadoOverview } from "./fiado-overview-service";
 
 const SUBDOMAIN = "qa-fiado-receipt-test";
 
@@ -93,5 +94,44 @@ describe("Recebimento de fiado", () => {
     await receiveFiadoPayment(tenantId, entry.id, { method: "CASH", receivedById: adminId });
     await prisma.cashRegister.update({ where: { id: registerId }, data: { status: "CLOSED", closedAt: new Date() } });
     expect((await revertFiadoPayment(tenantId, entry.id)).ok).toBe(false);
+  });
+});
+
+describe("Painel de controle do fiado", () => {
+  it("5) soma em aberto, vencido e recebido por cliente, sem misturar clientes", async () => {
+    const other = await prisma.customer.create({ data: { tenantId, name: "Cliente QA Fiado 2" } });
+    await prisma.cashRegister.create({ data: { tenantId, openedById: adminId, openingAmount: 0 } });
+
+    const overdue = await createFiadoEntry(tenantId, {
+      customerId: other.id,
+      amount: 30,
+      dueDate: "2026-01-10",
+      createdById: adminId,
+    });
+    const upcoming = await createFiadoEntry(tenantId, {
+      customerId: other.id,
+      amount: 20,
+      dueDate: "2099-12-31",
+      createdById: adminId,
+    });
+    const paid = await createFiadoEntry(tenantId, {
+      customerId: other.id,
+      amount: 50,
+      dueDate: "2099-12-31",
+      createdById: adminId,
+    });
+    expect((await receiveFiadoPayment(tenantId, paid.id, { method: "PIX", receivedById: adminId })).ok).toBe(true);
+
+    const overview = await getFiadoOverview(tenantId);
+    const row = overview.customers.find((c) => c.customerId === other.id)!;
+    expect(row.openAmount).toBe(50);
+    expect(row.openCount).toBe(2);
+    expect(row.overdueAmount).toBe(30);
+    expect(row.paidAmount).toBe(50);
+    expect(row.lastPaymentMethod).toBe("PIX");
+    expect(overview.totalOverdue).toBeGreaterThanOrEqual(30);
+    expect(overview.receivedThisMonth).toBeGreaterThanOrEqual(50);
+    expect(overview.recent.some((e) => e.id === overdue.id && e.overdue)).toBe(true);
+    expect(overview.recent.some((e) => e.id === upcoming.id && !e.overdue)).toBe(true);
   });
 });
