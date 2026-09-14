@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import {
   canCancelRepairOrderWithoutBilling,
   canEnterRepairOrderCostOnCreate,
+  canEditRepairOrderPaymentMethod,
   canGrantRepairOrderCourtesy,
   canManageFiado,
   canManageRepairOrderCostAnytime,
@@ -20,7 +21,9 @@ import {
 import {
   cancelRepairOrderWithoutBilling,
   deliverRepairOrder,
+  editRepairOrderPaymentMethod,
   grantRepairOrderCourtesy,
+  type EditableRepairPaymentMethod,
   receiveRepairOrderPayment,
 } from "@/modules/repairs/repair-payment-service";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
@@ -355,4 +358,34 @@ export async function ensureRepairOrderReceiptAction(id: string) {
   if (!result.ok) return { error: result.error };
 
   return { success: true as const, path: `/comprovante/${id}` };
+}
+
+/** Corrige a forma de pagamento (não o valor) de um pagamento da OS. Só ADMIN, qualquer OS. */
+export async function editRepairOrderPaymentMethodAction(
+  id: string,
+  paymentId: string,
+  method: EditableRepairPaymentMethod
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canEditRepairOrderPaymentMethod(user.role)) {
+    return { error: "Só o Administrador pode corrigir a forma de pagamento." };
+  }
+
+  const result = await editRepairOrderPaymentMethod(user.tenantId, id, paymentId, method);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "repair.payment_method_edit",
+    entity: "RepairOrder",
+    entityId: id,
+    description: `Corrigiu a forma de pagamento na OS #${result.orderNumber}: ${result.amount.toFixed(2)} de ${result.before} para ${result.after}.`,
+  });
+
+  revalidatePath(`/assistencia-tecnica/${id}`);
+  revalidatePath("/assistencia-tecnica");
+  revalidatePath("/caixa");
+  return { success: `Forma de pagamento corrigida para ${result.after}.` };
 }

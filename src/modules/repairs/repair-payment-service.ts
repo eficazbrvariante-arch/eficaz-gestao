@@ -567,3 +567,56 @@ export async function cancelRepairOrderWithoutBilling(
     return { ok: false, error: "Não foi possível cancelar a ordem de serviço. Tente novamente." };
   }
 }
+
+/** Formas que dá pra trocar entre si numa correção — mesmo critério de
+ *  `editSalePaymentMethods` (vendas): fiado, crédito de loja e Crédito Eficaz
+ *  têm dívida/saldo por trás que uma troca simples não desfaria. */
+export const EDITABLE_REPAIR_PAYMENT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
+export type EditableRepairPaymentMethod = (typeof EDITABLE_REPAIR_PAYMENT_METHODS)[number];
+
+export type EditRepairPaymentMethodResult =
+  | { ok: true; before: string; after: string; amount: number; orderNumber: number }
+  | { ok: false; error: string };
+
+/**
+ * Corrige a FORMA de um pagamento já registrado numa OS (pedido do dono, só
+ * Admin, em qualquer OS) — nunca o valor: o total recebido não muda, só como
+ * ele é classificado (e em qual total do caixa ele soma). Fica no histórico
+ * da OS e o comprovante em PDF é regerado na próxima vez.
+ */
+export async function editRepairOrderPaymentMethod(
+  tenantId: string,
+  repairOrderId: string,
+  paymentId: string,
+  newMethod: EditableRepairPaymentMethod
+): Promise<EditRepairPaymentMethodResult> {
+  if (!EDITABLE_REPAIR_PAYMENT_METHODS.includes(newMethod)) {
+    return { ok: false, error: "Forma de pagamento inválida para correção." };
+  }
+  const payment = await prisma.repairOrderPayment.findFirst({
+    where: { id: paymentId, repairOrderId, tenantId },
+    select: { id: true, method: true, amount: true, repairOrder: { select: { number: true } } },
+  });
+  if (!payment) return { ok: false, error: "Pagamento não encontrado nesta OS." };
+  if (!(EDITABLE_REPAIR_PAYMENT_METHODS as readonly string[]).includes(payment.method)) {
+    return {
+      ok: false,
+      error: `O pagamento em "${PAYMENT_METHOD_LABELS[payment.method]}" tem efeito no cadastro do cliente e não pode ser corrigido por aqui.`,
+    };
+  }
+  if (payment.method === newMethod) return { ok: false, error: "Essa já é a forma de pagamento registrada." };
+
+  const before = PAYMENT_METHOD_LABELS[payment.method];
+  const after = PAYMENT_METHOD_LABELS[newMethod];
+  await prisma.$transaction([
+    prisma.repairOrderPayment.update({ where: { id: payment.id }, data: { method: newMethod } }),
+    prisma.repairOrder.update({ where: { id: repairOrderId }, data: { receiptPdfUrl: null } }),
+    prisma.repairOrderEvent.create({
+      data: {
+        repairOrderId,
+        message: `Forma de pagamento corrigida: ${formatBRL(Number(payment.amount))} de ${before} para ${after}`,
+      },
+    }),
+  ]);
+  return { ok: true, before, after, amount: Number(payment.amount), orderNumber: payment.repairOrder.number };
+}

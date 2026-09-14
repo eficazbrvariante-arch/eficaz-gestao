@@ -24,6 +24,7 @@ import {
   deliverRepairOrder,
   grantRepairOrderCourtesy,
   cancelRepairOrderWithoutBilling,
+  editRepairOrderPaymentMethod,
   type RepairPaymentContext,
 } from "@/modules/repairs/repair-payment-service";
 import { updateRepairOrder } from "@/modules/repairs/repair-order-service";
@@ -1152,3 +1153,37 @@ async function newApprovedCustomerHelper(name: string, limit: number, pin: strin
 function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
+
+describe("OS: corrigir forma de pagamento", () => {
+  const ctx = (): RepairPaymentContext => ({ tenantId, userId: adminId, cashRegisterId, allowFiado: true });
+
+  it("34) troca PIX → Dinheiro sem mudar o valor; recusa forma com dívida por trás e a mesma forma", async () => {
+    const buyerId = await newApprovedCustomerHelper("Cliente QA OS Corrigir Forma", 1000, "1234");
+    const order = await createBillableRepairOrder(buyerId, adminId, 150);
+
+    expect((await receiveRepairOrderPayment(ctx(), order.id, [{ method: "PIX", amount: 100 }], {})).ok).toBe(true);
+    const pix = await prisma.repairOrderPayment.findFirstOrThrow({ where: { repairOrderId: order.id, method: "PIX" } });
+
+    const edited = await editRepairOrderPaymentMethod(tenantId, order.id, pix.id, "CASH");
+    expect(edited.ok).toBe(true);
+    const after = await prisma.repairOrderPayment.findUniqueOrThrow({ where: { id: pix.id } });
+    expect(after.method).toBe("CASH");
+    expect(Number(after.amount)).toBe(100);
+    const events = await prisma.repairOrderEvent.findMany({ where: { repairOrderId: order.id } });
+    expect(events.some((e) => e.message.includes("Forma de pagamento corrigida"))).toBe(true);
+
+    expect((await editRepairOrderPaymentMethod(tenantId, order.id, pix.id, "CASH")).ok).toBe(false);
+
+    expect(
+      (
+        await receiveRepairOrderPayment(ctx(), order.id, [{ method: "CREDITO_EFICAZ", amount: 50 }], {
+          creditoEficazPin: "1234",
+        })
+      ).ok
+    ).toBe(true);
+    const ce = await prisma.repairOrderPayment.findFirstOrThrow({
+      where: { repairOrderId: order.id, method: "CREDITO_EFICAZ" },
+    });
+    expect((await editRepairOrderPaymentMethod(tenantId, order.id, ce.id, "PIX")).ok).toBe(false);
+  });
+});

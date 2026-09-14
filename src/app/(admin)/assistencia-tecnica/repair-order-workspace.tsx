@@ -32,6 +32,7 @@ import {
   cancelRepairOrderWithoutBillingAction,
   createRepairOrderAction,
   deliverRepairOrderAction,
+  editRepairOrderPaymentMethodAction,
   ensureRepairOrderReceiptAction,
   grantRepairOrderCourtesyAction,
   receiveRepairOrderPaymentAction,
@@ -171,6 +172,7 @@ export function RepairOrderWorkspace({
   creditoEficazMaxInstallments = 3,
   creditoEficazSurchargePercent = 0,
   creditoEficazFinancing = null,
+  canEditPaymentMethod = false,
 }: {
   defaults: RepairOrderDefaults;
   meta?: RepairOrderMeta;
@@ -197,6 +199,8 @@ export function RepairOrderWorkspace({
   creditoEficazSurchargePercent?: number;
   /** Presente só quando esta OS já tem um financiamento de Crédito Eficaz registrado. */
   creditoEficazFinancing?: CreditoEficazFinancingView | null;
+  /** Só ADMIN — corrigir a forma (não o valor) de um pagamento já registrado. */
+  canEditPaymentMethod?: boolean;
 }) {
   const router = useRouter();
   const isEditing = Boolean(meta);
@@ -1147,11 +1151,14 @@ export function RepairOrderWorkspace({
                   {financials.payments.length > 0 && (
                     <div className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
                       {financials.payments.map((p) => (
-                        <div key={p.id} className="flex justify-between gap-2">
-                          <span className="truncate">
-                            {p.createdAt} — {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
-                          </span>
-                          <span className="shrink-0 font-medium text-slate-700">{formatBRL(p.amount)}</span>
+                        <div key={p.id} className="space-y-1">
+                          <div className="flex justify-between gap-2">
+                            <span className="truncate">
+                              {p.createdAt} — {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                            </span>
+                            <span className="shrink-0 font-medium text-slate-700">{formatBRL(p.amount)}</span>
+                          </div>
+                          {canEditPaymentMethod && meta && <PaymentMethodEditor repairOrderId={meta.id} payment={p} />}
                         </div>
                       ))}
                     </div>
@@ -1582,5 +1589,95 @@ function CreditoEficazSurchargeNote({
         ` em ${installments.length}x de ${formatBRL(first)}${last !== first ? ` (a última de ${formatBRL(last)})` : ""}`}
       . Confirme com o cliente antes de pedir o PIN.
     </p>
+  );
+}
+
+const EDITABLE_PAYMENT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
+
+/**
+ * "Corrigir" a forma de um pagamento já registrado (só Admin, qualquer OS —
+ * ver `editRepairOrderPaymentMethod`). Só a forma muda, nunca o valor.
+ */
+function PaymentMethodEditor({
+  repairOrderId,
+  payment,
+}: {
+  repairOrderId: string;
+  payment: { id: string; method: string; amount: number; createdAt: string };
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [method, setMethod] = useState(payment.method);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string }>();
+  const [isPending, startTransition] = useTransition();
+
+  if (!(EDITABLE_PAYMENT_METHODS as readonly string[]).includes(payment.method)) return null;
+
+  function save() {
+    setMessage(undefined);
+    startTransition(async () => {
+      const result = await editRepairOrderPaymentMethodAction(
+        repairOrderId,
+        payment.id,
+        method as (typeof EDITABLE_PAYMENT_METHODS)[number]
+      );
+      if ("error" in result) {
+        setMessage({ type: "error", text: result.error });
+        return;
+      }
+      setMessage({ type: "success", text: result.success });
+      setEditing(false);
+      router.refresh();
+    });
+  }
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setMethod(payment.method);
+            setMessage(undefined);
+            setEditing(true);
+          }}
+          className="text-[11px] font-medium text-slate-600 underline hover:text-slate-900"
+        >
+          Corrigir forma
+        </button>
+        {message && (
+          <span className={message.type === "error" ? "text-red-600" : "text-emerald-700"}>{message.text}</span>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Nova forma de pagamento"
+        value={method}
+        onChange={(e) => setMethod(e.target.value)}
+        className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+      >
+        {EDITABLE_PAYMENT_METHODS.map((option) => (
+          <option key={option} value={option}>
+            {PAYMENT_METHOD_LABELS[option]}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={isPending || method === payment.method}
+        onClick={save}
+        className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white disabled:opacity-40"
+      >
+        {isPending ? "Salvando..." : "Salvar"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-slate-500 hover:underline">
+        Cancelar
+      </button>
+      {message?.type === "error" && <span className="text-red-600">{message.text}</span>}
+    </span>
   );
 }
