@@ -175,7 +175,7 @@ export function PdvScreen({
   canDiscountFreely: boolean;
   /** Só ADMIN — nem Gerente vende fiado (ver `canManageFiado`). */
   canFiado: boolean;
-  /** Só ADMIN/Gerente — registrar sangria/suprimento sem sair do PDV (ver `canMoveCash`). */
+  /** Sangria/suprimento sem sair do PDV — todo mundo que vende (ver `canRecordCashMovement`), sempre com "quem está fazendo" e cupom/selfie na sangria. */
   canMoveCash: boolean;
   /** Config da empresa (Configurações > PDV: impressão) — dispara a impressão
    *  do cupom sozinha ao finalizar, sem sair do PDV (ver `printSaleId`). */

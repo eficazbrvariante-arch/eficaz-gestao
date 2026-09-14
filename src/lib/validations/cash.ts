@@ -68,12 +68,24 @@ export const editCashRegisterSchema = z.object({
 export type EditCashRegisterInput = z.infer<typeof editCashRegisterSchema>;
 export type EditCashRegisterFormValues = z.input<typeof editCashRegisterSchema>;
 
-export const cashMovementSchema = z.object({
+/** Campos do formulário de sangria/suprimento, sem a regra cruzada de cupom/selfie. */
+export const cashMovementBaseSchema = z.object({
   type: z.enum(["WITHDRAWAL", "SUPPLY"]),
   amount: z.coerce.number().positive("Informe um valor maior que zero"),
   description: z.string().trim().min(3, "Descreva o motivo"),
-  /** Foto da nota da compra (sangria) ou do depósito (suprimento) — opcional. */
+  /** Quem está fazendo a movimentação (não necessariamente quem está logado). */
+  performedById: z.string().trim().min(1, "Selecione quem está fazendo a movimentação"),
+  /** Foto do cupom/nota da compra (sangria) ou do depósito (suprimento). */
   receiptPhotoUrl: z.string().url().optional().or(z.literal("")),
+  /** Selfie de quem fez a sangria, quando não há cupom. */
+  selfieUrl: z.string().url().optional().or(z.literal("")),
 });
+
+export const cashMovementSchema = cashMovementBaseSchema
+  // Pedido do dono (14/09/2026): toda sangria exige o cupom; sem cupom, selfie.
+  .refine((data) => data.type !== "WITHDRAWAL" || !!data.receiptPhotoUrl || !!data.selfieUrl, {
+    message: "Na sangria, anexe a foto do cupom — ou, sem cupom, tire uma selfie.",
+    path: ["receiptPhotoUrl"],
+  });
 export type CashMovementInput = z.infer<typeof cashMovementSchema>;
 export type CashMovementFormValues = z.input<typeof cashMovementSchema>;

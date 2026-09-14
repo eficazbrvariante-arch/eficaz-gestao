@@ -92,7 +92,7 @@ export default async function CaixaPage() {
     getCashSummary(user.tenantId, register.id),
     prisma.cashMovement.findMany({
       where: { cashRegisterId: register.id },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true } }, performedBy: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     }),
   ]);
@@ -206,19 +206,32 @@ export default async function CaixaPage() {
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-900">{MOVEMENT_LABELS[m.type]}</div>
                       <div className="text-xs text-slate-400">
-                        {m.description} · {m.user.name}
+                        {m.description} · por {m.performedBy?.name ?? m.user.name}
+                        {m.performedBy && m.performedBy.name !== m.user.name && ` (registrado por ${m.user.name})`}
                       </div>
                       <div className="text-xs text-slate-400">{formatDateTime(m.createdAt)}</div>
-                      {m.receiptPhotoUrl && (
-                        <a
-                          href={m.receiptPhotoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-block text-xs font-medium text-slate-600 underline hover:text-slate-900"
-                        >
-                          Ver foto do comprovante
-                        </a>
-                      )}
+                      <div className="mt-1 flex gap-3">
+                        {m.receiptPhotoUrl && (
+                          <a
+                            href={m.receiptPhotoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-slate-600 underline hover:text-slate-900"
+                          >
+                            Ver cupom
+                          </a>
+                        )}
+                        {m.selfieUrl && (
+                          <a
+                            href={m.selfieUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-slate-600 underline hover:text-slate-900"
+                          >
+                            Ver selfie (sem cupom)
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td
                       className={

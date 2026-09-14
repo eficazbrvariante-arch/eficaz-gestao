@@ -262,6 +262,7 @@ model User {
   tenant                       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   stockMovements               StockMovement[]
   cashMovements                CashMovement[]
+  cashMovementsPerformed       CashMovement[]           @relation("CashMovementPerformedBy")
   registersOpened              CashRegister[]           @relation("CashRegisterOpenedBy")
   registersClosed              CashRegister[]           @relation("CashRegisterClosedBy")
   registersSubmittedForReview  CashRegister[]           @relation("CashRegisterReviewSubmittedBy")
@@ -1110,12 +1111,20 @@ model CashMovement {
   /// Foto da nota/comprovante da compra paga com o dinheiro do caixa
   /// (sangria) ou do depósito de origem do suprimento — opcional.
   receiptPhotoUrl String?
+  /// Quem executou a movimentação (escolhido no formulário) — pode ser
+  /// diferente de `userId`, que é quem estava logado. Obrigatório nas novas
+  /// (pedido do dono, 14/09/2026); nulo nas antigas.
+  performedById  String?
+  /// Selfie de quem fez a sangria SEM cupom — a sangria exige cupom OU
+  /// selfie (ver `createCashMovementAction`).
+  selfieUrl      String?
   userId         String
   createdAt      DateTime         @default(now())
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id])
+  performedBy  User?        @relation("CashMovementPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
 
   @@map("cash_movements")
 }

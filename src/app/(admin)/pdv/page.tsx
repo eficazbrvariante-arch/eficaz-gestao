@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Viewport } from "next";
 import { requireTenant } from "@/lib/session";
-import { canApplyDiscount, canDiscountFreely, canManageFiado, canMoveCash, canSell } from "@/lib/permissions";
+import { canApplyDiscount, canDiscountFreely, canManageFiado, canRecordCashMovement, canSell } from "@/lib/permissions";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { getBirthdayAlerts } from "@/modules/customers/birthday-service";
 import { countPendingConvenioMembers } from "@/modules/convenios/convenio-member-review-service";
@@ -123,7 +123,7 @@ export default async function PdvPage() {
         canDiscount={canApplyDiscount(user.role)}
         canDiscountFreely={canDiscountFreely(user.role)}
         canFiado={canManageFiado(user.role)}
-        canMoveCash={canMoveCash(user.role)}
+        canMoveCash={canRecordCashMovement(user.role)}
         autoPrintReceipt={tenant.autoPrintReceipt}
         creditoEficazSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
         pendingConvenioSignups={pendingConvenioSignups}

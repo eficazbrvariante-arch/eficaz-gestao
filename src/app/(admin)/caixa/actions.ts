@@ -9,7 +9,7 @@ import {
   canEditClosedCashRegister,
   canFinalizeCashRegisterReview,
   canManageCashRegister,
-  canMoveCash,
+  canRecordCashMovement,
 } from "@/lib/permissions";
 import {
   editClosedCashRegister,
@@ -176,12 +176,18 @@ export async function editCashRegisterAction(input: EditCashRegisterInput) {
 
 export async function createCashMovementAction(input: CashMovementInput) {
   const user = await requireUser();
-  if (!canMoveCash(user.role)) {
+  if (!canRecordCashMovement(user.role)) {
     return { error: "Seu perfil não tem permissão para registrar sangria ou suprimento." };
   }
 
   const parsed = cashMovementSchema.safeParse(input);
-  if (!parsed.success) return { error: "Dados inválidos." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const performer = await prisma.user.findFirst({
+    where: { id: parsed.data.performedById, tenantId: user.tenantId, active: true },
+    select: { id: true },
+  });
+  if (!performer) return { error: "Selecione quem está fazendo a movimentação." };
 
   const register = await getOpenCashRegister(user.tenantId);
   if (!register) return { error: "Abra o caixa antes de registrar movimentações." };
@@ -203,6 +209,8 @@ export async function createCashMovementAction(input: CashMovementInput) {
       amount: parsed.data.amount,
       description: parsed.data.description,
       receiptPhotoUrl: parsed.data.receiptPhotoUrl || null,
+      selfieUrl: parsed.data.selfieUrl || null,
+      performedById: performer.id,
       userId: user.id,
     },
   });

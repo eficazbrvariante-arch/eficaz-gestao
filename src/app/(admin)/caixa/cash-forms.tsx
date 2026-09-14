@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,7 +9,7 @@ import {
   closeCashSchema,
   submitCashForReviewSchema,
   finalizeCashReviewSchema,
-  cashMovementSchema,
+  cashMovementBaseSchema,
   type OpenCashInput,
   type OpenCashFormValues,
   type CloseCashInput,
@@ -36,6 +36,8 @@ import { FieldError } from "@/components/ui/field-error";
 import { FormBanner } from "@/components/ui/form-banner";
 import { MultiImageUploadField } from "@/components/ui/multi-image-upload-field";
 import { ImageUploadField } from "@/components/ui/image-upload-field";
+import { SelfieCaptureField } from "@/components/ui/selfie-capture-field";
+import { listEmployeesAction, type EmployeeOption } from "../colaboradores/actions";
 import { formatBRL } from "@/lib/format";
 import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
 import {
@@ -513,10 +515,25 @@ export function ClosedRegisterPanel({
   );
 }
 
+const MOVEMENT_FORM_FIELDS = cashMovementBaseSchema.omit({ receiptPhotoUrl: true, selfieUrl: true });
+
+/**
+ * Sangria/suprimento — o mesmo formulário no PDV (qualquer um que vende) e em
+ * `/caixa`. Pedido do dono (14/09/2026): sempre "quem está fazendo"; na
+ * sangria, foto do cupom obrigatória — sem cupom, selfie ao vivo no lugar.
+ * O servidor revalida tudo (`cashMovementSchema`).
+ */
 export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
   const [receiptPhotoUrl, setReceiptPhotoUrl] = useState("");
+  const [selfieUrl, setSelfieUrl] = useState("");
+  const [noReceipt, setNoReceipt] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+
+  useEffect(() => {
+    listEmployeesAction().then(setEmployees);
+  }, []);
 
   const {
     register,
@@ -524,26 +541,46 @@ export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {})
     control,
     reset,
     formState: { errors },
-  } = useForm<Omit<CashMovementFormValues, "receiptPhotoUrl">, unknown, Omit<CashMovementInput, "receiptPhotoUrl">>({
-    resolver: zodResolver(cashMovementSchema.omit({ receiptPhotoUrl: true })),
-    defaultValues: { type: "WITHDRAWAL" },
+  } = useForm<
+    Omit<CashMovementFormValues, "receiptPhotoUrl" | "selfieUrl">,
+    unknown,
+    Omit<CashMovementInput, "receiptPhotoUrl" | "selfieUrl">
+  >({
+    resolver: zodResolver(MOVEMENT_FORM_FIELDS),
+    defaultValues: { type: "WITHDRAWAL", performedById: "" },
   });
 
   // `useWatch` (não `watch()` cru) — ver o comentário equivalente em
   // `FinalizeReviewForm`: `watch()` direto no corpo do componente não é
   // seguro combinado com memoização do React Compiler.
   const type = useWatch({ control, name: "type" });
+  const isWithdrawal = type === "WITHDRAWAL";
 
-  const onSubmit = (data: Omit<CashMovementInput, "receiptPhotoUrl">) => {
+  const onSubmit = (data: Omit<CashMovementInput, "receiptPhotoUrl" | "selfieUrl">) => {
     setFeedback(undefined);
+    if (isWithdrawal && !receiptPhotoUrl && !selfieUrl) {
+      setFeedback({
+        type: "error",
+        message: noReceipt
+          ? "Sem cupom, tire a selfie e toque em Confirmar antes de registrar."
+          : "Anexe a foto do cupom da compra — ou marque \"Não tenho o cupom\" e tire uma selfie.",
+      });
+      return;
+    }
     startTransition(async () => {
-      const result = await createCashMovementAction({ ...data, receiptPhotoUrl });
+      const result = await createCashMovementAction({
+        ...data,
+        receiptPhotoUrl: isWithdrawal && noReceipt ? "" : receiptPhotoUrl,
+        selfieUrl: isWithdrawal && noReceipt ? selfieUrl : "",
+      });
       if (result?.error) {
         setFeedback({ type: "error", message: result.error });
       } else {
         setFeedback({ type: "success", message: result?.success ?? "Registrado." });
-        reset({ type: "WITHDRAWAL", amount: undefined, description: "" });
+        reset({ type: "WITHDRAWAL", amount: undefined, description: "", performedById: "" });
         setReceiptPhotoUrl("");
+        setSelfieUrl("");
+        setNoReceipt(false);
         onSuccess?.();
       }
     });
@@ -552,6 +589,19 @@ export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {})
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="mb-4">
+        <Label htmlFor="performedById">Quem está fazendo</Label>
+        <Select id="performedById" {...register("performedById")}>
+          <option value="">Selecione…</option>
+          {employees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.name}
+            </option>
+          ))}
+        </Select>
+        <FieldError message={errors.performedById?.message} />
+      </div>
 
       <div className="mb-4">
         <Label htmlFor="type">Tipo</Label>
@@ -571,22 +621,46 @@ export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {})
         <Label htmlFor="description">Motivo</Label>
         <Input
           id="description"
-          placeholder={type === "WITHDRAWAL" ? "Ex.: compra de material de escritório" : "Ex.: depósito bancário"}
+          placeholder={isWithdrawal ? "Ex.: compra de material de escritório" : "Ex.: depósito bancário"}
           {...register("description")}
         />
         <FieldError message={errors.description?.message} />
       </div>
 
-      <div className="mb-6">
-        <Label>
-          Foto da nota/comprovante {type === "WITHDRAWAL" ? "da compra" : "do depósito"} (opcional)
-        </Label>
-        <ImageUploadField
-          value={receiptPhotoUrl}
-          onChange={setReceiptPhotoUrl}
-          uploadUrl="/api/caixa/upload"
-        />
-      </div>
+      {isWithdrawal ? (
+        <div className="mb-6 space-y-3">
+          {!noReceipt && (
+            <div>
+              <Label>Foto do cupom/nota da compra (obrigatória)</Label>
+              <ImageUploadField value={receiptPhotoUrl} onChange={setReceiptPhotoUrl} uploadUrl="/api/caixa/upload" />
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={noReceipt}
+              onChange={(e) => {
+                setNoReceipt(e.target.checked);
+                setReceiptPhotoUrl("");
+                setSelfieUrl("");
+              }}
+            />
+            Não tenho o cupom
+          </label>
+          {noReceipt && (
+            <div>
+              <Label>Selfie de quem está fazendo a sangria (obrigatória sem cupom)</Label>
+              <SelfieCaptureField uploadUrl="/api/caixa/upload" onCaptured={setSelfieUrl} />
+              {selfieUrl && <p className="mt-1 text-xs text-emerald-700">Selfie enviada.</p>}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mb-6">
+          <Label>Foto do comprovante do depósito (opcional)</Label>
+          <ImageUploadField value={receiptPhotoUrl} onChange={setReceiptPhotoUrl} uploadUrl="/api/caixa/upload" />
+        </div>
+      )}
 
       <Button type="submit" disabled={isPending} variant="secondary">
         {isPending ? "Registrando..." : "Registrar movimentação"}

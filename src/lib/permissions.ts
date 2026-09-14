@@ -109,9 +109,18 @@ export function canEditClosedCashRegister(role: UserRole) {
   return role === "ADMIN";
 }
 
-/** Registrar sangria e suprimento. */
+/** Formulário de sangria/suprimento na tela do Caixa (`/caixa`). */
 export function canMoveCash(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
+ * Registrar sangria/suprimento — pelo PDV, qualquer um que vende (pedido do
+ * dono, 14/09/2026), sempre com "quem está fazendo" e, na sangria, cupom ou
+ * selfie (ver `cashMovementSchema`). A tela `/caixa` continua em `canMoveCash`.
+ */
+export function canRecordCashMovement(role: UserRole) {
+  return canSell(role);
 }
 
 /** Cadastrar e editar produtos. */
