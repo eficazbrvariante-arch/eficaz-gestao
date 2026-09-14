@@ -115,10 +115,13 @@ export function CommissionPaymentPanel({
             {covering.length > 0 && (
               <ul className="mt-1 space-y-1">
                 {covering.map((payment) => (
-                  <li key={payment.id} className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
-                    Pagamento de <strong>{periodLabel(payment.from, payment.to)}</strong> —{" "}
-                    {formatBRL(payment.amount)} · {payment.saleCount} venda(s) · pago em{" "}
-                    {formatDateTime(payment.createdAt)} por {payment.createdByName}
+                  <li key={payment.id} className="space-y-2 rounded bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
+                    <p>
+                      Pagamento de <strong>{periodLabel(payment.from, payment.to)}</strong> —{" "}
+                      {formatBRL(payment.amount)} · {payment.saleCount} venda(s) · pago em{" "}
+                      {formatDateTime(payment.createdAt)} por {payment.createdByName}
+                    </p>
+                    {canPay && <PaymentRowActions payment={payment} />}
                   </li>
                 ))}
               </ul>
@@ -190,27 +193,24 @@ export function CommissionPaymentPanel({
 }
 
 /**
- * Histórico de pagamentos de comissão do vendedor, com início e fim de cada
- * um — e "Desfazer pagamento" (só Admin), que apaga o pagamento e devolve as
- * vendas pra "A pagar" (pra corrigir um pagamento feito no período errado).
+ * "Corrigir período" + "Desfazer pagamento" de UM pagamento (só Admin) —
+ * usado na caixa do topo (onde o dono olha) e no histórico do fim da página.
+ * Corrigir só encurta o fim: as vendas depois voltam pra "A pagar" e a data do
+ * pagamento não muda (ver `adjustCommissionPaymentEnd`).
  */
-export function CommissionPaymentHistory({
-  payments,
-  canUndo,
-}: {
-  payments: CommissionPaymentView[];
-  canUndo: boolean;
-}) {
+function PaymentRowActions({ payment }: { payment: CommissionPaymentView }) {
   const router = useRouter();
-  const [confirmUndo, setConfirmUndo] = useState<CommissionPaymentView | null>(null);
-  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
   const [newTo, setNewTo] = useState("");
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
 
-  function saveAdjust(payment: CommissionPaymentView) {
+  const canAdjust = !!payment.from && !!payment.to && payment.from < payment.to;
+
+  function saveAdjust() {
     if (!newTo) {
-      setFeedback({ type: "error", message: "Escolha a nova data de término." });
+      setFeedback({ type: "error", message: "Escolha até que dia foi pago." });
       return;
     }
     setFeedback(undefined);
@@ -220,7 +220,7 @@ export function CommissionPaymentHistory({
         "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
       );
       if (!("error" in result)) {
-        setAdjustingId(null);
+        setAdjusting(false);
         setNewTo("");
       }
       router.refresh();
@@ -228,11 +228,10 @@ export function CommissionPaymentHistory({
   }
 
   function undo() {
-    if (!confirmUndo) return;
     setFeedback(undefined);
     startTransition(async () => {
-      const result = await undoCommissionPaymentAction(confirmUndo.id);
-      setConfirmUndo(null);
+      const result = await undoCommissionPaymentAction(payment.id);
+      setConfirmUndo(false);
       setFeedback(
         "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
       );
@@ -241,110 +240,80 @@ export function CommissionPaymentHistory({
   }
 
   return (
-    <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <p className="text-sm font-semibold text-slate-900">Pagamentos de comissão</p>
+    <div className="w-full">
+      <div className="flex flex-wrap items-center gap-2">
+        {canAdjust && (
+          <Button
+            type="button"
+            variant="secondary"
+            fullWidth={false}
+            disabled={isPending}
+            onClick={() => {
+              setFeedback(undefined);
+              setNewTo("");
+              setAdjusting((v) => !v);
+            }}
+            className="px-3 py-1 text-xs"
+          >
+            Corrigir período
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          fullWidth={false}
+          disabled={isPending}
+          onClick={() => setConfirmUndo(true)}
+          className="px-3 py-1 text-xs text-red-600"
+        >
+          Desfazer pagamento
+        </Button>
       </div>
-      <div className="px-4 pt-2">
-        <FormBanner message={feedback?.message} variant={feedback?.type} />
-      </div>
-      {payments.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-slate-400">Nenhuma comissão paga ainda.</p>
-      ) : (
-        <div className="divide-y divide-slate-100">
-          {payments.map((payment) => (
-            <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium text-slate-900">
-                  De {payment.from ? formatISODate(payment.from) : "—"} até{" "}
-                  {payment.to ? formatISODate(payment.to) : "—"}{" "}
-                  <span className="font-normal text-slate-500">· {payment.saleCount} venda(s)</span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  Pago em {formatDateTime(payment.createdAt)} por {payment.createdByName}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <span className="font-semibold text-slate-900">{formatBRL(payment.amount)}</span>
-                {canUndo && payment.from && payment.to && payment.from < payment.to && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    fullWidth={false}
-                    disabled={isPending}
-                    onClick={() => {
-                      setFeedback(undefined);
-                      setNewTo("");
-                      setAdjustingId(adjustingId === payment.id ? null : payment.id);
-                    }}
-                    className="px-3 py-1 text-xs"
-                  >
-                    Corrigir período
-                  </Button>
-                )}
-                {canUndo && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    fullWidth={false}
-                    disabled={isPending}
-                    onClick={() => setConfirmUndo(payment)}
-                    className="px-3 py-1 text-xs text-red-600"
-                  >
-                    Desfazer pagamento
-                  </Button>
-                )}
-              </div>
-              {adjustingId === payment.id && payment.from && payment.to && (
-                <div className="w-full rounded-md bg-slate-50 p-3 text-xs text-slate-700">
-                  <p className="mb-2">
-                    O pagamento começa em <strong>{formatISODate(payment.from)}</strong>. Até que dia ele foi pago de
-                    verdade? As vendas depois dessa data voltam para &quot;A pagar&quot;; a data do pagamento não muda.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label htmlFor={`new-to-${payment.id}`} className="font-medium">
-                      Pago até
-                    </label>
-                    <input
-                      id={`new-to-${payment.id}`}
-                      type="date"
-                      min={payment.from}
-                      max={payment.to}
-                      value={newTo}
-                      onChange={(e) => setNewTo(e.target.value)}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                    />
-                    <Button
-                      type="button"
-                      fullWidth={false}
-                      disabled={isPending || !newTo}
-                      onClick={() => saveAdjust(payment)}
-                      className="px-3 py-1 text-xs"
-                    >
-                      {isPending ? "Salvando..." : newTo ? `Salvar: ${formatISODate(payment.from)} a ${formatISODate(newTo)}` : "Salvar"}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setAdjustingId(null)}
-                      className="text-slate-500 hover:underline"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+
+      {feedback && <p className={`mt-2 text-xs ${feedback.type === "error" ? "text-red-600" : "text-emerald-700"}`}>{feedback.message}</p>}
+
+      {adjusting && payment.from && payment.to && (
+        <div className="mt-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
+          <p className="mb-2">
+            Esse pagamento começa em <strong>{formatISODate(payment.from)}</strong>. Até que dia ele foi pago de
+            verdade? As vendas depois dessa data voltam para &quot;A pagar&quot;; a data do pagamento não muda.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor={`new-to-${payment.id}`} className="font-medium">
+              Pago até
+            </label>
+            <input
+              id={`new-to-${payment.id}`}
+              type="date"
+              min={payment.from}
+              max={payment.to}
+              value={newTo}
+              onChange={(e) => setNewTo(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+            />
+            <Button
+              type="button"
+              fullWidth={false}
+              disabled={isPending || !newTo}
+              onClick={saveAdjust}
+              className="px-3 py-1 text-xs"
+            >
+              {isPending ? "Salvando..." : newTo ? `Salvar: ${formatISODate(payment.from)} a ${formatISODate(newTo)}` : "Salvar"}
+            </Button>
+            <button type="button" onClick={() => setAdjusting(false)} className="text-slate-500 hover:underline">
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 
       <Dialog
-        open={confirmUndo !== null}
-        onClose={() => setConfirmUndo(null)}
+        open={confirmUndo}
+        onClose={() => setConfirmUndo(false)}
         title="Desfazer pagamento de comissão"
         footer={
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" fullWidth={false} onClick={() => setConfirmUndo(null)}>
+            <Button type="button" variant="secondary" fullWidth={false} onClick={() => setConfirmUndo(false)}>
               Voltar
             </Button>
             <Button type="button" variant="danger" fullWidth={false} disabled={isPending} onClick={undo}>
@@ -353,15 +322,56 @@ export function CommissionPaymentHistory({
           </div>
         }
       >
-        {confirmUndo && (
-          <p className="text-sm text-slate-700">
-            O pagamento de <strong>{periodLabel(confirmUndo.from, confirmUndo.to)}</strong> (
-            {formatBRL(confirmUndo.amount)}, {confirmUndo.saleCount} venda(s)) será apagado e essas vendas voltam
-            para &quot;A pagar&quot;. Use quando o pagamento foi feito no período errado — depois é só pagar de novo
-            o período certo.
-          </p>
-        )}
+        <p className="text-sm text-slate-700">
+          O pagamento de <strong>{periodLabel(payment.from, payment.to)}</strong> ({formatBRL(payment.amount)},{" "}
+          {payment.saleCount} venda(s)) será apagado e essas vendas voltam para &quot;A pagar&quot;. Se só o período
+          ficou errado, prefira &quot;Corrigir período&quot;.
+        </p>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Histórico de pagamentos de comissão do vendedor, com início e fim de cada
+ * um, e as ações de corrigir/desfazer (só Admin).
+ */
+export function CommissionPaymentHistory({
+  payments,
+  canUndo,
+}: {
+  payments: CommissionPaymentView[];
+  canUndo: boolean;
+}) {
+  return (
+    <div id="pagamentos-comissao" className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-4 py-3">
+        <p className="text-sm font-semibold text-slate-900">Pagamentos de comissão</p>
+      </div>
+      {payments.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm text-slate-400">Nenhuma comissão paga ainda.</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {payments.map((payment) => (
+            <div key={payment.id} className="space-y-2 px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-900">
+                    De {payment.from ? formatISODate(payment.from) : "—"} até{" "}
+                    {payment.to ? formatISODate(payment.to) : "—"}{" "}
+                    <span className="font-normal text-slate-500">· {payment.saleCount} venda(s)</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Pago em {formatDateTime(payment.createdAt)} por {payment.createdByName}
+                  </p>
+                </div>
+                <span className="font-semibold text-slate-900">{formatBRL(payment.amount)}</span>
+              </div>
+              {canUndo && <PaymentRowActions payment={payment} />}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
