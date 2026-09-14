@@ -152,6 +152,76 @@ export type CommissionPaymentHistoryRow = {
   createdByName: string;
 };
 
+export type AdjustCommissionPaymentResult =
+  | { ok: true; amount: number; saleCount: number; releasedCount: number; releasedAmount: number }
+  | { ok: false; error: string };
+
+/**
+ * "Corrigir período" de um pagamento de comissão já feito — encurta o fim
+ * (ex.: pago como 21/08 a 11/09, mas o que foi pago de verdade é 21/08 a
+ * 31/08). As vendas depois do novo fim saem do pagamento e voltam pra "A
+ * pagar"; o valor é recalculado com o que ficou (a comissão congelada de
+ * cada venda, não um recálculo ao vivo). Mantém quando/quem pagou — só o
+ * período muda. Pra aumentar o período, é outro pagamento.
+ */
+export async function adjustCommissionPaymentEnd(
+  tenantId: string,
+  entryId: string,
+  newTo: string
+): Promise<AdjustCommissionPaymentResult> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newTo)) return { ok: false, error: "Data de término inválida." };
+
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id: entryId, tenantId, type: "COMMISSION_PAYMENT" },
+    select: { id: true, commissionPeriodFrom: true, commissionPeriodTo: true },
+  });
+  if (!entry?.commissionPeriodFrom || !entry.commissionPeriodTo) {
+    return { ok: false, error: "Pagamento de comissão não encontrado." };
+  }
+  const from = entry.commissionPeriodFrom.toISOString().slice(0, 10);
+  const currentTo = entry.commissionPeriodTo.toISOString().slice(0, 10);
+  if (newTo < from) return { ok: false, error: "O término não pode ser antes do início do pagamento." };
+  if (newTo >= currentTo) {
+    return { ok: false, error: "Só dá pra encurtar o período. Para pagar mais dias, faça um novo pagamento." };
+  }
+
+  // Tudo que foi vendido a partir do dia seguinte ao novo término sai do pagamento.
+  const cutoff = periodRange(from, newTo).end;
+
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.commissionPaymentSale.findMany({
+      where: { entryId },
+      select: { id: true, amount: true, sale: { select: { createdAt: true } } },
+    });
+    const keep = rows.filter((row) => row.sale.createdAt < cutoff);
+    const release = rows.filter((row) => row.sale.createdAt >= cutoff);
+    if (keep.length === 0) {
+      return {
+        ok: false as const,
+        error: "Nenhuma venda ficaria nesse período — use \"Desfazer pagamento\".",
+      };
+    }
+
+    const amount = round2(keep.reduce((sum, row) => sum + Number(row.amount), 0));
+    await tx.commissionPaymentSale.deleteMany({ where: { id: { in: release.map((row) => row.id) } } });
+    await tx.employeeLedgerEntry.update({
+      where: { id: entryId },
+      data: {
+        amount,
+        commissionPeriodTo: isoToDate(newTo),
+        description: `Comissão de ${formatISODate(from)} a ${formatISODate(newTo)} (${keep.length} venda(s))`,
+      },
+    });
+    return {
+      ok: true as const,
+      amount,
+      saleCount: keep.length,
+      releasedCount: release.length,
+      releasedAmount: round2(release.reduce((sum, row) => sum + Number(row.amount), 0)),
+    };
+  });
+}
+
 export async function listCommissionPayments(tenantId: string, userId: string, take = 20) {
   const entries = await prisma.employeeLedgerEntry.findMany({
     where: { tenantId, userId, type: "COMMISSION_PAYMENT" },

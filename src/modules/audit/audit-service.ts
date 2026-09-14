@@ -50,6 +50,7 @@ export type AuditAction =
   | "commission.pdv_ranking_toggle"
   | "commission.payment"
   | "commission.payment_undo"
+  | "commission.payment_adjust"
   | "credito_eficaz.approve"
   | "credito_eficaz.reject"
   | "credito_eficaz.info_request"
@@ -107,6 +108,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
   "commission.payment": "Comissão de venda paga",
   "commission.payment_undo": "Pagamento de comissão desfeito",
+  "commission.payment_adjust": "Período de pagamento de comissão corrigido",
   "credito_eficaz.approve": "Solicitação de Crédito Eficaz aprovada",
   "credito_eficaz.reject": "Solicitação de Crédito Eficaz recusada",
   "credito_eficaz.info_request": "Informação adicional solicitada em pedido de Crédito Eficaz",

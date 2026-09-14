@@ -9,7 +9,10 @@ import {
   canManageSettings,
   canPayCommission,
 } from "@/lib/permissions";
-import { registerCommissionPayment } from "@/modules/employees/commission-payment-service";
+import {
+  adjustCommissionPaymentEnd,
+  registerCommissionPayment,
+} from "@/modules/employees/commission-payment-service";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
   createEmployeeLedgerEntry,
@@ -473,4 +476,40 @@ export async function undoCommissionPaymentAction(
   revalidatePath("/colaboradores/ranking-comissao");
   revalidatePath("/pdv");
   return { success: `Pagamento desfeito — ${entry._count.commissionSales} venda(s) voltaram para "A pagar".` };
+}
+
+/** "Corrigir período" de um pagamento de comissão (só encurta o fim). Só Admin. */
+export async function adjustCommissionPaymentEndAction(
+  entryId: string,
+  newTo: string
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canPayCommission(user.role)) {
+    return { error: "Só o Administrador pode corrigir pagamento de comissão." };
+  }
+
+  const entry = await prisma.employeeLedgerEntry.findFirst({
+    where: { id: entryId, tenantId: user.tenantId },
+    select: { userId: true, commissionPeriodTo: true, user: { select: { name: true } } },
+  });
+  const result = await adjustCommissionPaymentEnd(user.tenantId, entryId, newTo);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "commission.payment_adjust",
+    entity: "User",
+    entityId: entry?.userId ?? null,
+    description: `Corrigiu o término do pagamento de comissão de ${entry?.user.name ?? "colaborador"} de ${entry?.commissionPeriodTo?.toISOString().slice(0, 10) ?? "?"} para ${newTo}: ficou ${formatBRL(result.amount)} (${result.saleCount} venda(s)); ${result.releasedCount} venda(s) (${formatBRL(result.releasedAmount)}) voltaram para "A pagar".`,
+  });
+
+  revalidatePath("/colaboradores");
+  if (entry) revalidatePath(`/colaboradores/${entry.userId}/comissao`);
+  revalidatePath("/colaboradores/ranking-comissao");
+  revalidatePath("/pdv");
+  return {
+    success: `Período corrigido: ficou ${formatBRL(result.amount)} (${result.saleCount} venda(s)). ${result.releasedCount} venda(s) voltaram para "A pagar".`,
+  };
 }

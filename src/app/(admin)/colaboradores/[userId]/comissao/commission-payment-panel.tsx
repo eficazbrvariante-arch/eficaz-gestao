@@ -7,7 +7,11 @@ import { Dialog } from "@/components/ui/dialog";
 import { FormBanner } from "@/components/ui/form-banner";
 import { formatBRL, formatDateTime, formatISODate } from "@/lib/format";
 import { PERIOD_PICKER_DIRTY_EVENT } from "../../../relatorios/report-nav";
-import { registerCommissionPaymentAction, undoCommissionPaymentAction } from "../../actions";
+import {
+  adjustCommissionPaymentEndAction,
+  registerCommissionPaymentAction,
+  undoCommissionPaymentAction,
+} from "../../actions";
 
 export type CommissionPaymentView = {
   id: string;
@@ -199,8 +203,29 @@ export function CommissionPaymentHistory({
 }) {
   const router = useRouter();
   const [confirmUndo, setConfirmUndo] = useState<CommissionPaymentView | null>(null);
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [newTo, setNewTo] = useState("");
   const [feedback, setFeedback] = useState<Feedback>();
   const [isPending, startTransition] = useTransition();
+
+  function saveAdjust(payment: CommissionPaymentView) {
+    if (!newTo) {
+      setFeedback({ type: "error", message: "Escolha a nova data de término." });
+      return;
+    }
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await adjustCommissionPaymentEndAction(payment.id, newTo);
+      setFeedback(
+        "error" in result ? { type: "error", message: result.error } : { type: "success", message: result.success }
+      );
+      if (!("error" in result)) {
+        setAdjustingId(null);
+        setNewTo("");
+      }
+      router.refresh();
+    });
+  }
 
   function undo() {
     if (!confirmUndo) return;
@@ -239,8 +264,24 @@ export function CommissionPaymentHistory({
                   Pago em {formatDateTime(payment.createdAt)} por {payment.createdByName}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="font-semibold text-slate-900">{formatBRL(payment.amount)}</span>
+                {canUndo && payment.from && payment.to && payment.from < payment.to && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    fullWidth={false}
+                    disabled={isPending}
+                    onClick={() => {
+                      setFeedback(undefined);
+                      setNewTo("");
+                      setAdjustingId(adjustingId === payment.id ? null : payment.id);
+                    }}
+                    className="px-3 py-1 text-xs"
+                  >
+                    Corrigir período
+                  </Button>
+                )}
                 {canUndo && (
                   <Button
                     type="button"
@@ -254,6 +295,44 @@ export function CommissionPaymentHistory({
                   </Button>
                 )}
               </div>
+              {adjustingId === payment.id && payment.from && payment.to && (
+                <div className="w-full rounded-md bg-slate-50 p-3 text-xs text-slate-700">
+                  <p className="mb-2">
+                    O pagamento começa em <strong>{formatISODate(payment.from)}</strong>. Até que dia ele foi pago de
+                    verdade? As vendas depois dessa data voltam para &quot;A pagar&quot;; a data do pagamento não muda.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor={`new-to-${payment.id}`} className="font-medium">
+                      Pago até
+                    </label>
+                    <input
+                      id={`new-to-${payment.id}`}
+                      type="date"
+                      min={payment.from}
+                      max={payment.to}
+                      value={newTo}
+                      onChange={(e) => setNewTo(e.target.value)}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      fullWidth={false}
+                      disabled={isPending || !newTo}
+                      onClick={() => saveAdjust(payment)}
+                      className="px-3 py-1 text-xs"
+                    >
+                      {isPending ? "Salvando..." : newTo ? `Salvar: ${formatISODate(payment.from)} a ${formatISODate(newTo)}` : "Salvar"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustingId(null)}
+                      className="text-slate-500 hover:underline"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

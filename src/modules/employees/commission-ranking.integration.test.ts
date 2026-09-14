@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { createSale, cancelSale } from "@/modules/sales/sale-service";
 import { getCommissionRanking, getSellerCommissionHistory } from "@/modules/employees/commission-service";
 import {
+  adjustCommissionPaymentEnd,
   getCommissionPaymentPreview,
   registerCommissionPayment,
 } from "@/modules/employees/commission-payment-service";
@@ -442,6 +443,37 @@ describe("Pagamento de comissão (integração)", () => {
 
     const preview = await getCommissionPaymentPreview(tenantId, sellerId, today());
     expect(preview.cancelledAfterPayment.map((s) => s.number)).toContain(sale.number);
+  });
+
+  it("17) corrigir período: encurta o fim, vendas depois voltam pra 'A pagar' e o valor é recalculado", async () => {
+    const yesterday = addDaysISO(todayISO(), -1);
+    const earlier = await sellUnits(1);
+    await prisma.sale.update({ where: { id: earlier }, data: { createdAt: new Date(`${yesterday}T12:00:00-03:00`) } });
+    const later = await sellUnits(1);
+
+    const paid = await registerCommissionPayment(ctx(), { userId: sellerId, from: yesterday, to: todayISO() });
+    expect(paid.ok).toBe(true);
+    const link = await prisma.commissionPaymentSale.findUniqueOrThrow({ where: { saleId: later } });
+    const earlierLink = await prisma.commissionPaymentSale.findUniqueOrThrow({ where: { saleId: earlier } });
+
+    // Não deixa "aumentar" nem manter o mesmo fim.
+    expect((await adjustCommissionPaymentEnd(tenantId, link.entryId, todayISO())).ok).toBe(false);
+
+    const adjusted = await adjustCommissionPaymentEnd(tenantId, link.entryId, yesterday);
+    expect(adjusted.ok).toBe(true);
+    if (!adjusted.ok) return;
+    expect(adjusted.releasedCount).toBeGreaterThanOrEqual(1);
+
+    expect(await prisma.commissionPaymentSale.findUnique({ where: { saleId: later } })).toBeNull();
+    expect(await prisma.commissionPaymentSale.findUnique({ where: { saleId: earlier } })).not.toBeNull();
+
+    const entry = await prisma.employeeLedgerEntry.findUniqueOrThrow({ where: { id: link.entryId } });
+    expect(entry.commissionPeriodTo?.toISOString().slice(0, 10)).toBe(yesterday);
+    expect(Number(entry.amount)).toBe(adjusted.amount);
+    expect(adjusted.amount).toBeGreaterThanOrEqual(Number(earlierLink.amount));
+
+    const preview = await getCommissionPaymentPreview(tenantId, sellerId, today());
+    expect(preview.unpaidSaleIds).toContain(later);
   });
 });
 
