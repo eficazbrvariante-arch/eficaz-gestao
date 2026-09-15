@@ -30,8 +30,8 @@ export default async function BuscarVendaPage() {
         <BuscarVendaForm />
       </div>
 
-      <h2 className="mt-10 mb-1 text-lg font-semibold text-slate-900">Histórico de trocas</h2>
-      <p className="mb-4 text-sm text-slate-500">Últimas {trocas.length} trocas registradas.</p>
+      <h2 className="mt-10 mb-1 text-lg font-semibold text-foreground">Histórico de trocas</h2>
+      <p className="mb-4 text-sm text-text-muted">Últimas {trocas.length} trocas registradas.</p>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">

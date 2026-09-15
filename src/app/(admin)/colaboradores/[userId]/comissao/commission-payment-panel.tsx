@@ -179,11 +179,11 @@ export function CommissionPaymentPanel({
           </div>
         }
       >
-        <p className="mb-2 text-sm text-slate-600">Período que vai ser pago:</p>
-        <p className="mb-3 text-2xl font-bold text-slate-900">
+        <p className="mb-2 text-sm text-text-secondary">Período que vai ser pago:</p>
+        <p className="mb-3 text-2xl font-bold text-foreground">
           {formatISODate(from)} a {formatISODate(to)}
         </p>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-text-secondary">
           <strong>{formatBRL(unpaidAmount)}</strong> — {unpaidCount} venda(s) ainda não paga(s) nesse período. Se
           as datas não forem essas, clique em Cancelar, ajuste o filtro e clique em &quot;Aplicar&quot;.
         </p>
@@ -322,7 +322,7 @@ function PaymentRowActions({ payment }: { payment: CommissionPaymentView }) {
           </div>
         }
       >
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-text-secondary">
           O pagamento de <strong>{periodLabel(payment.from, payment.to)}</strong> ({formatBRL(payment.amount)},{" "}
           {payment.saleCount} venda(s)) será apagado e essas vendas voltam para &quot;A pagar&quot;. Se só o período
           ficou errado, prefira &quot;Corrigir período&quot;.

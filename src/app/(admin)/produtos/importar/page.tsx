@@ -15,8 +15,8 @@ export default function ImportarProdutosPage() {
         <ImportForm />
       </div>
 
-      <div className="max-w-3xl rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-        <p className="mb-2 font-medium text-slate-700">Colunas esperadas:</p>
+      <div className="max-w-3xl rounded-xl border border-dashed border-border p-4 text-sm text-text-muted">
+        <p className="mb-2 font-medium text-text-secondary">Colunas esperadas:</p>
         <code className="block overflow-x-auto whitespace-nowrap text-xs">
           {CSV_COLUMNS.join(", ")}
         </code>

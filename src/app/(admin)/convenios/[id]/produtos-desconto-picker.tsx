@@ -115,7 +115,7 @@ export function ProdutosDescontoPicker({
           className="max-w-sm"
         />
         {search.trim().length >= 2 && (
-          <div className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+          <div className="mt-3 divide-y divide-border rounded-md border border-border">
             {searchResults.length === 0 && (
               <p className="px-3 py-3 text-sm text-slate-400">Nenhum produto encontrado.</p>
             )}
@@ -125,7 +125,7 @@ export function ProdutosDescontoPicker({
                 className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm"
               >
                 <div>
-                  <span className="text-slate-800">{product.name}</span>
+                  <span className="text-foreground">{product.name}</span>
                   <span className="ml-2 text-xs text-slate-400">{formatBRL(product.salePrice)}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ export function ProdutosDescontoPicker({
                       setAmounts((current) => ({ ...current, [product.id]: e.target.value }))
                     }
                     placeholder="0,00"
-                    className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    className="w-24 rounded-md border border-border px-2 py-1 text-sm text-foreground"
                   />
                   <Button
                     type="button"
@@ -159,7 +159,7 @@ export function ProdutosDescontoPicker({
       </div>
 
       <div>
-        <p className="mb-2 text-sm font-semibold text-slate-900">
+        <p className="mb-2 text-sm font-semibold text-foreground">
           Produtos com desconto exclusivo ({products.length})
         </p>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

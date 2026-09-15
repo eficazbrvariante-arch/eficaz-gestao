@@ -41,7 +41,7 @@ export default async function ColaboradorEstoquePage() {
         Confirme cada produto (foto, quando faltar, e a quantidade em estoque). Ao confirmar, ele
         sai da sua lista.
       </p>
-      <p className="mb-6 text-sm font-medium text-slate-700">
+      <p className="mb-6 text-sm font-medium text-text-secondary">
         {doneCount} de {totalActive} produto(s) já confirmado(s).
       </p>
       <StockCollaboratorGrid

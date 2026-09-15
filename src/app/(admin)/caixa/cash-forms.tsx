@@ -635,7 +635,7 @@ export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {})
               <ImageUploadField value={receiptPhotoUrl} onChange={setReceiptPhotoUrl} uploadUrl="/api/caixa/upload" />
             </div>
           )}
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-text-secondary">
             <input
               type="checkbox"
               checked={noReceipt}
@@ -651,7 +651,7 @@ export function CashMovementForm({ onSuccess }: { onSuccess?: () => void } = {})
             <div>
               <Label>Selfie de quem está fazendo a sangria (obrigatória sem cupom)</Label>
               <SelfieCaptureField uploadUrl="/api/caixa/upload" onCaptured={setSelfieUrl} />
-              {selfieUrl && <p className="mt-1 text-xs text-emerald-700">Selfie enviada.</p>}
+              {selfieUrl && <p className="mt-1 text-xs text-success">Selfie enviada.</p>}
             </div>
           )}
         </div>

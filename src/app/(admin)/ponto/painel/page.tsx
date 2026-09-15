@@ -41,7 +41,7 @@ export default async function PontoPainelPage() {
         </div>
         <Link
           href="/ponto/historico"
-          className="text-sm font-medium text-slate-700 hover:underline"
+          className="text-sm font-medium text-text-secondary hover:underline"
         >
           Meu ponto
         </Link>

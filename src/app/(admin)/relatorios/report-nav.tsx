@@ -18,7 +18,7 @@ export function ReportTabs({ period }: { period: Period }) {
   const query = `?de=${period.from}&ate=${period.to}`;
 
   return (
-    <div className="mb-4 flex gap-2 border-b border-slate-200">
+    <div className="mb-4 flex gap-2 border-b border-border">
       {TABS.map((tab) => {
         const isActive = pathname === tab.href;
         return (
@@ -28,8 +28,8 @@ export function ReportTabs({ period }: { period: Period }) {
             className={clsx(
               "border-b-2 px-3 py-2 text-sm font-medium",
               isActive
-                ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-700 hover:text-slate-900"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-text-secondary hover:text-foreground"
             )}
           >
             {tab.label}

@@ -230,9 +230,9 @@ export default async function RelatorioProdutosPage({
         </section>
       </div>
 
-      <p className="mt-6 text-sm text-slate-500">
+      <p className="mt-6 text-sm text-text-muted">
         Valor total em estoque (a preço de custo):{" "}
-        <span className="font-medium text-slate-900">{formatBRL(stockValue)}</span>
+        <span className="font-medium text-foreground">{formatBRL(stockValue)}</span>
       </p>
 
       {performance.length === 0 && stale.length === 0 && (

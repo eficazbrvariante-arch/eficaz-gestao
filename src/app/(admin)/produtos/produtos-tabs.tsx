@@ -14,7 +14,7 @@ export function ProdutosTabs() {
   const pathname = usePathname();
 
   return (
-    <div className="mb-6 flex gap-2 border-b border-slate-200">
+    <div className="mb-6 flex gap-2 border-b border-border">
       {TABS.map((tab) => {
         const isActive =
           tab.href === "/produtos" ? pathname === "/produtos" : pathname.startsWith(tab.href);
@@ -25,8 +25,8 @@ export function ProdutosTabs() {
             className={clsx(
               "border-b-2 px-3 py-2 text-sm font-medium",
               isActive
-                ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-text-secondary hover:text-foreground"
             )}
           >
             {tab.label}
