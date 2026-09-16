@@ -881,6 +881,33 @@ export function PdvScreen({
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-5 lg:gap-4">
         {/* Coluna esquerda: busca e carrinho */}
         <div className="lg:col-span-3">
+        {/* Cliente e Vendedor ACIMA da busca, por pedido do dono: na prática a
+            venda começa identificando quem vende e quem compra, e só depois o
+            leitor de código de barras entra em ação. Com eles embaixo, o
+            operador passava o produto primeiro e voltava atrás. */}
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <PdvChip
+            icon={User}
+            label="Cliente"
+            value={customer ? customer.name : "Não identificado"}
+            active={!!customer}
+            title="Opcional — necessário para crédito de loja, fiado e Crédito Eficaz"
+            onClick={() => setCustomerModalOpen(true)}
+            onClear={customer ? clearCustomer : undefined}
+            clearLabel="Remover cliente da venda"
+          />
+
+          <PdvChip
+            icon={UserCog}
+            label="Vendedor"
+            value={sellerName ?? "Selecionar"}
+            active={!!sellerId}
+            pending={!sellerId && cart.length > 0}
+            title="Quem realizou esta venda — obrigatório para liberar o pagamento"
+            onClick={() => setSellerModalOpen(true)}
+          />
+        </div>
+
         {/* Barra operacional: uma linha só. O painel que existia aqui (badge de
             ícone + rótulo explicativo + padding) custava ~90px de altura pra
             enfeitar um campo de texto — a explicação virou o próprio
@@ -1154,37 +1181,15 @@ export function PdvScreen({
       {/* Coluna direita: contexto da venda (cards compactos) e finalização */}
       <div className="lg:col-span-2">
         <div className="space-y-3">
-          {/* Contexto da venda em cards de 56px lado a lado, no lugar dos
-              painéis empilhados de ~120px cada. Cada card mostra o estado e
-              abre o detalhe num modal — a ordem de prioridade continua a
-              mesma (cliente → vendedor → auxiliares → total → pagamento). */}
+          {/* Funções auxiliares da venda em cards de 56px, no lugar dos painéis
+              empilhados de ~120px cada. Cliente e Vendedor não estão aqui: eles
+              abrem a venda e ficam acima da busca, na coluna da esquerda. */}
           {/* Duas colunas, menos na faixa `lg` (1024–1279px): ali a coluna da
               direita vale ~2/5 de uma tela já estreita, e dois cards lado a
               lado deixariam ~140px pra cada um — "Não identificado" sairia
               cortado. Os monitores de caixa (1366, 1920) caem em `xl`, então
               recebem as duas colunas. */}
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 xl:grid-cols-2">
-            <PdvChip
-              icon={User}
-              label="Cliente"
-              value={customer ? customer.name : "Não identificado"}
-              active={!!customer}
-              title="Opcional — necessário para crédito de loja, fiado e Crédito Eficaz"
-              onClick={() => setCustomerModalOpen(true)}
-              onClear={customer ? clearCustomer : undefined}
-              clearLabel="Remover cliente da venda"
-            />
-
-            <PdvChip
-              icon={UserCog}
-              label="Vendedor"
-              value={sellerName ?? "Selecionar"}
-              active={!!sellerId}
-              pending={!sellerId && cart.length > 0}
-              title="Quem realizou esta venda — obrigatório para liberar o pagamento"
-              onClick={() => setSellerModalOpen(true)}
-            />
-
             {canMoveCash && (
               <PdvChip
                 tone="credit"

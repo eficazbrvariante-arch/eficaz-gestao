@@ -2838,3 +2838,5 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 **Atenção no commit:** `.codex/` e `docs/PWA_EFICAZ_relatorio.pdf` estão untracked e não cobertos pelo `.gitignore` — um `git add -A` levaria os dois junto.
 
 **Estado final:** lint 0 erros (9 avisos pré-existentes), typecheck limpo, 168/168 testes, build compilando. **Teste visual no navegador continua pendente** — depende de login.
+
+**Ajuste pedido depois de ver no ar (16/09):** Cliente e Vendedor saíram da coluna da direita e subiram para **cima da barra de busca**, na coluna da esquerda. Motivo do dono: na prática a venda começa identificando quem vende e quem compra, e só depois o leitor de código de barras entra em ação — com os cards embaixo, o operador passava o produto primeiro e voltava atrás. A lateral ficou só com as funções auxiliares (Caixa, Convênio, Cadastros, Proteção, Troca). O dono mandou um vídeo (`IMG_2084.mov`); **não consegui assistir** (o ambiente não lê vídeo e não tem ffmpeg para extrair quadros), então a mudança saiu da descrição escrita dele.
