@@ -2802,7 +2802,7 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 ## 16/09/2026 — PDV compacto: mesma função, menos altura
 
 - **Pedido:** redesenhar a organização visual do PDV para caber sem rolagem na resolução do caixa. Só UI/UX — sem tocar em regra de negócio, cálculo, comissão, estoque, pagamento, caixa, convênio, Proteção Eficaz ou permissões.
-- **Branch:** `fix/contraste-texto-escuro` (continuação). **Não commitado, não publicado.**
+- **Branch:** `fix/contraste-texto-escuro` (continuação), commit `181cb31`, com merge fast-forward em `main` e **publicado em produção** junto com o `a8cf6ea` (contraste) que estava represado. `check:deploy` passou: deploy Ready, home do painel e da loja, produto, categoria e `comprar-whatsapp` (307) OK, sem erros recentes nos logs.
 - **Diagnóstico:** o vilão era a coluna da direita, não o carrinho. Sete painéis `PdvPanel` empilhados (cada um com `p-4` + badge de ícone de 36px + `mb-3`) somavam ~1250px; o painel de busca gastava ~134px para enfeitar um campo de texto; as 8 formas de pagamento empilhadas a 56px somavam ~450px.
 - **"PDV do colaborador":** não existe uma segunda tela. É a mesma `/pdv` — o que muda é a sidebar (`navItemsForRole`: ~30 itens no ADMIN, ~8 no SELLER). A referência de limpeza veio daí, e virou o botão de recolher o menu.
 
