@@ -11,7 +11,7 @@ import {
   Wallet,
   HandCoins,
   ShieldCheck,
-  Receipt,
+  ClipboardList,
   RefreshCw,
 } from "lucide-react";
 import { formatBRL } from "@/lib/format";
@@ -29,7 +29,7 @@ import {
   type PaymentAmounts,
 } from "@/lib/payment-slots";
 import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
-import { searchCustomersAction } from "../clientes/actions";
+import { CustomerPickerModal, type CustomerOption } from "./customer-picker-modal";
 import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
 import { ConvenioSignupsModal } from "./convenio-signups-modal";
@@ -63,92 +63,119 @@ type CartLine = {
   categoryName: string | null;
 };
 
-type CustomerOption = {
-  id: string;
-  name: string;
-  document: string | null;
-  phone: string | null;
-  creditBalance: number;
-  eficazNumber: string | null;
-  creditoEficazAvailableAmount: number;
-  creditoEficazBlocked: boolean;
-};
-
 function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-/** Mesma linguagem visual da Central do Cliente (cards escuros premium, ícone
- *  em badge com gradiente, glow e barra de destaque por categoria) — aqui
- *  aplicada aos painéis do PDV. Cor só no ícone/borda/glow, nunca no corpo
- *  do card inteiro. */
-type PdvPanelTone = "purchases" | "neutral" | "credit" | "benefits" | "protection";
+/** Mesma linguagem visual da Central do Cliente (ícone em badge com gradiente,
+ *  cor só no ícone e na borda — nunca no corpo do card inteiro), agora numa
+ *  altura de card operacional em vez de painel. */
+type PdvChipTone = "neutral" | "credit" | "benefits" | "protection";
 
-const PANEL_TONE_CLASSES: Record<PdvPanelTone, { border: string; glow: string; icon: string }> = {
-  purchases: {
-    border: "border-blue-400/25",
-    glow: "shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]",
-    icon: "from-blue-400 to-blue-600",
-  },
-  neutral: {
-    border: "border-slate-400/15",
-    glow: "shadow-[0_0_20px_-16px_rgba(148,163,184,0.4)]",
-    icon: "from-slate-300 to-slate-500",
-  },
-  credit: {
-    border: "border-amber-400/25",
-    glow: "shadow-[0_0_24px_-16px_rgba(245,158,11,0.55)]",
-    icon: "from-amber-300 to-amber-600",
-  },
-  benefits: {
-    border: "border-violet-400/25",
-    glow: "shadow-[0_0_24px_-16px_rgba(167,139,250,0.55)]",
-    icon: "from-violet-400 to-violet-600",
-  },
-  protection: {
-    border: "border-emerald-500/25",
-    glow: "shadow-[0_0_24px_-16px_rgba(16,185,129,0.55)]",
-    icon: "from-emerald-400 to-emerald-600",
-  },
+const CHIP_TONE_CLASSES: Record<PdvChipTone, { icon: string; activeBorder: string }> = {
+  neutral: { icon: "from-slate-300 to-slate-500", activeBorder: "border-slate-400/45" },
+  credit: { icon: "from-amber-300 to-amber-600", activeBorder: "border-amber-400/50" },
+  benefits: { icon: "from-violet-400 to-violet-600", activeBorder: "border-violet-400/50" },
+  protection: { icon: "from-emerald-400 to-emerald-600", activeBorder: "border-emerald-500/50" },
 };
 
-/** Painel escuro premium com ícone em badge — substitui o antigo
- *  `rounded-xl border border-slate-200 bg-white p-4 shadow-sm` em todo o
- *  PDV. `title`/`subtitle` ficam de fora quando o conteúdo já tem seu
- *  próprio rótulo (ex.: `<Label>` interno). */
-function PdvPanel({
-  tone,
+/**
+ * Card compacto de contexto da venda — Cliente, Vendedor, Caixa, Convênio,
+ * Proteção, Troca. Substitui os painéis de ~120px de altura que empilhavam
+ * mais de 1200px na lateral do PDV.
+ *
+ * Duas linhas fixas: o rótulo (o que é) e o estado (como está agora — "Não
+ * identificado", "Maiza", "Aberto", "Nenhum"). O detalhe fica no modal que o
+ * card abre, nunca na superfície. Altura mínima de 56px de propósito: é
+ * compacto sem deixar de ser uma área de toque confortável no balcão.
+ */
+function PdvChip({
+  tone = "neutral",
   icon: Icon,
+  label,
+  value,
+  active = false,
+  pending = false,
+  badge,
   title,
-  subtitle,
-  className,
-  children,
+  asSwitch = false,
+  onClick,
+  onClear,
+  clearLabel,
 }: {
-  tone: PdvPanelTone;
+  tone?: PdvChipTone;
   icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  subtitle?: string;
-  className?: string;
-  children: React.ReactNode;
+  /** O que é — sempre curto, em caixa alta discreta. */
+  label: string;
+  /** Como está agora — o que o operador lê batendo o olho. */
+  value: string;
+  /** Já preenchido/escolhido: ganha a borda colorida e o texto forte. */
+  active?: boolean;
+  /** Falta preencher e isso trava a venda (ex.: vendedor com carrinho cheio). */
+  pending?: boolean;
+  badge?: React.ReactNode;
+  /** Detalhe secundário que saiu da superfície (ver item 6 da reorganização). */
+  title?: string;
+  /** Liga/desliga em vez de abrir modal (Proteção Eficaz) — vira `role="switch"`. */
+  asSwitch?: boolean;
+  onClick: () => void;
+  onClear?: () => void;
+  clearLabel?: string;
 }) {
-  const t = PANEL_TONE_CLASSES[tone];
+  const t = CHIP_TONE_CLASSES[tone];
   return (
-    <div className={clsx("rounded-xl border bg-surface p-4", t.border, t.glow, className)}>
-      <div className="mb-3 flex items-center gap-2.5">
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        // Um `title` só, no botão: o estado vem primeiro porque pode estar
+        // cortado pelo `truncate` numa tela estreita (nome de cliente grande),
+        // e aí o valor inteiro só existe aqui. Um segundo `title` no texto de
+        // dentro engoliria a explicação — o mais interno é o que o navegador
+        // mostra.
+        title={title ? `${value} · ${title}` : value}
+        role={asSwitch ? "switch" : undefined}
+        aria-checked={asSwitch ? active : undefined}
+        className={clsx(
+          "flex min-h-14 w-full items-center gap-2.5 rounded-lg border bg-surface py-2 pl-2.5 text-left transition-colors hover:bg-surface-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-active",
+          onClear ? "pr-9" : "pr-2.5",
+          pending ? "border-warning/60" : active ? t.activeBorder : "border-border"
+        )}
+      >
         <span
           className={clsx(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br shadow-inner",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br shadow-inner",
             t.icon
           )}
         >
-          <Icon className="h-[18px] w-[18px] text-white" />
+          <Icon className="h-4 w-4 text-white" />
         </span>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-foreground">{title}</p>
-          {subtitle && <p className="text-xs text-text-muted">{subtitle}</p>}
-        </div>
-      </div>
-      {children}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[11px] font-medium uppercase leading-tight tracking-wide text-text-muted">
+            {label}
+          </span>
+          <span
+            className={clsx(
+              "block truncate text-sm font-bold leading-tight",
+              active ? "text-foreground" : "text-text-secondary"
+            )}
+          >
+            {value}
+          </span>
+        </span>
+        {badge}
+      </button>
+      {onClear && (
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label={clearLabel}
+          title={clearLabel}
+          className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-base text-text-muted hover:bg-danger/10 hover:text-danger"
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
@@ -203,9 +230,8 @@ export function PdvScreen({
   const [discountNotice, setDiscountNotice] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
-  const [customerTerm, setCustomerTerm] = useState("");
-  const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
 
   const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
   const [cashReceived, setCashReceived] = useState<number | "">("");
@@ -441,6 +467,17 @@ export function PdvScreen({
     }
   }
 
+  // Faixa de avisos abaixo dos cards de contexto — `Boolean(...)` explícito
+  // porque as parcelas são números: um `saldo || ...` com saldo 0 devolveria o
+  // próprio `0`, que o JSX renderizaria como o caractere "0" na tela.
+  const hasContextNotes = Boolean(
+    convenioMember ||
+      (customer && customer.creditBalance > 0) ||
+      (customer && customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked) ||
+      customer?.creditoEficazBlocked ||
+      (protecaoEficazRedemption && !protecaoEficazRedemptionReady)
+  );
+
   const paid = round2(PAYMENT_SLOTS.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
   const remaining = round2(total - paid);
   const cashPortion = round2(amounts.cash || 0);
@@ -575,14 +612,6 @@ export function PdvScreen({
     setCart((current) => current.filter((line) => line.key !== key));
   }
 
-  function searchCustomers() {
-    const query = customerTerm.trim();
-    if (query.length < 2) return;
-    startTransition(async () => {
-      setCustomerResults(await searchCustomersAction(query));
-    });
-  }
-
   function setPaymentAmount(key: PaymentSlotKey, amount: number) {
     setAmounts((current) => ({ ...current, [key]: amount }));
   }
@@ -609,13 +638,65 @@ export function PdvScreen({
    *  sozinho (menor valor entre o saldo disponível e o total da venda) —
    *  o vendedor não precisa calcular/digitar, mas pode ajustar depois. */
   function selectCustomer(picked: CustomerOption) {
+    // Trocar de cliente (não só escolher o primeiro) passou a ser possível
+    // quando a busca virou modal — antes era preciso Remover e buscar de novo,
+    // e o Remover já realocava tudo. Sem isto, o crédito de loja, o fiado, o
+    // Crédito Eficaz e o PIN do cliente ANTERIOR continuariam na tela em nome
+    // do novo, e o erro só apareceria ao fechar a venda (ou, no caso do PIN,
+    // só no servidor).
+    // Só quando TROCA de cliente. Escolher o primeiro segue idêntico ao que
+    // era antes (só o pré-preenchimento do crédito de loja) — o objetivo aqui
+    // é fechar a brecha nova, não mexer no comportamento que já funcionava.
+    const isSwitch = !!customer && customer.id !== picked.id;
+
     setCustomer(picked);
-    if (picked.creditBalance > 0) {
-      setAmounts((current) => ({
-        ...current,
-        store_credit: round2(Math.min(picked.creditBalance, total)),
-      }));
+    if (isSwitch) {
+      setCreditoEficazPin("");
+      setFiadoDueDate("");
     }
+
+    setAmounts((current) => {
+      const next = { ...current };
+
+      if (isSwitch) {
+        // Mesma realocação do "Remover cliente": o que estava em forma ligada
+        // ao cliente antigo volta pro Dinheiro, em vez de sumir e deixar a
+        // venda com pagamento faltando sem avisar.
+        next.cash = round2(
+          current.cash + current.store_credit + current.fiado + current.credito_eficaz
+        );
+        next.store_credit = 0;
+        next.fiado = 0;
+        next.credito_eficaz = 0;
+      }
+
+      if (picked.creditBalance > 0) {
+        const prefilled = round2(Math.min(picked.creditBalance, total));
+        next.store_credit = prefilled;
+        // Só na troca: o Dinheiro acabou de absorver os slots liberados acima,
+        // então o que o crédito do novo cliente cobre sai de lá — senão a soma
+        // passaria do total e acusaria "excede" sem o operador ter feito nada.
+        if (isSwitch) next.cash = round2(Math.max(0, next.cash - prefilled));
+      }
+
+      return next;
+    });
+  }
+
+  /** Tirar o cliente derruba junto tudo que só existia por causa dele (crédito
+   *  de loja, fiado, Crédito Eficaz) — o valor volta pra "Dinheiro" em vez de
+   *  sumir, senão a venda ficaria com pagamento faltando sem avisar. Mesma
+   *  realocação que já existia no botão "Remover" do painel antigo. */
+  function clearCustomer() {
+    setCustomer(null);
+    setAmounts((current) => ({
+      ...current,
+      cash: round2(current.cash + current.store_credit + current.fiado + current.credito_eficaz),
+      store_credit: 0,
+      fiado: 0,
+      credito_eficaz: 0,
+    }));
+    setCreditoEficazPin("");
   }
 
   function finalizeSale() {
@@ -721,8 +802,6 @@ export function PdvScreen({
         setCart([]);
         setError(undefined);
         setCustomer(null);
-        setCustomerTerm("");
-        setCustomerResults([]);
         setAmounts(EMPTY_PAYMENT_AMOUNTS);
         setCashReceived("");
         setFiadoDueDate("");
@@ -795,60 +874,63 @@ export function PdvScreen({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      {/* Duas colunas a partir de `lg`, com o gap menor que os 24px de antes:
+          em 1366x768 (o monitor típico do caixa) cada 8px de gap vertical
+          contava. Abaixo de `lg` empilha na ordem de prioridade — busca,
+          carrinho, contexto, finalização. */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5 lg:gap-4">
         {/* Coluna esquerda: busca e carrinho */}
         <div className="lg:col-span-3">
-        <div
-          ref={searchBoxRef}
-          className="relative mb-4 rounded-xl border border-blue-400/25 bg-surface p-4 shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]"
-        >
-          <div className="mb-3 flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner">
-              <Search className="h-[18px] w-[18px] text-white" />
-            </span>
-            <label htmlFor="pdv-search" className="text-sm font-bold text-foreground">
-              Produto <span className="font-normal text-text-muted">(nome, código interno ou código de barras)</span>
-            </label>
-          </div>
+        {/* Barra operacional: uma linha só. O painel que existia aqui (badge de
+            ícone + rótulo explicativo + padding) custava ~90px de altura pra
+            enfeitar um campo de texto — a explicação virou o próprio
+            placeholder, e o rótulo continua existindo pra leitor de tela. */}
+        <div ref={searchBoxRef} className="relative mb-3">
+          <label htmlFor="pdv-search" className="sr-only">
+            Buscar produto por nome, código interno ou código de barras
+          </label>
           <div className="flex gap-2">
-            <Input
-              id="pdv-search"
-              ref={searchRef}
-              autoFocus
-              autoComplete="off"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              onFocus={() => {
-                if (results.length > 0) setSuggestionsOpen(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  runSearch();
-                }
-                if (e.key === "Escape") {
-                  setSuggestionsOpen(false);
-                }
-              }}
-              placeholder="Passe o leitor de código de barras ou digite o nome do produto"
-              className="min-w-0 flex-1"
-            />
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+              <Input
+                id="pdv-search"
+                ref={searchRef}
+                autoFocus
+                autoComplete="off"
+                value={term}
+                onChange={(e) => setTerm(e.target.value)}
+                onFocus={() => {
+                  if (results.length > 0) setSuggestionsOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    runSearch();
+                  }
+                  if (e.key === "Escape") {
+                    setSuggestionsOpen(false);
+                  }
+                }}
+                placeholder="Produto, código ou código de barras"
+                className="h-11 pl-9 text-base"
+              />
+            </div>
             <Button
               type="button"
               onClick={() => runSearch()}
               variant="secondary"
               fullWidth={false}
-              className="shrink-0 px-4"
+              className="h-11 shrink-0 px-4"
             >
               {searching ? "Buscando..." : "Buscar"}
             </Button>
-            <BarcodeScannerField onScanned={handleScanned} />
+            <BarcodeScannerField onScanned={handleScanned} className="h-11" />
           </div>
 
           {/* Sugestões em tempo real: atualiza a cada tecla digitada (busca parcial
               pelo nome) e some quando o campo esvazia ou uma opção é escolhida. */}
           {suggestionsOpen && results.length > 0 && (
-            <div className="absolute inset-x-4 top-full z-20 mt-1 max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
+            <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
               {results.map((product) => {
                 const hasVariants = product.variants.length > 0;
                 return (
@@ -932,17 +1014,20 @@ export function PdvScreen({
         </div>
 
         <div className="rounded-xl border border-blue-400/25 bg-surface shadow-[0_0_24px_-16px_rgba(59,130,246,0.55)]">
-          <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner">
-              <ShoppingCart className="h-[18px] w-[18px] text-white" />
+          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner">
+              <ShoppingCart className="h-4 w-4 text-white" />
             </span>
             <span className="text-sm font-bold text-foreground">
-              Carrinho ({cart.length} {cart.length === 1 ? "item" : "itens"})
+              Carrinho · {cart.length} {cart.length === 1 ? "item" : "itens"}
             </span>
           </div>
           {cart.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-text-muted">
-              Nenhum item no carrinho. Busque um produto acima para começar.
+            // Empty state compacto: com o carrinho vazio essa área não precisa
+            // de 160px pra dizer que está vazia — o operador acabou de chegar
+            // no campo de busca, que está logo acima e já está com o foco.
+            <p className="px-4 py-6 text-center text-sm text-text-muted">
+              Carrinho vazio — busque um produto acima para começar.
             </p>
           ) : (
             // Cada item é um bloco empilhado, não uma linha de tabela — numa
@@ -954,25 +1039,25 @@ export function PdvScreen({
             // no canto do item, sempre visível.
             <div className="divide-y divide-border">
               {cart.map((line) => (
-                <div key={line.key} className="relative p-4">
+                <div key={line.key} className="relative p-3">
                   <button
                     type="button"
                     onClick={() => removeLine(line.key)}
                     aria-label={`Remover ${line.name}`}
                     title="Remover"
-                    className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-text-muted hover:bg-danger/10 hover:text-danger"
+                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-lg text-text-muted hover:bg-danger/10 hover:text-danger"
                   >
                     ×
                   </button>
 
-                  <p className="max-w-[calc(100%-2.5rem)] text-base font-bold text-foreground">
+                  <p className="max-w-[calc(100%-2.5rem)] text-base font-bold leading-snug text-foreground">
                     {line.name}
                   </p>
                   <p className="text-xs text-text-muted">
                     {formatBRL(line.unitPrice)} · estoque {line.stockQty}
                   </p>
 
-                  <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+                  <div className="mt-2 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
                     <div>
                       <p className="mb-1 text-xs font-medium text-text-muted">Quantidade</p>
                       <div className="flex items-center gap-1">
@@ -1066,234 +1151,175 @@ export function PdvScreen({
         </div>
       </div>
 
-      {/* Coluna direita: cliente, totais e pagamento */}
+      {/* Coluna direita: contexto da venda (cards compactos) e finalização */}
       <div className="lg:col-span-2">
-        <div className="space-y-4">
-          {/* Ordem fixa da lateral: Cliente → Vendedor → Total → Forma de
-              pagamento → Finalizar. */}
-          <PdvPanel tone="neutral" icon={User} title="Cliente" subtitle="Opcional">
-            {customer ? (
-              <div className="flex items-center justify-between rounded-md bg-surface-hover px-3 py-2">
-                <div>
-                  <p className="text-base font-bold text-foreground">{customer.name}</p>
-                  <p className="text-xs text-text-muted">
-                    {customer.document ?? customer.phone ?? "sem documento"}
-                    {customer.eficazNumber ? ` · ${customer.eficazNumber}` : ""}
-                  </p>
-                  {customer.creditBalance > 0 && (
-                    <p className="text-xs font-medium text-success">
-                      Crédito de loja disponível: {formatBRL(customer.creditBalance)}
-                    </p>
-                  )}
-                  {customer.creditoEficazAvailableAmount > 0 && !customer.creditoEficazBlocked && (
-                    <p className="text-xs font-medium text-success">
-                      Crédito Eficaz disponível: {formatBRL(customer.creditoEficazAvailableAmount)}
-                    </p>
-                  )}
-                  {customer.creditoEficazBlocked && (
-                    <p className="text-xs font-medium text-danger">Crédito Eficaz bloqueado</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomer(null);
-                    setAmounts((current) => ({
-                      ...current,
-                      cash: round2(current.cash + current.store_credit + current.fiado + current.credito_eficaz),
-                      store_credit: 0,
-                      fiado: 0,
-                      credito_eficaz: 0,
-                    }));
-                    setCreditoEficazPin("");
-                  }}
-                  className="text-xs text-danger hover:underline"
-                >
-                  Remover
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <Input
-                    id="pdv-customer"
-                    autoComplete="off"
-                    value={customerTerm}
-                    onChange={(e) => setCustomerTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        searchCustomers();
-                      }
-                    }}
-                    placeholder="Nome, CPF/CNPJ, telefone ou Número Eficaz"
-                    className="min-w-0 flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={searchCustomers}
-                    fullWidth={false}
-                    className="shrink-0 px-3"
-                  >
-                    Buscar
-                  </Button>
-                </div>
-                {customerResults.length > 0 && (
-                  <div className="mt-2 divide-y divide-border rounded-md border border-border">
-                    {customerResults.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          selectCustomer(c);
-                          setCustomerResults([]);
-                          setCustomerTerm("");
-                        }}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-hover"
-                      >
-                        <span className="font-medium text-foreground">{c.name}</span>
-                        <span className="ml-2 text-xs text-text-muted">
-                          {c.document ?? c.phone ?? ""}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </PdvPanel>
+        <div className="space-y-3">
+          {/* Contexto da venda em cards de 56px lado a lado, no lugar dos
+              painéis empilhados de ~120px cada. Cada card mostra o estado e
+              abre o detalhe num modal — a ordem de prioridade continua a
+              mesma (cliente → vendedor → auxiliares → total → pagamento). */}
+          {/* Duas colunas, menos na faixa `lg` (1024–1279px): ali a coluna da
+              direita vale ~2/5 de uma tela já estreita, e dois cards lado a
+              lado deixariam ~140px pra cada um — "Não identificado" sairia
+              cortado. Os monitores de caixa (1366, 1920) caem em `xl`, então
+              recebem as duas colunas. */}
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 xl:grid-cols-2">
+            <PdvChip
+              icon={User}
+              label="Cliente"
+              value={customer ? customer.name : "Não identificado"}
+              active={!!customer}
+              title="Opcional — necessário para crédito de loja, fiado e Crédito Eficaz"
+              onClick={() => setCustomerModalOpen(true)}
+              onClear={customer ? clearCustomer : undefined}
+              clearLabel="Remover cliente da venda"
+            />
 
-          <PdvPanel tone="neutral" icon={UserCog} title="Vendedor">
-            {sellerName ? (
-              <div className="flex items-center justify-between rounded-md bg-surface-hover px-3 py-2">
-                <span className="text-base font-bold text-foreground">{sellerName}</span>
-                <button
-                  type="button"
-                  onClick={() => setSellerModalOpen(true)}
-                  className="text-xs font-medium text-text-secondary hover:underline"
-                >
-                  Trocar
-                </button>
-              </div>
-            ) : (
-              <Button type="button" variant="secondary" onClick={() => setSellerModalOpen(true)}>
-                Selecionar vendedor
-              </Button>
-            )}
-          </PdvPanel>
+            <PdvChip
+              icon={UserCog}
+              label="Vendedor"
+              value={sellerName ?? "Selecionar"}
+              active={!!sellerId}
+              pending={!sellerId && cart.length > 0}
+              title="Quem realizou esta venda — obrigatório para liberar o pagamento"
+              onClick={() => setSellerModalOpen(true)}
+            />
 
-          {canMoveCash && (
-            <PdvPanel tone="credit" icon={Wallet} title="Caixa">
-              <Button
-                type="button"
-                variant="secondary"
+            {canMoveCash && (
+              <PdvChip
+                tone="credit"
+                icon={Wallet}
+                label="Caixa"
+                value="Sangria / suprimento"
+                // Sem `active`: na gramática dos cards, borda colorida quer
+                // dizer "escolhido/preenchido nesta venda". O Caixa é uma ação
+                // sempre disponível, não um estado da venda — deixá-lo aceso
+                // competiria com Cliente e Vendedor sem informar nada.
+                title="Registrar retirada ou entrada de dinheiro sem sair do PDV"
                 onClick={() => setCashMovementModalOpen(true)}
-              >
-                Sangria / Suprimento
-              </Button>
-            </PdvPanel>
-          )}
-
-          <PdvPanel tone="benefits" icon={HandCoins} title="Convênio corporativo">
-            {convenioMember ? (
-              <div className="flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
-                <div>
-                  <span className="block text-sm font-bold text-foreground">{convenioMember.member.name}</span>
-                  <span className="text-xs text-text-muted">Convênio {convenioMember.convenio.name}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setConvenioMember(null)}
-                  className="text-xs font-medium text-text-secondary hover:underline"
-                >
-                  Remover
-                </button>
-              </div>
-            ) : (
-              <Button type="button" variant="secondary" onClick={() => setConvenioModalOpen(true)}>
-                Escanear QR do convênio
-              </Button>
+              />
             )}
-            <button
-              type="button"
+
+            <PdvChip
+              tone="benefits"
+              icon={HandCoins}
+              label="Convênio"
+              // O NOME DA PESSOA na superfície, não o do convênio: o fluxo
+              // pede que o vendedor confira se quem está no balcão é o titular
+              // da credencial (ver `ConvenioModal`). Esconder o nome atrás de
+              // um tooltip enfraqueceria justamente essa conferência — o nome
+              // do convênio e o valor vão pra faixa de avisos logo abaixo.
+              value={convenioMember ? convenioMember.member.name : "Nenhum"}
+              active={!!convenioMember}
+              title={
+                convenioMember
+                  ? `Convênio ${convenioMember.convenio.name} · benefício de ${formatBRL(convenioMember.benefitAmount)}`
+                  : "Escanear o QR do convênio corporativo do cliente"
+              }
+              onClick={() => setConvenioModalOpen(true)}
+              onClear={convenioMember ? () => setConvenioMember(null) : undefined}
+              clearLabel="Remover benefício de convênio"
+            />
+
+            <PdvChip
+              tone="benefits"
+              icon={ClipboardList}
+              label="Cadastros"
+              value={
+                pendingConvenioSignups > 0
+                  ? `${pendingConvenioSignups} pendente${pendingConvenioSignups === 1 ? "" : "s"}`
+                  : "Nenhum pendente"
+              }
+              active={pendingConvenioSignups > 0}
+              title="Cadastros de convênio aguardando aprovação e links de inscrição"
+              badge={
+                pendingConvenioSignups > 0 ? (
+                  <span className="shrink-0 rounded-full bg-warning px-1.5 py-0.5 text-[11px] font-bold text-white">
+                    {pendingConvenioSignups}
+                  </span>
+                ) : undefined
+              }
               onClick={() => setConvenioSignupsOpen(true)}
-              className="mt-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-sm font-medium text-text-secondary hover:bg-surface-hover"
-            >
-              <span>Cadastros pendentes e links</span>
-              {pendingConvenioSignups > 0 ? (
-                <span className="rounded-full bg-warning px-2 py-0.5 text-xs font-bold text-white">
-                  {pendingConvenioSignups}
-                </span>
-              ) : (
-                <span className="text-xs text-text-muted">nenhum pendente</span>
+            />
+
+            {protecaoEficazEligible && (
+              <PdvChip
+                tone="protection"
+                icon={ShieldCheck}
+                label="Proteção Eficaz"
+                value={protecaoEficazOptedIn ? "Cliente optou" : "Não aplicada"}
+                active={protecaoEficazOptedIn}
+                asSwitch
+                title="Sem desconto na película agora — em troca, garantia de trocar a película em até 30 dias da venda. Sai marcado no cupom; o cliente valida em /conta no site."
+                onClick={() => setProtecaoEficazOptedIn((current) => !current)}
+              />
+            )}
+
+            <PdvChip
+              tone="protection"
+              icon={RefreshCw}
+              label="Troca"
+              value={
+                protecaoEficazRedemption
+                  ? `Venda #${protecaoEficazRedemption.saleNumber}`
+                  : "Nenhuma"
+              }
+              active={!!protecaoEficazRedemption}
+              pending={Boolean(protecaoEficazRedemption) && !protecaoEficazRedemptionReady}
+              title={
+                protecaoEficazRedemption
+                  ? `Troca de película de ${protecaoEficazRedemption.customerName}`
+                  : "Validar uma troca gratuita de película da Proteção Eficaz"
+              }
+              onClick={() => setProtecaoEficazRedemptionModalOpen(true)}
+              onClear={
+                protecaoEficazRedemption ? () => setProtecaoEficazRedemption(null) : undefined
+              }
+              clearLabel="Remover troca da Proteção Eficaz"
+            />
+          </div>
+
+          {/* Faixa de avisos: só aparece quando há algo de fato a dizer, em vez
+              de reservar altura fixa dentro de cada card pra um texto que na
+              maioria das vendas não existe. */}
+          {hasContextNotes && (
+            <div className="space-y-0.5 rounded-md bg-surface-hover px-2.5 py-1.5 text-xs">
+              {convenioMember && (
+                <p className="font-medium text-text-secondary">
+                  Convênio {convenioMember.convenio.name} · benefício de{" "}
+                  {formatBRL(convenioMember.benefitAmount)}
+                </p>
               )}
-            </button>
-          </PdvPanel>
-
-          {protecaoEficazEligible && (
-            <PdvPanel tone="protection" icon={ShieldCheck} title="Proteção Eficaz">
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={protecaoEficazOptedIn}
-                  onChange={(e) => setProtecaoEficazOptedIn(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-border"
-                />
-                <span>
-                  <span className="block text-sm font-bold text-foreground">
-                    Cliente optou pela Proteção Eficaz
-                  </span>
-                  <span className="block text-xs text-text-muted">
-                    Sem desconto na película agora — em troca, garantia de trocar a película em
-                    até 30 dias da venda. Sai marcado no cupom; o cliente valida em /conta no site.
-                  </span>
-                </span>
-              </label>
-            </PdvPanel>
-          )}
-
-          <PdvPanel tone="protection" icon={RefreshCw} title="Troca — Proteção Eficaz">
-            {protecaoEficazRedemption ? (
-              <div>
-                <div className="flex items-center justify-between rounded-md bg-success/10 px-3 py-2">
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">
-                      {protecaoEficazRedemption.customerName}
-                    </span>
-                    <span className="text-xs text-text-muted">
-                      Venda original #{protecaoEficazRedemption.saleNumber}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setProtecaoEficazRedemption(null)}
-                    className="text-xs font-medium text-text-secondary hover:underline"
-                  >
-                    Remover
-                  </button>
-                </div>
-                {!protecaoEficazRedemptionReady && (
-                  <p className="mt-2 text-xs text-warning">
-                    {peliculaUnits === 0
-                      ? "Adicione a película ao carrinho pra aplicar."
-                      : "Exige exatamente 1 película no carrinho — remova as demais pra aplicar."}
+              {customer && customer.creditBalance > 0 && (
+                <p className="font-medium text-success">
+                  Crédito de loja disponível: {formatBRL(customer.creditBalance)}
+                </p>
+              )}
+              {customer &&
+                customer.creditoEficazAvailableAmount > 0 &&
+                !customer.creditoEficazBlocked && (
+                  <p className="font-medium text-success">
+                    Crédito Eficaz disponível: {formatBRL(customer.creditoEficazAvailableAmount)}
                   </p>
                 )}
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setProtecaoEficazRedemptionModalOpen(true)}
-              >
-                Validar troca de película
-              </Button>
-            )}
-          </PdvPanel>
+              {customer?.creditoEficazBlocked && (
+                <p className="font-medium text-danger">Crédito Eficaz bloqueado</p>
+              )}
+              {protecaoEficazRedemption && !protecaoEficazRedemptionReady && (
+                <p className="font-medium text-warning">
+                  {peliculaUnits === 0
+                    ? "Troca da Proteção Eficaz: adicione a película ao carrinho pra aplicar."
+                    : "Troca da Proteção Eficaz: exige exatamente 1 película no carrinho — remova as demais."}
+                </p>
+              )}
+            </div>
+          )}
 
-          <PdvPanel tone="neutral" icon={Receipt} title="Resumo">
-            <div className="space-y-1.5 text-base">
+          <div className="rounded-xl border border-emerald-500/25 bg-surface p-3 shadow-[0_0_24px_-16px_rgba(34,197,94,0.5)]">
+            {/* Resumo colado no pagamento: era um painel próprio, com cabeçalho
+                e ícone, separado por 16px do card que ele explica. O total e a
+                forma de pagar são a mesma decisão — agora são o mesmo card. */}
+            <div className="mb-3 space-y-1 text-sm">
               <div className="flex justify-between font-medium text-text-secondary">
                 <span>Subtotal</span>
                 <span className="font-bold text-foreground">{formatBRL(subtotal)}</span>
@@ -1322,14 +1348,12 @@ export function PdvScreen({
                   <span className="font-bold text-foreground">+{formatBRL(creditoEficazSurcharge)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-border pt-2 text-xl font-bold text-foreground">
+              <div className="flex justify-between border-t border-border pt-1.5 text-xl font-bold text-foreground">
                 <span>Total</span>
                 <span>{formatBRL(totalToPay)}</span>
               </div>
             </div>
-          </PdvPanel>
 
-          <div className="rounded-xl border border-emerald-500/25 bg-surface p-4 shadow-[0_0_24px_-16px_rgba(34,197,94,0.5)]">
             {/* Card escuro de propósito (adiantado da Fase 4) — o MixedPaymentPanel
                 compartilhado já usa os tokens escuros desde a Fase 1, e ficava
                 com texto quase invisível dentro do card branco que ainda restava
@@ -1344,6 +1368,7 @@ export function PdvScreen({
                 amounts={amounts}
                 total={total}
                 disabled={!sellerId}
+                dense
                 onChangeAmount={(key, value) => {
                   const slotKey = key as PaymentSlotKey;
                   if (slotKey === "cash") {
@@ -1445,6 +1470,14 @@ export function PdvScreen({
           </div>
         </div>
       </div>
+
+      <CustomerPickerModal
+        open={customerModalOpen}
+        onClose={() => setCustomerModalOpen(false)}
+        selected={customer}
+        onSelect={selectCustomer}
+        onClear={clearCustomer}
+      />
 
       <SellerPickerModal
         open={sellerModalOpen}

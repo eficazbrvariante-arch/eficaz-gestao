@@ -1,5 +1,6 @@
 "use client";
 
+import { clsx } from "@/lib/clsx";
 import { formatBRL } from "@/lib/format";
 
 export type PaymentPanelSlot = {
@@ -30,6 +31,7 @@ export function MixedPaymentPanel({
   total,
   onChangeAmount,
   disabled = false,
+  dense = false,
 }: {
   slots: PaymentPanelSlot[];
   amounts: Record<string, number>;
@@ -37,6 +39,14 @@ export function MixedPaymentPanel({
   onChangeAmount: (key: string, amount: number) => void;
   /** Desabilita a lista inteira (ex.: vendedor ainda não selecionado). */
   disabled?: boolean;
+  /**
+   * Formas disponíveis em duas colunas, com botões mais baixos — usado só no
+   * PDV, onde as 8 formas empilhadas ocupavam quase 450px de altura e
+   * empurravam o "Finalizar venda" pra fora da tela. A área de toque continua
+   * confortável (44px). Desligado por padrão: a Assistência Técnica segue
+   * exatamente com a lista vertical de sempre.
+   */
+  dense?: boolean;
 }) {
   const paid = round2(slots.reduce((sum, slot) => sum + (amounts[slot.key] || 0), 0));
   const remaining = round2(total - paid);
@@ -45,11 +55,11 @@ export function MixedPaymentPanel({
   const availableSlots = slots.filter((slot) => !((amounts[slot.key] || 0) > 0));
 
   return (
-    <div className="space-y-4">
+    <div className={dense ? "space-y-3" : "space-y-4"}>
       {remaining > 0.005 && (
         <div>
           <p className="mb-2 text-sm font-bold text-foreground">Forma de pagamento</p>
-          <div className="space-y-2">
+          <div className={dense ? "grid grid-cols-2 gap-2" : "space-y-2"}>
             {availableSlots.map((slot) => (
               <button
                 key={slot.key}
@@ -57,7 +67,16 @@ export function MixedPaymentPanel({
                 disabled={disabled || slot.disabled}
                 title={slot.disabled ? slot.disabledReason : `Usar restante — ${formatBRL(remaining)}`}
                 onClick={() => onChangeAmount(slot.key, remaining)}
-                className="block w-full rounded-lg border border-border bg-surface px-4 py-3 text-left text-base font-bold text-foreground hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface"
+                className={clsx(
+                  // `display` sai de um lado só das duas opções: deixar `block`
+                  // no trecho comum e `flex` no denso deixaria duas utilidades
+                  // de display na mesma classe, e quem vence passaria a ser a
+                  // ordem da folha de estilo, não a intenção aqui.
+                  "w-full rounded-lg border border-border bg-surface text-left font-bold text-foreground hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface",
+                  dense
+                    ? "flex min-h-11 items-center px-3 py-2 text-sm leading-tight"
+                    : "block px-4 py-3 text-base"
+                )}
               >
                 {slot.label}
               </button>
@@ -73,12 +92,20 @@ export function MixedPaymentPanel({
             {activeSlots.map((slot) => (
               <div
                 key={slot.key}
-                className="flex items-center gap-2 rounded-lg border border-border bg-surface-hover px-3 py-2.5"
+                className={clsx(
+                  "flex items-center gap-2 rounded-lg border border-border bg-surface-hover px-3",
+                  dense ? "py-1.5" : "py-2.5"
+                )}
               >
-                <span className="min-w-0 flex-1 truncate text-base font-bold text-foreground">
+                <span
+                  className={clsx(
+                    "min-w-0 flex-1 truncate font-bold text-foreground",
+                    dense ? "text-sm" : "text-base"
+                  )}
+                >
                   {slot.label}
                 </span>
-                <div className="relative w-32 shrink-0">
+                <div className={clsx("relative shrink-0", dense ? "w-28" : "w-32")}>
                   <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-text-muted">
                     R$
                   </span>
@@ -89,7 +116,10 @@ export function MixedPaymentPanel({
                     disabled={disabled}
                     value={amounts[slot.key] || ""}
                     onChange={(e) => onChangeAmount(slot.key, Math.max(0, Number(e.target.value) || 0))}
-                    className="money-input h-10 w-full rounded border border-border bg-surface py-1 pl-8 pr-2 text-right text-base font-bold text-foreground disabled:bg-surface-hover"
+                    className={clsx(
+                      "money-input w-full rounded border border-border bg-surface py-1 pl-8 pr-2 text-right font-bold text-foreground disabled:bg-surface-hover",
+                      dense ? "h-9 text-sm" : "h-10 text-base"
+                    )}
                   />
                 </div>
                 <button
@@ -106,7 +136,12 @@ export function MixedPaymentPanel({
             ))}
           </div>
 
-          <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-base">
+          <div
+            className={clsx(
+              "border-t border-border text-base",
+              dense ? "mt-2 space-y-1 pt-2" : "mt-3 space-y-1.5 pt-3"
+            )}
+          >
             <div className="flex justify-between text-text-secondary">
               <span className="font-medium">Pago</span>
               <span className="font-bold text-foreground">{formatBRL(paid)}</span>

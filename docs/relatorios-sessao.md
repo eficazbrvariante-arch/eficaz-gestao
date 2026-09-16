@@ -2671,3 +2671,170 @@ responde "Faça login…".
 - Para testar o crédito localmente, o `.env.local` precisa de
   `CREDITO_BLOB_STORE_ID`, `CREDITO_BLOB_WEBHOOK_PUBLIC_KEY` e um
   `VERCEL_OIDC_TOKEN` válido (expira em 12h; vem do `vercel env pull`).
+
+## 2026-09-11 (continuação) — Gerente, acréscimo do Crédito Eficaz, convênio no PDV, comissão, horas e arquivar
+
+Tudo publicado em produção no mesmo dia, em dois deploys:
+- `c349439`, sozinho, por ser urgente: restrições do Gerente.
+- `696c8ce`: lote com os demais.
+
+As migrations (todas só aditivas) foram aplicadas no build:
+- `20260911210000_gerente_custo_produto`
+- `20260911220000_credito_eficaz_acrescimo`
+- `20260911230000_comissao_pagamento`
+
+`check:deploy` passou nos dois deploys.
+
+**Gerente (`c349439`)**
+- `canViewReports` passou a ser só ADMIN. Somem Relatórios, Analytics, os números financeiros do dashboard e o total do caixa.
+- Painel de Ponto e correção de marcação ficaram só com ADMIN.
+- Área Estoque ficou só com ADMIN/Estoquista. As telas e actions de estoque não tinham trava nenhuma além do menu; agora têm.
+- Custo de produto: o Gerente nunca vê o custo salvo (formulário, lista e exportação). Só digita o custo ao cadastrar produto novo se o Admin ligar `User.canEnterProductCost` pra ele em Usuários (é por pessoa, conforme o plantão).
+- A exportação de produtos aceitava qualquer perfil logado, com custo. Agora exige gerenciar produtos e só inclui o custo pra quem pode vê-lo.
+
+**Crédito Eficaz: acréscimo (`ced61c1`)**
+- 10% configuráveis (`Tenant.creditoEficazSurchargePercent`), cobrados só sobre a parte paga no crédito.
+- No PDV, a venda ganha a linha `Sale.creditoEficazSurcharge`, somada ao total e fora dos itens (a comissão não muda). O `Payment` e a obrigação já saem com o acréscimo.
+- Na OS, o acréscimo entra no valor financiado, antes de dividir as parcelas.
+- O servidor recusa a venda se a tela mostrou um percentual diferente do vigente.
+- Termos passaram para a v2.
+- O máximo de parcelas da OS agora é checado no servidor.
+- **Correção junto:** cancelar venda paga no Crédito Eficaz devolvia em dobro (crédito de loja do total mais o limite de volta). Agora a parte no crédito só volta ao limite.
+
+**Convênio no PDV (`c0a06aa`)**
+- "Cadastros pendentes e links", com contador, no painel de convênio. Qualquer vendedor aprova ou recusa cadastro PENDENTE de qualquer convênio (a recusa exige motivo) e copia o link ativo de cada convênio.
+- O vendedor só mexe em PENDENTE e nunca gera link.
+- Aprovações e recusas vão para a auditoria.
+
+**Comissão (`f476c26`)**
+- "Pagar comissão" na tela do vendedor, só Admin. O pagamento já nasce PAGO.
+- O valor é recalculado no servidor. `CommissionPaymentSale.saleId @unique` impede pagar a mesma venda duas vezes.
+- O pagamento vira lançamento `COMMISSION_PAYMENT` no livro do colaborador (fica fora do formulário manual).
+- Excluir o lançamento libera as vendas de novo.
+- Ranking (painel e PDV) mostra "✓ Pago dd/mm–dd/mm · falta R$ X".
+- Venda paga e depois cancelada aparece como aviso.
+
+**Horas (`b92b83a`)**
+- "Pagar horas" no topo, junto do período. O pagamento entra como Pendente.
+- No histórico, "Foi pago" quita e "Não foi pago" desfaz: as horas voltam a contar. "Não foi pago" só aparece no pagamento mais recente.
+
+**Arquivar colaborador (`e421390`)**
+- "Arquivar colaborador" no card e lista "Arquivados (N)" com "Reativar".
+- Arquivar = `active = false`: bloqueia o login na hora e tira do painel e do Ranking. Só ADMIN.
+
+**Testes**
+- typecheck limpo.
+- lint: 0 erros e os 9 avisos antigos.
+- 164 testes unitários.
+- 79/80 testes de integração com tudo junto. Testes novos: 6 do acréscimo, 6 de convênio, 5 de pagamento de comissão e 5 de permissões do Gerente.
+- build ok.
+
+**Riscos e pendências**
+- `multitenant-isolation` #11 ("relatório de hoje") falha só à noite: depois das 21h no Brasil já é o dia seguinte em UTC. É defeito antigo do teste, sem relação com as mudanças.
+- O teste 24 do Crédito Eficaz falhou uma vez por lentidão do Neon (19s) e passou nas 3 rodadas seguintes.
+- Nada foi testado no navegador logado, porque o agente não pode digitar senha. A validação foi por testes de integração e chamadas diretas às rotas.
+- A área Colaboradores (adiantamento, horas, ranking) continua visível ao Gerente. Esconder fica a critério do dono.
+- O Gerente fecha o caixa sem ver o total esperado (contagem às cegas).
+- Branches locais antigas (`feat/desconto-combo-capinha-pelicula`, `fix/comprimir-imagem-upload`, `pwa-loja-publica`, `vendas-reativar-nota`) não foram mexidas.
+
+**Correção (12/09, `d2a6e7f`) — comissão aparecia como paga no período errado**
+
+O dono viu "comissão deste período já está paga" em 01/09 a 11/09 (213 vendas, R$ 144,20) dizendo ter pago só de 21/08 a 31/08. O pagamento só marca vendas do período APLICADO na tela, e os campos De/Até só mudam o período com "Aplicar" — a tela não mostrava qual período ia ser pago.
+
+Correção publicada:
+- A faixa de pagamento mostra o período selecionado e cada pagamento com início e fim.
+- O botão fica travado com datas não aplicadas.
+- A confirmação mostra as datas em destaque.
+- Novo botão "Desfazer pagamento" (Admin).
+- O Ranking mostra "Pago de dd/mm até dd/mm".
+
+Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desfazer/refazer pela tela.
+
+**Fiado (12–13/09) — receber pagamento e painel de controle**
+
+**Recebimento (`8a19dd5`)**
+- Ficha do cliente, em cada fiado pendente: "Receber pagamento". Escolhe a forma (Dinheiro/PIX/Débito/Crédito); data e hora são gravadas no clique, com quem recebeu.
+- O valor entra no caixa aberto do dia (decisão do dono): soma no total da forma e, em dinheiro, no esperado na gaveta (`getCashSummary`). Exige caixa aberto.
+- "Voltar para pendente" só funciona com o caixa do recebimento ainda aberto.
+- Migration aditiva (`paidAt`, `paymentMethod`, `paidById`, `paidCashRegisterId`). Fiado já pago recebeu `paidAt = updatedAt`.
+- A nota #1498 do print já estava PAGA antes da mudança; aparece com "forma não registrada".
+
+**Painel `/fiado` (`d4d4bfc`, menu "Fiado", só Admin)**
+- Cartões: em aberto, vencido, clientes devendo, vendido e recebido no mês.
+- Lista por cliente, com filtros e lembrete por WhatsApp.
+- Últimos 50 lançamentos.
+- Só leitura.
+
+**Verificações:** 5 testes de integração novos (fiado + caixa + painel), 164 unitários e build ok. `check:deploy` ok nos dois deploys.
+
+**Comissão: "Corrigir período" (13/09, `3d19fa2`)**
+- O dono pediu para corrigir o pagamento da Ana: registrado como 21/08 a 11/09, pago de verdade de 21/08 a 31/08. A chave do banco de produção é "sensitive" na Vercel (o `env pull` devolve só o marcador), então não houve edição direta: a correção virou ferramenta.
+- "Corrigir período → Pago até": encurta o fim, as vendas depois dele voltam para "A pagar" e o valor é recalculado. Data e autor do pagamento ficam iguais.
+- Esperado na Ana: R$ 59,72 · 75 vendas.
+- Incidente de teste: uma sessão "idle in transaction" deixada por uma rodada abortada travava o `beforeAll` no Neon dev. Foi encerrada com `pg_terminate_backend`, só no dev.
+
+**Sangria/suprimento no PDV de todos (14/09, `bf2b172`)**
+- O botão aparece no PDV para quem vende (`canRecordCashMovement`). A tela `/caixa` continua só com Admin/Gerente.
+- "Quem está fazendo" é obrigatório (`CashMovement.performedById`).
+- Sangria exige cupom ou, marcando "sem cupom", selfie ao vivo (`selfieUrl`). A regra é validada no servidor e vale nos dois lugares.
+- A lista do caixa mostra o executor e os links "Ver cupom" / "Ver selfie".
+- Migration aditiva `20260914120000_sangria_executor_selfie`.
+- 4 testes unitários novos. 86/86 testes de integração (de dia, o teste noturno passa).
+
+**OS: corrigir forma de pagamento (14/09, `2e74c70`)**
+- "Corrigir forma" na lista de pagamentos de qualquer OS, só para Admin.
+- Muda só a forma, nunca o valor, e só entre Dinheiro/PIX/Débito/Crédito.
+- Fica registrado no histórico da OS e na auditoria.
+- 87/87 testes de integração.
+
+**Pendência anotada:** o cupom da OS #000058 mostra o item a R$ 320,00 e o total de R$ 290,00 sem a linha do desconto (R$ 30,00). Falta mostrar Subtotal/Desconto no cupom.
+
+## 14/09/2026 — Contraste: letra escura sobre fundo escuro no painel
+
+- **Pedido:** "Produtos" (aba e título) em azul-marinho sobre fundo preto, quase sumindo; trocar por letra clara e varrer o site pelo mesmo problema.
+- **Commit:** `a8cf6ea` na branch `fix/contraste-texto-escuro` (só commit, **não publicado**).
+- **Arquivos:** `produtos/produtos-tabs.tsx`, `produtos/produtos-header.tsx`, `relatorios/report-nav.tsx`, `relatorios/produtos/page.tsx`, `colaboradores/[userId]/comissao/commission-payment-panel.tsx` (modais Pagar/Desfazer), `caixa/cash-forms.tsx` ("Não tenho o cupom", "Selfie enviada."), `assistencia-tecnica/page.tsx` (busca de OS), `convenios/[id]/produtos-desconto-picker.tsx`, `produtos/importar/page.tsx`, `colaborador-estoque/page.tsx`, `ponto/painel/page.tsx`, `vendas/buscar/page.tsx`.
+- **Regra:** só troca de classe de cor por token (`text-foreground`, `text-text-secondary`, `text-text-muted`, `border-border`, `text-success`); nada de layout/lógica.
+- **Fora de propósito:** Ranking de Comissão (pedido do dono), loja pública, cupons/impressões, cores de status.
+- **Testes:** lint (0 erros, 9 avisos antigos), typecheck e build:app ok. Não testado no navegador (painel exige login, que não posso fazer).
+- **Pendências:** gamificação do PDV adiada pelo dono; telas antigas com cartão branco e rótulo cinza-claro (problema inverso, ex.: `/caixa`, `/clientes/[id]`, configurações) ainda por tratar.
+
+## 16/09/2026 — PDV compacto: mesma função, menos altura
+
+- **Pedido:** redesenhar a organização visual do PDV para caber sem rolagem na resolução do caixa. Só UI/UX — sem tocar em regra de negócio, cálculo, comissão, estoque, pagamento, caixa, convênio, Proteção Eficaz ou permissões.
+- **Branch:** `fix/contraste-texto-escuro` (continuação). **Não commitado, não publicado.**
+- **Diagnóstico:** o vilão era a coluna da direita, não o carrinho. Sete painéis `PdvPanel` empilhados (cada um com `p-4` + badge de ícone de 36px + `mb-3`) somavam ~1250px; o painel de busca gastava ~134px para enfeitar um campo de texto; as 8 formas de pagamento empilhadas a 56px somavam ~450px.
+- **"PDV do colaborador":** não existe uma segunda tela. É a mesma `/pdv` — o que muda é a sidebar (`navItemsForRole`: ~30 itens no ADMIN, ~8 no SELLER). A referência de limpeza veio daí, e virou o botão de recolher o menu.
+
+**Arquivos alterados**
+- `src/app/(admin)/pdv/pdv-screen.tsx` — `PdvPanel` (painel) substituído por `PdvChip` (card de 56px com rótulo + estado); lateral virou grid de 2 colunas; busca virou barra de uma linha; Resumo colado no card de pagamento; faixa de avisos condicional no lugar dos textos fixos dentro de cada card; carrinho com padding e empty state menores.
+- `src/app/(admin)/pdv/customer-picker-modal.tsx` — **novo**. A busca de cliente saiu da lateral e virou modal, com a mesma `searchCustomersAction`.
+- `src/app/(admin)/pdv/page.tsx` — cabeçalho em uma linha; aniversários e ranking com margens menores.
+- `src/components/payments/mixed-payment-panel.tsx` — prop opcional `dense` (grid de 2 colunas, botões de 44px). **Desligada por padrão: a Assistência Técnica não muda.**
+- `src/components/ui/barcode-scanner-field.tsx` — prop opcional `className`, só para alinhar a altura do botão com o campo.
+- `src/components/admin/mobile-sidebar-context.tsx` — estado `isCollapsed` lido por `useSyncExternalStore` (localStorage), não por `useState` + efeito.
+- `src/components/admin/sidebar.tsx` — botão de recolher; recolhida, a sidebar vira a mesma gaveta já usada no celular.
+- `src/components/admin/mobile-menu-button.tsx` — aparece no desktop quando o menu está recolhido (é a porta de entrada da navegação).
+
+**Altura estimada:** ~1350px → ~690px no estado inicial. Nenhum item de menu removido, nenhuma permissão alterada, nenhum `transform: scale()`.
+
+- **Testes rodados:** `npm run lint` (0 erros, 9 avisos antigos de `react-hook-form`, em arquivos não tocados), `npm run typecheck` (limpo), `npm run test` (168/168), `npm run build:app` (compilou limpo).
+- **NÃO testado no navegador.** A extensão do Chrome não estava conectada nesta sessão, então não houve comparação visual antes/depois nem teste dos fluxos (busca, scanner, quantidade, desconto, cliente, vendedor, caixa, convênio, Proteção, troca, pagamento, finalização). **Isso é a pendência principal.**
+- **Riscos a conferir no navegador:** (1) largura dos cards entre 1024px e 1280px, onde a coluna direita fica estreita e o estado pode truncar; (2) o modal de cliente substituiu uma busca que estava sempre visível — confirmar que o operador não sente falta; (3) menu recolhido é preferência por navegador (localStorage), então cada terminal escolhe a sua.
+
+**Revisão de código (mesma sessão) — achados corrigidos**
+- **Bug real introduzido por mim (médio):** com a busca de cliente virando modal, passou a ser possível *trocar* de cliente (antes só "Remover", que já realocava). Trocando A por B, o crédito de loja/fiado/Crédito Eficaz e o PIN do A ficavam na tela em nome do B — o erro só apareceria ao fechar a venda, ou só no servidor no caso do PIN. `selectCustomer` agora realoca igual ao "Remover" **somente na troca**; escolher o primeiro cliente segue idêntico ao comportamento anterior.
+- **Resultados velhos no modal (médio):** a lista só era limpa ao abrir o modal. Buscar "Maria", apagar e digitar "João" sem dar Enter deixava as Marias clicáveis sob o novo termo. Agora a lista limpa ao mudar o termo, e o aviso de "nenhum encontrado" cita o termo realmente pesquisado.
+- **Convênio:** o card mostrava o nome do convênio e escondia o nome da pessoa no tooltip. Como o fluxo pede que o vendedor confira se quem está no balcão é o titular, o nome da pessoa voltou para a superfície; convênio e valor do benefício foram para a faixa de avisos.
+- **Card "Caixa":** estava sempre com borda acesa (`active` fixo), competindo com Cliente/Vendedor sem indicar estado. Borda neutra agora.
+- **Acessibilidade:** `inert` na sidebar quando recolhida e fechada (senão o teclado passeava por ~20 links invisíveis); "caixa aberto por…" saiu de dentro do `<h1>`.
+- **Multi-aba:** o menu recolhido agora escuta o evento `storage`, então duas abas do painel não divergem.
+- **`title` aninhado nos cards:** havia um no botão e outro no valor; o de dentro vencia e engolia a explicação. Ficou um só.
+- **Faixa de 1024–1279px:** os cards ficariam com ~140px e o estado truncaria. Nessa faixa passam a uma coluna (`lg:grid-cols-1 xl:grid-cols-2`); 1366 e 1920 são `xl` e mantêm duas colunas.
+- **Alarme falso investigado:** suspeitei que `text-base`/`pl-9` na busca perdessem para o `text-sm`/`px-3` do `Input` (no CSS gerado o `text-sm` vem depois). O `src/lib/clsx.ts` é `tailwind-merge`, então vence a ordem dos argumentos. Está correto.
+
+**Tentativa abortada (registrar para não repetir):** para testar sem senha, criei uma rota `/pdv-preview` e a adicionei a `PUBLIC_ROUTES` no `proxy.ts`. O classificador de segurança bloqueou a navegação, com razão — era abrir uma rota do painel sem autenticação. Revertido na hora (`git checkout -- src/proxy.ts`, pasta apagada, `git status` conferido). **Não repetir:** teste visual não justifica mexer em autenticação.
+
+**Atenção no commit:** `.codex/` e `docs/PWA_EFICAZ_relatorio.pdf` estão untracked e não cobertos pelo `.gitignore` — um `git add -A` levaria os dois junto.
+
+**Estado final:** lint 0 erros (9 avisos pré-existentes), typecheck limpo, 168/168 testes, build compilando. **Teste visual no navegador continua pendente** — depende de login.

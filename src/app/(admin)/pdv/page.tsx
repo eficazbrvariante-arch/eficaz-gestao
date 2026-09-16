@@ -84,23 +84,29 @@ export default async function PdvPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">PDV</h1>
+      {/* Cabeçalho numa linha só: o título em duas linhas com os botões numa
+          terceira custava ~70px de altura em cima da área operacional. O
+          "caixa aberto por / em" continua inteiro, só que ao lado do título. */}
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+        {/* O "caixa aberto por" é irmão do h1, não filho: dentro dele, o
+            título acessível da página viraria "PDV · caixa aberto por ... em
+            ...". Visualmente continuam na mesma linha. */}
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <h1 className="text-lg font-semibold text-foreground">PDV</h1>
           <p className="text-sm text-text-muted">
-            Caixa aberto por {register.openedBy.name} em {formatDateTime(register.openedAt)}
+            caixa aberto por {register.openedBy.name} em {formatDateTime(register.openedAt)}
           </p>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2 text-sm">
           <Link
             href="/vendas"
-            className="rounded-md border border-border bg-surface px-4 py-2 font-medium text-text-secondary hover:bg-surface-hover"
+            className="rounded-md border border-border bg-surface px-3 py-1.5 font-medium text-text-secondary hover:bg-surface-hover"
           >
             Vendas
           </Link>
           <Link
             href="/caixa"
-            className="rounded-md border border-border bg-surface px-4 py-2 font-medium text-text-secondary hover:bg-surface-hover"
+            className="rounded-md border border-border bg-surface px-3 py-1.5 font-medium text-text-secondary hover:bg-surface-hover"
           >
             Caixa
           </Link>
@@ -108,7 +114,7 @@ export default async function PdvPage() {
       </div>
 
       {birthdayAlerts.length > 0 && (
-        <div className="mb-6 rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
+        <div className="mb-3 rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
           {birthdayAlerts.map((alert) => (
             <p key={alert.id}>
               {alert.when === "today"
@@ -132,7 +138,7 @@ export default async function PdvPage() {
       {/* Rodapé, nunca a área operacional do topo — permanente por padrão,
           some só se o Admin desligar o botão em "Ranking de Comissão". */}
       {tenant.pdvRankingEnabled && (
-        <div className="mt-8">
+        <div className="mt-6">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão de venda do mês</h2>
           <RankingComissaoMatrix rows={pdvRanking} period={{ from: monthStart, to: today }} />
         </div>

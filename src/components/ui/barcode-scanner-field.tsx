@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { BarcodeDetector, type BarcodeFormat } from "barcode-detector/ponyfill";
+import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FormBanner } from "@/components/ui/form-banner";
@@ -30,9 +31,12 @@ const FORMATS: BarcodeFormat[] = [
 export function BarcodeScannerField({
   onScanned,
   disabled = false,
+  className,
 }: {
   onScanned: (value: string) => void;
   disabled?: boolean;
+  /** Só pra alinhar a altura do botão com o campo ao lado (ex.: barra do PDV). */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"starting" | "live" | "unsupported" | "denied">("starting");
@@ -111,7 +115,7 @@ export function BarcodeScannerField({
         fullWidth={false}
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className="gap-1.5 px-3"
+        className={clsx("gap-1.5 px-3", className)}
       >
         <ScanLine className="size-4" />
         Escanear

@@ -1,15 +1,21 @@
 "use client";
 
+import { clsx } from "@/lib/clsx";
 import { useMobileSidebar } from "./mobile-sidebar-context";
 
 export function MobileMenuButton() {
-  const { open } = useMobileSidebar();
+  const { open, isCollapsed } = useMobileSidebar();
 
   return (
     <button
       type="button"
       onClick={open}
-      className="mr-3 rounded-md border border-border p-2 text-text-secondary hover:bg-surface-hover md:hidden"
+      className={clsx(
+        "mr-3 rounded-md border border-border p-2 text-text-secondary hover:bg-surface-hover",
+        // Com o menu recolhido este botão é a ÚNICA porta de entrada da
+        // navegação no desktop — então aparece também a partir de `md`.
+        !isCollapsed && "md:hidden"
+      )}
       aria-label="Abrir menu de navegação"
     >
       <svg
