@@ -2920,3 +2920,23 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Dados**: nenhuma alteração — `openingAmount` já era gravado em todos os caixas; só não aparecia. Sem migration.
 - **Testes**: `lint` (9 warnings, mesmos de antes), `typecheck`, `build:app` ok. Não testado no navegador.
 - **Pendências**: não commitado nem publicado.
+
+**Publicação (19/09) — Crédito Eficaz × Convênio no ar**
+
+- Commits: `4079086` (caixa: contado na abertura), `242b3ae` (Crédito Eficaz ×
+  Convênio), `28ebe29` (relatório). Merge fast-forward de
+  `feat/credito-eficaz-convenio` em `main` e push (`6ec9a31..28ebe29`); o hook de
+  segredos não bloqueou.
+- Antes de subir: `typecheck` limpo, `lint` com os mesmos 9 avisos antigos,
+  `build:app` compilando.
+- A migration `20260917120000_credito_eficaz_convenio` foi aplicada em produção
+  pelo `prisma migrate deploy` do build da Vercel — o deploy só ficou `Ready`
+  porque ela passou. Não houve conferência direta no banco de produção: a chave é
+  "sensitive" na Vercel e o `env pull` devolve só o marcador.
+- `check:deploy` passou: deploy Ready, home do painel e da loja, listagem,
+  produto, categoria e `comprar-whatsapp` (307) OK, sem erros recentes nos logs.
+- **Nada mudou para quem usa ainda**: as três chaves do convênio nascem
+  desligadas e a campanha está desligada. O comportamento novo só começa quando o
+  Admin ligar em `/credito-eficaz`.
+- Pendente: testar no navegador logado (depende de senha) e decidir quando ligar
+  a primeira política de convênio.
