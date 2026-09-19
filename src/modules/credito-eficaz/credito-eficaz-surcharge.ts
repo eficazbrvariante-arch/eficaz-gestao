@@ -35,3 +35,38 @@ export function splitCreditoEficazInstallments(total: number, count: number): nu
 export function formatSurchargePercent(percent: number): string {
   return `${percent.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
+
+export type CreditoEficazInstallment = {
+  number: number;
+  amount: number;
+  dueDate: Date;
+};
+
+/**
+ * Plano de parcelas de uma compra no Crédito Eficaz — conta pura, igual no
+ * servidor e na tela, mesmo motivo de `computeCreditoEficazSurcharge`: o
+ * cliente precisa ver antes de confirmar exatamente o que vai virar
+ * obrigação. `intervalDays = 30` e `count = 2` é o "30 + 60" combinado com
+ * o convênio; `count = 1` reproduz o comportamento de sempre (uma
+ * obrigação só).
+ */
+export function buildCreditoEficazInstallments(
+  total: number,
+  count: number,
+  intervalDays: number,
+  from: Date
+): CreditoEficazInstallment[] {
+  const amounts = splitCreditoEficazInstallments(total, count);
+  return amounts.map((amount, index) => ({
+    number: index + 1,
+    amount,
+    // Meio-dia, mesma convenção de `nextOccurrenceOfDay` — evita que
+    // fuso/horário de verão empurre o vencimento pro dia anterior.
+    dueDate: addDaysAtNoon(from, (index + 1) * Math.max(1, Math.floor(intervalDays))),
+  }));
+}
+
+function addDaysAtNoon(from: Date, days: number): Date {
+  const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days, 12, 0, 0);
+  return date;
+}

@@ -64,6 +64,10 @@ export type AuditAction =
   | "credito_eficaz.pause_toggle"
   | "credito_eficaz.max_installments_change"
   | "credito_eficaz.surcharge_change"
+  | "credito_eficaz.convenio_policy_change"
+  | "credito_eficaz.convenio_auto_grant"
+  | "credito_eficaz.bulk_limit_change"
+  | "credito_eficaz.campaign_apuracao"
   | "convenio.member_approve"
   | "convenio.member_reject";
 
@@ -123,6 +127,10 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "credito_eficaz.pause_toggle": "Crédito Eficaz pausado/despausado",
   "credito_eficaz.max_installments_change": "Máximo de parcelas do Crédito Eficaz alterado",
   "credito_eficaz.surcharge_change": "Acréscimo do Crédito Eficaz alterado",
+  "credito_eficaz.convenio_policy_change": "Crédito automático de convênio configurado",
+  "credito_eficaz.convenio_auto_grant": "Limite automático de convênio concedido",
+  "credito_eficaz.bulk_limit_change": "Limite de Crédito Eficaz alterado em massa",
+  "credito_eficaz.campaign_apuracao": "Campanha de pontualidade apurada",
   "convenio.member_approve": "Cadastro de colaborador de convênio aprovado",
   "convenio.member_reject": "Cadastro de colaborador de convênio recusado",
 };

@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import type { CreditoEficazDocumentType } from "@/generated/prisma/enums";
 import { startOfMonthISO, todayISO } from "@/lib/format";
+import { changeCreditLimitInTx } from "./credito-eficaz-limit";
+import {
+  applyPunctualityBonusInTx,
+  checkOverdueBlockInTx,
+  resolveCustomerCreditTerms,
+  type CustomerCreditTerms,
+} from "./convenio-credit-service";
 
 /**
  * Custo do bcrypt pro PIN de confirmação — mesmo custo usado pra senha de
@@ -228,48 +235,6 @@ export async function getApplicationForAdmin(tenantId: string, applicationId: st
 
 const PENDING_DECISION_STATUSES = ["UNDER_REVIEW", "INFO_REQUESTED"] as const;
 
-/**
- * Ajusta o limite (dentro da mesma transação de quem chama) — recalcula
- * `creditoEficazAvailableAmount` a partir do que já foi usado (`limite atual
- * - disponível atual`), nunca por incremento/decremento cego, pra nunca
- * divergir. Nunca deixa reduzir o limite abaixo do que já está em uso.
- */
-async function changeCreditLimitInTx(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  customerId: string,
-  newLimit: number,
-  changedById: string,
-  note?: string | null
-): Promise<SimpleResult> {
-  const customer = await tx.customer.findFirst({
-    where: { id: customerId, tenantId },
-    select: { creditoEficazLimitAmount: true, creditoEficazAvailableAmount: true },
-  });
-  if (!customer) return { ok: false, error: "Cliente não encontrado." };
-
-  const previousLimit = Number(customer.creditoEficazLimitAmount);
-  const used = round2(previousLimit - Number(customer.creditoEficazAvailableAmount));
-  if (newLimit < used) {
-    return {
-      ok: false,
-      error: `Não é possível reduzir o limite abaixo do valor já utilizado (R$ ${used.toFixed(2)}).`,
-    };
-  }
-
-  await tx.customer.update({
-    where: { id: customerId },
-    data: {
-      creditoEficazLimitAmount: newLimit,
-      creditoEficazAvailableAmount: round2(newLimit - used),
-    },
-  });
-  await tx.creditoEficazLimitChange.create({
-    data: { tenantId, customerId, previousLimit, newLimit, changedById, note: note ?? null },
-  });
-  return { ok: true };
-}
-
 /** Aprova a solicitação e concede o limite definido manualmente pelo Admin. */
 export async function approveApplication(
   tenantId: string,
@@ -298,7 +263,14 @@ export async function approveApplication(
       application.customerId,
       limitAmount,
       adminUserId,
-      note
+      {
+        note,
+        reason: "APPLICATION_APPROVAL",
+        // A decisão humana sempre manda: aprovar pelo fluxo normal traz o
+        // cliente de volta pra origem MANUAL, mesmo que ele tenha entrado
+        // por um convênio antes.
+        source: { type: "MANUAL" },
+      }
     );
     if (!limitResult.ok) return limitResult;
 
@@ -355,10 +327,22 @@ export async function setCreditLimit(
   customerId: string,
   adminUserId: string,
   newLimit: number,
-  note?: string | null
+  note?: string | null,
+  /**
+   * Deixa reduzir abaixo do já utilizado (disponível vai a zero, dívida
+   * intacta). Só o Admin liga isso, confirmando na tela — o padrão segue
+   * recusando, como sempre foi.
+   */
+  allowBelowUsed = false
 ): Promise<SimpleResult> {
   if (newLimit < 0) return { ok: false, error: "O limite não pode ser negativo." };
-  return prisma.$transaction((tx) => changeCreditLimitInTx(tx, tenantId, customerId, newLimit, adminUserId, note));
+  return prisma.$transaction((tx) =>
+    changeCreditLimitInTx(tx, tenantId, customerId, newLimit, adminUserId, {
+      note,
+      reason: "MANUAL_ADJUSTMENT",
+      allowBelowUsed,
+    })
+  );
 }
 
 export async function blockCustomerCredit(
@@ -467,6 +451,37 @@ export async function resolveCreditoEficazSurchargePercent(
   return { ok: true, percent };
 }
 
+export type ResolveSaleTermsResult =
+  | { ok: true; terms: CustomerCreditTerms }
+  | { ok: false; error: string };
+
+/**
+ * Condições valendo pra ESTA compra: acréscimo e parcelas do cliente
+ * (convênio quando for o caso, tenant no fluxo normal), já conferindo que
+ * o percentual que a TELA mostrou antes do PIN é o que está valendo agora
+ * — se o Admin mudou a configuração com o PDV aberto, recusa em vez de
+ * cobrar um valor diferente do que o cliente viu (mesma proteção de
+ * `resolveCreditoEficazSurchargePercent`, agora ciente do convênio).
+ */
+export async function resolveCreditoEficazSaleTerms(
+  tenantId: string,
+  customerId: string,
+  displayedPercent: number | undefined
+): Promise<ResolveSaleTermsResult> {
+  const terms = await resolveCustomerCreditTerms(tenantId, customerId);
+  const mismatch =
+    displayedPercent === undefined
+      ? terms.surchargePercent > 0
+      : Math.abs(displayedPercent - terms.surchargePercent) > 0.001;
+  if (mismatch) {
+    return {
+      ok: false,
+      error: `O acréscimo do Crédito Eficaz é de ${terms.surchargePercent.toLocaleString("pt-BR")}% e a tela está desatualizada. Atualize a página, confira o novo valor com o cliente e tente de novo.`,
+    };
+  }
+  return { ok: true, terms };
+}
+
 // ---------------------------------------------------------------------------
 // Uso no PDV (débito atômico) — chamado por `sale-service.ts` (Fase 6)
 // ---------------------------------------------------------------------------
@@ -523,6 +538,13 @@ export async function debitCreditoEficazInTx(
     }
   }
 
+  // Inadimplência (crédito de convênio): existindo parcela vencida em
+  // aberto, nenhuma nova utilização passa — e nada é apagado nem bloqueado
+  // no cadastro, o limite continua lá esperando a regularização. Cliente do
+  // fluxo normal nem chega a ser consultado aqui.
+  const overdueBlock = await checkOverdueBlockInTx(tx, tenantId, customerId);
+  if (overdueBlock) return { ok: false, error: overdueBlock };
+
   const before = await tx.customer.findFirst({
     where: { id: customerId, tenantId },
     select: { creditoEficazAvailableAmount: true },
@@ -572,56 +594,86 @@ export async function computeCreditoEficazDueDate(tenantId: string, customerId: 
   return new Date(now.getTime() + DEFAULT_DUE_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export type RecordUsageResult = { ok: true; usageId: string } | { ok: false; error: string };
+export type RecordUsageResult = { ok: true; usageIds: string[] } | { ok: false; error: string };
 
-/** Débito + registro da obrigação, dentro da mesma transação da venda. */
+/**
+ * Débito + registro da(s) obrigação(ões), dentro da mesma transação da
+ * venda. O débito é UM só, pela soma das parcelas (mesmo guard de
+ * pausa/teto/saldo/bloqueio/inadimplência de qualquer outra utilização), e
+ * cada parcela vira uma `CreditoEficazUsage` — uma linha só quando a venda
+ * não é parcelada, que é o comportamento de sempre.
+ */
 export async function recordCreditoEficazUsageInTx(
   tx: Prisma.TransactionClient,
   params: {
     tenantId: string;
     customerId: string;
     saleId: string;
-    amount: number;
-    dueDate: Date;
     operatorId: string;
+    installments: { amount: number; dueDate: Date }[];
   }
 ): Promise<RecordUsageResult> {
-  const debited = await debitCreditoEficazInTx(tx, params.tenantId, params.customerId, params.amount);
+  const total = round2(params.installments.reduce((sum, i) => sum + i.amount, 0));
+  if (total <= 0) return { ok: false, error: "Nenhum valor a registrar no Crédito Eficaz." };
+
+  const debited = await debitCreditoEficazInTx(tx, params.tenantId, params.customerId, total);
   if (!debited.ok) return debited;
 
-  const usage = await tx.creditoEficazUsage.create({
-    data: {
-      tenantId: params.tenantId,
-      customerId: params.customerId,
-      saleId: params.saleId,
-      amount: params.amount,
-      availableBefore: debited.availableBefore,
-      availableAfter: debited.availableAfter,
-      dueDate: params.dueDate,
-      operatorId: params.operatorId,
-    },
-    select: { id: true },
-  });
-  return { ok: true, usageId: usage.id };
+  const usageIds: string[] = [];
+  for (const [index, installment] of params.installments.entries()) {
+    const usage = await tx.creditoEficazUsage.create({
+      data: {
+        tenantId: params.tenantId,
+        customerId: params.customerId,
+        saleId: params.saleId,
+        installmentNumber: index + 1,
+        installmentCount: params.installments.length,
+        amount: installment.amount,
+        // Snapshot do débito único que cobriu todas as parcelas — mesma
+        // simplificação já usada no financiamento de OS.
+        availableBefore: debited.availableBefore,
+        availableAfter: debited.availableAfter,
+        dueDate: installment.dueDate,
+        operatorId: params.operatorId,
+      },
+      select: { id: true },
+    });
+    usageIds.push(usage.id);
+  }
+  return { ok: true, usageIds };
 }
 
-/** Estorno (venda cancelada): devolve o valor ao disponível e marca a obrigação como cancelada — nunca some. */
+/**
+ * Estorno (venda cancelada): devolve ao disponível só a fatia AINDA NÃO
+ * PAGA de cada parcela em aberto e marca as obrigações como canceladas —
+ * nenhuma linha some, e o que o cliente já pagou não é devolvido como
+ * limite duas vezes (o pagamento já tinha recomposto na hora). Mesma regra
+ * do estorno de financiamento de OS, agora valendo pras várias parcelas
+ * que uma venda pode ter.
+ */
 export async function reverseCreditoEficazUsageInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,
   saleId: string
 ): Promise<void> {
-  const usage = await tx.creditoEficazUsage.findFirst({
-    where: { saleId, tenantId },
-    select: { id: true, customerId: true, amount: true, status: true },
+  const usages = await tx.creditoEficazUsage.findMany({
+    where: { saleId, tenantId, status: { not: "CANCELLED" } },
+    select: { id: true, customerId: true, amount: true, status: true, payments: { select: { amount: true } } },
   });
-  if (!usage || usage.status === "CANCELLED") return;
 
-  await tx.customer.update({
-    where: { id: usage.customerId },
-    data: { creditoEficazAvailableAmount: { increment: Number(usage.amount) } },
-  });
-  await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "CANCELLED" } });
+  for (const usage of usages) {
+    if (usage.status === "OPEN") {
+      const alreadyPaid = usage.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const remaining = round2(Number(usage.amount) - alreadyPaid);
+      if (remaining > 0) {
+        await tx.customer.update({
+          where: { id: usage.customerId },
+          data: { creditoEficazAvailableAmount: { increment: remaining } },
+        });
+      }
+    }
+    await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "CANCELLED" } });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +799,17 @@ export async function reverseServiceFinancingInTx(
 // Pagamento manual (Protótipo 1)
 // ---------------------------------------------------------------------------
 
-/** Suporta pagamento parcial: a obrigação só vira `PAID` quando a soma dos pagamentos atinge o valor. */
+export type RegisterPaymentResult =
+  | { ok: true; bonus: { amount: number; newLimit: number } | null }
+  | { ok: false; error: string };
+
+/**
+ * Suporta pagamento parcial: a obrigação só vira `PAID` quando a soma dos
+ * pagamentos atinge o valor. Todo pagamento RECOMPÕE o limite disponível
+ * na hora (nunca além do limite total); quando a parcela é quitada e foi
+ * paga em dia, ainda pode gerar o bônus de pontualidade do convênio — que
+ * é coisa diferente da recomposição e aparece separado no histórico.
+ */
 export async function registerManualPayment(
   tenantId: string,
   usageId: string,
@@ -755,7 +817,7 @@ export async function registerManualPayment(
   amount: number,
   paidAt: Date,
   method: string
-): Promise<SimpleResult> {
+): Promise<RegisterPaymentResult> {
   if (amount <= 0) return { ok: false, error: "O valor precisa ser maior que zero." };
 
   return prisma.$transaction(async (tx) => {
@@ -796,11 +858,15 @@ export async function registerManualPayment(
     }
 
     const newAlreadyPaid = round2(alreadyPaid + amount);
-    if (newAlreadyPaid >= Number(usage.amount) - 0.005) {
-      await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "PAID" } });
-    }
+    if (newAlreadyPaid < Number(usage.amount) - 0.005) return { ok: true, bonus: null };
 
-    return { ok: true };
+    await tx.creditoEficazUsage.update({ where: { id: usage.id }, data: { status: "PAID" } });
+
+    // Parcela quitada — só agora faz sentido olhar pontualidade. A função
+    // decide sozinha se há bônus (cliente de convênio, chave ligada, nada
+    // pago em atraso, teto não atingido) e é idempotente por parcela.
+    const bonus = await applyPunctualityBonusInTx(tx, tenantId, usage.id, registeredById);
+    return { ok: true, bonus: bonus.applied ? { amount: bonus.amount, newLimit: bonus.newLimit } : null };
   });
 }
 
@@ -817,6 +883,11 @@ export type CustomerCreditSummary = {
   blockedReason: string | null;
   openAmount: number;
   nextDueDate: Date | null;
+  /** Origem do limite — "Convênio Havan" aparece na tela a partir daqui. */
+  source: "MANUAL" | "CONVENIO";
+  sourceConvenioName: string | null;
+  /** Soma vencida em aberto (OPEN + vencimento no passado). */
+  overdueAmount: number;
 };
 
 /** Resumo pro painel do cliente (nunca inclui dado administrativo interno) e pro Admin. */
@@ -832,6 +903,8 @@ export async function getCustomerCreditSummary(
       creditoEficazAvailableAmount: true,
       creditoEficazBlocked: true,
       creditoEficazBlockedReason: true,
+      creditoEficazSource: true,
+      creditoEficazSourceConvenio: { select: { name: true } },
     },
   });
   if (!customer) return null;
@@ -842,11 +915,13 @@ export async function getCustomerCreditSummary(
     orderBy: { dueDate: "asc" },
   });
 
-  const openAmount = round2(
-    openUsages.reduce(
-      (sum, u) => sum + (Number(u.amount) - u.payments.reduce((s, p) => s + Number(p.amount), 0)),
-      0
-    )
+  const remainingOf = (usage: (typeof openUsages)[number]) =>
+    round2(Number(usage.amount) - usage.payments.reduce((s, p) => s + Number(p.amount), 0));
+
+  const openAmount = round2(openUsages.reduce((sum, u) => sum + remainingOf(u), 0));
+  const now = new Date();
+  const overdueAmount = round2(
+    openUsages.filter((u) => u.dueDate < now).reduce((sum, u) => sum + remainingOf(u), 0)
   );
 
   const limitAmount = Number(customer.creditoEficazLimitAmount);
@@ -861,6 +936,9 @@ export async function getCustomerCreditSummary(
     blockedReason: customer.creditoEficazBlockedReason,
     openAmount,
     nextDueDate: openUsages[0]?.dueDate ?? null,
+    source: customer.creditoEficazSource,
+    sourceConvenioName: customer.creditoEficazSourceConvenio?.name ?? null,
+    overdueAmount,
   };
 }
 
@@ -1134,4 +1212,110 @@ export async function listCustomerApplications(tenantId: string, customerId: str
     include: { documents: { select: { id: true, type: true, uploadedAt: true } } },
     orderBy: { createdAt: "desc" },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Carteira de clientes (dashboard com filtros)
+// ---------------------------------------------------------------------------
+
+export type CreditCustomerFilter = {
+  /** `ALL` = Crédito Eficaz inteiro (normal + convênio), que é o padrão da tela. */
+  source?: "ALL" | "MANUAL" | "CONVENIO";
+  convenioId?: string | null;
+  /** `ACTIVE` = usando algo agora; `CURRENT` = sem nada vencido. */
+  status?: "ALL" | "ACTIVE" | "BLOCKED" | "CURRENT" | "OVERDUE";
+};
+
+export type CreditCustomerRow = {
+  id: string;
+  name: string;
+  eficazNumber: string | null;
+  source: "MANUAL" | "CONVENIO";
+  convenioName: string | null;
+  limitAmount: number;
+  availableAmount: number;
+  usedAmount: number;
+  openAmount: number;
+  overdueAmount: number;
+  blocked: boolean;
+};
+
+/**
+ * Carteira do Crédito Eficaz com os filtros do painel. Um cliente "tem
+ * Crédito Eficaz" quando tem limite OU alguma obrigação registrada — quem
+ * nunca entrou no programa não aparece. Os filtros que dependem de
+ * vencimento (`CURRENT`/`OVERDUE`) são aplicados depois da soma, porque
+ * "vencida" continua sendo calculada (OPEN + `dueDate` no passado), nunca
+ * um campo guardado.
+ */
+export async function listCreditoEficazCustomers(
+  tenantId: string,
+  filter: CreditCustomerFilter = {}
+): Promise<CreditCustomerRow[]> {
+  const source = filter.source ?? "ALL";
+  const customers = await prisma.customer.findMany({
+    where: {
+      tenantId,
+      ...(source === "ALL" ? {} : { creditoEficazSource: source }),
+      ...(filter.convenioId ? { creditoEficazSourceConvenioId: filter.convenioId } : {}),
+      OR: [{ creditoEficazLimitAmount: { gt: 0 } }, { creditoEficazUsages: { some: {} } }],
+    },
+    select: {
+      id: true,
+      name: true,
+      eficazNumber: true,
+      creditoEficazSource: true,
+      creditoEficazLimitAmount: true,
+      creditoEficazAvailableAmount: true,
+      creditoEficazBlocked: true,
+      creditoEficazSourceConvenio: { select: { name: true } },
+      creditoEficazUsages: {
+        where: { status: "OPEN" },
+        select: { amount: true, dueDate: true, payments: { select: { amount: true } } },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const now = new Date();
+  const rows = customers.map((customer) => {
+    let openAmount = 0;
+    let overdueAmount = 0;
+    for (const usage of customer.creditoEficazUsages) {
+      const remaining = round2(
+        Number(usage.amount) - usage.payments.reduce((sum, p) => sum + Number(p.amount), 0)
+      );
+      if (remaining <= 0) continue;
+      openAmount = round2(openAmount + remaining);
+      if (usage.dueDate < now) overdueAmount = round2(overdueAmount + remaining);
+    }
+    const limitAmount = Number(customer.creditoEficazLimitAmount);
+    const availableAmount = Number(customer.creditoEficazAvailableAmount);
+    return {
+      id: customer.id,
+      name: customer.name,
+      eficazNumber: customer.eficazNumber,
+      source: customer.creditoEficazSource,
+      convenioName: customer.creditoEficazSourceConvenio?.name ?? null,
+      limitAmount,
+      availableAmount,
+      usedAmount: round2(limitAmount - availableAmount),
+      openAmount,
+      overdueAmount,
+      blocked: customer.creditoEficazBlocked,
+    };
+  });
+
+  switch (filter.status ?? "ALL") {
+    case "ACTIVE":
+      return rows.filter((row) => row.usedAmount > 0 || row.openAmount > 0);
+    case "BLOCKED":
+      return rows.filter((row) => row.blocked);
+    case "CURRENT":
+      return rows.filter((row) => row.overdueAmount <= 0);
+    case "OVERDUE":
+      return rows.filter((row) => row.overdueAmount > 0);
+    default:
+      return rows;
+  }
 }

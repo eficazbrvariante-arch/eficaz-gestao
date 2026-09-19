@@ -23,8 +23,14 @@ import {
   type SetCreditoEficazLimitInput,
   type BlockCreditoEficazInput,
   type RegisterCreditoEficazPaymentInput,
+  convenioCreditPolicySchema,
+  bulkCreditoEficazLimitSchema,
+  creditoEficazCampaignSchema,
   type SetCreditoEficazExposureLimitFormValues,
   type SetCreditoEficazMaxInstallmentsInput,
+  type ConvenioCreditPolicyFormValues,
+  type BulkCreditoEficazLimitFormValues,
+  type CreditoEficazCampaignInput,
 } from "@/lib/validations/credito-eficaz";
 import {
   approveApplication,
@@ -40,6 +46,12 @@ import {
   setCreditoEficazMaxInstallments,
   setCreditoEficazSurchargePercent,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import {
+  updateConvenioCreditPolicy,
+  previewBulkLimitChange,
+  applyBulkLimitChange,
+  registerCampaignEntries,
+} from "@/modules/credito-eficaz/convenio-credit-service";
 
 const PERMISSION_ERROR = "Seu perfil não tem permissão para gerenciar o Crédito Eficaz.";
 
@@ -381,4 +393,145 @@ export async function setCreditoEficazSurchargePercentAction(input: SetCreditoEf
   revalidatePath("/credito-eficaz");
   revalidatePath("/pdv");
   return { success: "Acréscimo do Crédito Eficaz atualizado." };
+}
+
+// ---------------------------------------------------------------------------
+// Crédito automático por convênio
+// ---------------------------------------------------------------------------
+
+/**
+ * Salva a configuração e, quando a chave vira ONLINE, aplica a concessão
+ * inicial a quem já está aprovado — o resultado devolve quantos receberam,
+ * pro Admin ver o efeito na hora em vez de descobrir depois.
+ */
+export async function updateConvenioCreditPolicyAction(
+  convenioId: string,
+  input: ConvenioCreditPolicyFormValues
+) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = convenioCreditPolicySchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const convenio = await prisma.convenio.findFirst({
+    where: { id: convenioId, tenantId: user.tenantId },
+    select: { name: true, creditPolicy: { select: { enabled: true } } },
+  });
+  if (!convenio) return { error: "Convênio não encontrado." };
+  const wasEnabled = convenio.creditPolicy?.enabled ?? false;
+
+  const result = await updateConvenioCreditPolicy(user.tenantId, convenioId, user.id, parsed.data);
+  if (!result.ok) return { error: result.error };
+
+  const nowEnabled = parsed.data.enabled ?? wasEnabled;
+  const stateChange =
+    nowEnabled === wasEnabled ? "Ajustou os parâmetros do" : nowEnabled ? "Ligou (ONLINE) o" : "Desligou (OFFLINE) o";
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.convenio_policy_change",
+    entity: "Convenio",
+    entityId: convenioId,
+    description: `${stateChange} crédito automático do convênio ${convenio.name}.${
+      result.granted > 0 ? ` ${result.granted} cliente(s) receberam limite automático.` : ""
+    }`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  revalidatePath(`/convenios/${convenioId}`);
+
+  if (!nowEnabled) {
+    return {
+      success:
+        "Crédito automático OFFLINE. Nenhum limite ou dívida existente foi alterado — só não haverá novas concessões.",
+    };
+  }
+  return {
+    success:
+      result.granted > 0
+        ? `Crédito automático ONLINE. ${result.granted} cliente(s) receberam o limite inicial.`
+        : "Crédito automático ONLINE. Nenhum cliente novo a receber agora (quem já tinha limite não é alterado).",
+  };
+}
+
+/** Só leitura — é o que a tela mostra ANTES de o Admin confirmar a alteração em massa. */
+export async function previewBulkCreditoEficazLimitAction(input: BulkCreditoEficazLimitFormValues) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = bulkCreditoEficazLimitSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const target = parsed.data.convenioId
+    ? ({ kind: "CONVENIO", convenioId: parsed.data.convenioId } as const)
+    : ({ kind: "CUSTOMERS", customerIds: parsed.data.customerIds ?? [] } as const);
+
+  const preview = await previewBulkLimitChange(user.tenantId, target, parsed.data.newLimit);
+  return { preview };
+}
+
+export async function applyBulkCreditoEficazLimitAction(input: BulkCreditoEficazLimitFormValues) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = bulkCreditoEficazLimitSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const target = parsed.data.convenioId
+    ? ({ kind: "CONVENIO", convenioId: parsed.data.convenioId } as const)
+    : ({ kind: "CUSTOMERS", customerIds: parsed.data.customerIds ?? [] } as const);
+
+  const result = await applyBulkLimitChange(
+    user.tenantId,
+    user.id,
+    target,
+    parsed.data.newLimit,
+    parsed.data.note || null
+  );
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.bulk_limit_change",
+    entity: parsed.data.convenioId ? "Convenio" : "Customer",
+    entityId: parsed.data.convenioId ?? "varios",
+    description: `Alterou em massa o limite de ${result.changed} cliente(s) para ${formatBRL(parsed.data.newLimit)}.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  return { success: `Limite alterado em ${result.changed} cliente(s).` };
+}
+
+/**
+ * Apuração da campanha de pontualidade. Só roda por clique do Admin e só
+ * com a campanha habilitada no convênio — não existe execução automática
+ * nem sorteio: isto apenas registra quem cumpriu os critérios.
+ */
+export async function runCreditoEficazCampaignAction(input: CreditoEficazCampaignInput) {
+  const user = await requireUser();
+  if (!canManageCreditoEficaz(user.role)) return { error: PERMISSION_ERROR };
+
+  const parsed = creditoEficazCampaignSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Revise os dados." };
+
+  const result = await registerCampaignEntries(user.tenantId, parsed.data.convenioId, parsed.data.referenceMonth);
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? "Usuário",
+    action: "credito_eficaz.campaign_apuracao",
+    entity: "CreditoEficazCampaign",
+    entityId: result.campaignId,
+    description: `Apurou a campanha de pontualidade de ${parsed.data.referenceMonth}: ${result.entries} participante(s) elegíveis.`,
+  });
+
+  revalidatePath("/credito-eficaz");
+  return { success: `${result.entries} participante(s) registrados na campanha de ${parsed.data.referenceMonth}.` };
 }

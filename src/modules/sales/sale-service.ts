@@ -13,10 +13,14 @@ import {
   verifyCreditoEficazPin,
   computeCreditoEficazDueDate,
   recordCreditoEficazUsageInTx,
-  resolveCreditoEficazSurchargePercent,
+  resolveCreditoEficazSaleTerms,
   reverseCreditoEficazUsageInTx,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
-import { computeCreditoEficazSurcharge } from "@/modules/credito-eficaz/credito-eficaz-surcharge";
+import type { CustomerCreditTerms } from "@/modules/credito-eficaz/convenio-credit-service";
+import {
+  buildCreditoEficazInstallments,
+  computeCreditoEficazSurcharge,
+} from "@/modules/credito-eficaz/credito-eficaz-surcharge";
 import { formatBRL } from "@/lib/format";
 
 /** Tolerância para comparação de valores monetários (evita ruído de ponto flutuante). */
@@ -365,6 +369,8 @@ export async function createSale(
     input.payments.filter((p) => p.method === "CREDITO_EFICAZ").reduce((sum, p) => sum + p.amount, 0)
   );
   let creditoEficazSurcharge = 0;
+  /** Acréscimo e parcelas deste cliente — convênio quando for o caso. */
+  let creditoEficazTerms: CustomerCreditTerms | null = null;
   if (creditoEficazBase > 0) {
     if (!customerId) {
       return { ok: false, error: "Selecione um cliente para usar o Crédito Eficaz." };
@@ -376,12 +382,17 @@ export async function createSale(
     if (!pinValid) {
       return { ok: false, error: "PIN do Crédito Eficaz incorreto." };
     }
-    const surcharge = await resolveCreditoEficazSurchargePercent(
+    const resolved = await resolveCreditoEficazSaleTerms(
       ctx.tenantId,
+      customerId,
       input.creditoEficazSurchargePercent
     );
-    if (!surcharge.ok) return { ok: false, error: surcharge.error };
-    creditoEficazSurcharge = computeCreditoEficazSurcharge(creditoEficazBase, surcharge.percent);
+    if (!resolved.ok) return { ok: false, error: resolved.error };
+    creditoEficazTerms = resolved.terms;
+    creditoEficazSurcharge = computeCreditoEficazSurcharge(
+      creditoEficazBase,
+      creditoEficazTerms.surchargePercent
+    );
   }
   /** O que o cliente fica devendo no crédito (base + acréscimo). */
   const creditoEficazAmount = round2(creditoEficazBase + creditoEficazSurcharge);
@@ -394,10 +405,29 @@ export async function createSale(
       .map((p) => ({ method: p.method, amount: round2(p.amount) })),
     ...(creditoEficazAmount > 0 ? [{ method: "CREDITO_EFICAZ" as const, amount: creditoEficazAmount }] : []),
   ];
-  const creditoEficazDueDate =
+  /**
+   * Parcelas da parte no crédito. Uma parcela só (o comportamento de
+   * sempre) usa o "melhor dia de vencimento" do cliente; parcelado — hoje
+   * só o crédito de convênio — usa o intervalo configurado (2 × 30 dias =
+   * o "30 + 60"), calculado pela mesma função pura que a tela do PDV usa
+   * pra mostrar os vencimentos antes do PIN.
+   */
+  const creditoEficazInstallments: { amount: number; dueDate: Date }[] =
     creditoEficazAmount > 0 && customerId
-      ? await computeCreditoEficazDueDate(ctx.tenantId, customerId)
-      : null;
+      ? creditoEficazTerms && creditoEficazTerms.installmentCount > 1
+        ? buildCreditoEficazInstallments(
+            creditoEficazAmount,
+            creditoEficazTerms.installmentCount,
+            creditoEficazTerms.installmentIntervalDays,
+            new Date()
+          )
+        : [
+            {
+              amount: creditoEficazAmount,
+              dueDate: await computeCreditoEficazDueDate(ctx.tenantId, customerId),
+            },
+          ]
+      : [];
 
   try {
     const sale = await prisma.$transaction(async (tx) => {
@@ -514,14 +544,13 @@ export async function createSale(
         );
       }
 
-      if (creditoEficazAmount > 0 && customerId && creditoEficazDueDate) {
+      if (creditoEficazAmount > 0 && customerId && creditoEficazInstallments.length > 0) {
         const usage = await recordCreditoEficazUsageInTx(tx, {
           tenantId: ctx.tenantId,
           customerId,
           saleId: created.id,
-          amount: creditoEficazAmount,
-          dueDate: creditoEficazDueDate,
           operatorId: ctx.operatorId,
+          installments: creditoEficazInstallments,
         });
         if (!usage.ok) throw new Error(usage.error);
       }

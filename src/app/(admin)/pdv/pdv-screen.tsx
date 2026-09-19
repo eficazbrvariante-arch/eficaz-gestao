@@ -14,7 +14,7 @@ import {
   ClipboardList,
   RefreshCw,
 } from "lucide-react";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatDate } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,14 +28,21 @@ import {
   type PaymentSlotKey,
   type PaymentAmounts,
 } from "@/lib/payment-slots";
-import { searchProductsAction, createSaleAction, type PdvProduct } from "./actions";
+import {
+  searchProductsAction,
+  createSaleAction,
+  getCreditoEficazTermsAction,
+  type PdvProduct,
+} from "./actions";
 import { CustomerPickerModal, type CustomerOption } from "./customer-picker-modal";
+import type { CustomerCreditTerms } from "@/modules/credito-eficaz/convenio-credit-service";
 import { SellerPickerModal } from "./seller-picker-modal";
 import { ConvenioModal } from "./convenio-modal";
 import { ConvenioSignupsModal } from "./convenio-signups-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import { CashMovementModal } from "./cash-movement-modal";
 import {
+  buildCreditoEficazInstallments,
   computeCreditoEficazSurcharge,
   formatSurchargePercent,
 } from "@/modules/credito-eficaz/credito-eficaz-surcharge";
@@ -231,6 +238,12 @@ export function PdvScreen({
   const [isPending, startTransition] = useTransition();
 
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  /**
+   * Condições do Crédito Eficaz DESTE cliente (acréscimo, parcelas,
+   * inadimplência) — carregadas ao selecionar. `null` = fluxo normal, que
+   * usa o acréscimo do tenant e uma parcela só, exatamente como antes.
+   */
+  const [creditTerms, setCreditTerms] = useState<CustomerCreditTerms | null>(null);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
 
   const [amounts, setAmounts] = useState<PaymentAmounts>(EMPTY_PAYMENT_AMOUNTS);
@@ -487,11 +500,25 @@ export function PdvScreen({
   // As formas de pagamento fecham com `total` (sem acréscimo); o acréscimo
   // entra só em cima da parte no crédito e vira o total a pagar de verdade
   // (mesma conta de `createSale`, via `computeCreditoEficazSurcharge`).
+  // Acréscimo do convênio quando o cliente tem crédito de convênio ativo;
+  // senão o do tenant, como sempre. É este número que vai no envio e que o
+  // servidor reconfere antes de cobrar.
+  const effectiveSurchargePercent = creditTerms?.surchargePercent ?? creditoEficazSurchargePercent;
   const creditoEficazSurcharge = computeCreditoEficazSurcharge(
     creditoEficazPortion,
-    creditoEficazSurchargePercent
+    effectiveSurchargePercent
   );
   const creditoEficazOwed = round2(creditoEficazPortion + creditoEficazSurcharge);
+  /** Parcelas que a compra vai gerar — o cliente vê antes de digitar o PIN. */
+  const creditoEficazPlan =
+    creditoEficazOwed > 0 && creditTerms && creditTerms.installmentCount > 1
+      ? buildCreditoEficazInstallments(
+          creditoEficazOwed,
+          creditTerms.installmentCount,
+          creditTerms.installmentIntervalDays,
+          new Date()
+        )
+      : [];
   const totalToPay = round2(total + creditoEficazSurcharge);
   const change =
     cashPortion > 0 && cashReceived !== "" ? round2(Number(cashReceived) - cashPortion) : 0;
@@ -650,6 +677,10 @@ export function PdvScreen({
     const isSwitch = !!customer && customer.id !== picked.id;
 
     setCustomer(picked);
+    setCreditTerms(null);
+    void getCreditoEficazTermsAction(picked.id).then((result) => {
+      if ("terms" in result && result.terms) setCreditTerms(result.terms);
+    });
     if (isSwitch) {
       setCreditoEficazPin("");
       setFiadoDueDate("");
@@ -696,6 +727,7 @@ export function PdvScreen({
       fiado: 0,
       credito_eficaz: 0,
     }));
+    setCreditTerms(null);
     setCreditoEficazPin("");
   }
 
@@ -744,6 +776,12 @@ export function PdvScreen({
       setError("Informe o PIN de 4 dígitos do Crédito Eficaz.");
       return;
     }
+    if (creditoEficazPortion > 0 && creditTerms?.overdueBlocked) {
+      setError(
+        `Este cliente tem parcela vencida em aberto (${formatBRL(creditTerms.overdueAmount)}). Regularize antes de usar o Crédito Eficaz.`
+      );
+      return;
+    }
     if (customer && creditoEficazOwed > customer.creditoEficazAvailableAmount + 0.005) {
       setError(
         `Limite do Crédito Eficaz insuficiente: com o acréscimo, a parte no crédito fica ${formatBRL(creditoEficazOwed)} e o cliente tem ${formatBRL(customer.creditoEficazAvailableAmount)} disponível.`
@@ -776,7 +814,7 @@ export function PdvScreen({
         cashReceived: cashReceived === "" ? undefined : Number(cashReceived),
         fiadoDueDate: fiadoPortion > 0 ? fiadoDueDate : undefined,
         creditoEficazPin: creditoEficazPortion > 0 ? creditoEficazPin : undefined,
-        creditoEficazSurchargePercent: creditoEficazPortion > 0 ? creditoEficazSurchargePercent : undefined,
+        creditoEficazSurchargePercent: creditoEficazPortion > 0 ? effectiveSurchargePercent : undefined,
         convenioMemberId: convenioMember?.member.id ?? "",
         protecaoEficazOptedIn,
         protecaoEficazRedemptionSaleNumber: protecaoEficazRedemption?.saleNumber,
@@ -1421,9 +1459,32 @@ export function PdvScreen({
                 {creditoEficazSurcharge > 0 && (
                   <p className="mt-2 text-sm text-foreground">
                     No Crédito Eficaz: {formatBRL(creditoEficazPortion)} + acréscimo de{" "}
-                    {formatSurchargePercent(creditoEficazSurchargePercent)} ({formatBRL(creditoEficazSurcharge)}) ={" "}
+                    {formatSurchargePercent(effectiveSurchargePercent)} ({formatBRL(creditoEficazSurcharge)}) ={" "}
                     <strong>{formatBRL(creditoEficazOwed)}</strong> — é o que o cliente fica devendo. Confirme
                     com ele antes de pedir o PIN.
+                  </p>
+                )}
+                {creditoEficazPlan.length > 0 && (
+                  <div className="mt-2 rounded border border-border bg-surface p-2 text-sm text-foreground">
+                    <p className="font-medium">
+                      {creditoEficazPlan.length}× de{" "}
+                      {creditoEficazPlan.map((i) => formatBRL(i.amount)).join(" + ")}
+                      {creditTerms?.convenioName ? ` — Convênio ${creditTerms.convenioName}` : ""}
+                    </p>
+                    <ul className="mt-1 text-xs text-text-muted">
+                      {creditoEficazPlan.map((installment) => (
+                        <li key={installment.number}>
+                          Parcela {installment.number}: {formatBRL(installment.amount)} em{" "}
+                          {formatDate(installment.dueDate)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {creditTerms?.overdueBlocked && (
+                  <p className="mt-2 text-sm font-medium text-danger">
+                    Cliente com parcela vencida em aberto ({formatBRL(creditTerms.overdueAmount)}) — novas
+                    compras no Crédito Eficaz ficam bloqueadas até regularizar. O limite não foi perdido.
                   </p>
                 )}
               </div>

@@ -8,6 +8,8 @@ import { canManageConvenios } from "@/lib/permissions";
 import { generateResetToken } from "@/lib/tokens";
 import { inviteUrl } from "@/modules/convenios/invite-url";
 import { generateUniqueConvenioShortCode } from "@/modules/convenios/convenio-redemption-service";
+import { grantConvenioCreditOnApproval } from "@/modules/credito-eficaz/convenio-credit-service";
+import { recordAudit } from "@/modules/audit/audit-service";
 import {
   convenioMemberSchema,
   convenioSchema,
@@ -169,8 +171,39 @@ export async function updateConvenioMemberStatusAction(
     },
   });
 
+  // Ativar um colaborador com a chave do convênio ONLINE concede o limite
+  // inicial na hora. Idempotente: reativar alguém que já recebeu não
+  // concede de novo, e suspender/bloquear nunca retira o que já foi dado
+  // (só o bloqueio do próprio Crédito Eficaz impede o uso).
+  let creditGranted = false;
+  if (parsed.data.status === "ACTIVE") {
+    const granted = await grantConvenioCreditOnApproval(
+      user.tenantId,
+      member.convenioId,
+      memberId,
+      user.id
+    );
+    creditGranted = granted === "granted";
+    if (creditGranted) {
+      await recordAudit({
+        tenantId: user.tenantId,
+        userId: user.id,
+        userName: user.name ?? user.email ?? "Usuário",
+        action: "credito_eficaz.convenio_auto_grant",
+        entity: "ConvenioMember",
+        entityId: memberId,
+        description: `Limite automático de Crédito Eficaz concedido a ${member.name} pelo convênio.`,
+      });
+    }
+  }
+
   revalidatePath(`/convenios/${member.convenioId}`);
-  return { success: "Status do colaborador atualizado." };
+  revalidatePath("/credito-eficaz");
+  return {
+    success: creditGranted
+      ? "Status do colaborador atualizado e Crédito Eficaz automático liberado."
+      : "Status do colaborador atualizado.",
+  };
 }
 
 /** URL da "carteirinha" — status do cadastro e, quando ativo, o QR Code (ver `/c/[token]`). */

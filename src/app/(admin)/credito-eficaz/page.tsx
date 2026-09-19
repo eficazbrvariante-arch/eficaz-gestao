@@ -7,10 +7,17 @@ import {
   listApplicationsForAdmin,
   getPortfolioHealth,
   getCreditCohorts,
+  listCreditoEficazCustomers,
 } from "@/modules/credito-eficaz/credito-eficaz-service";
+import {
+  listConvenioCreditPanels,
+  getConvenioExposure,
+} from "@/modules/credito-eficaz/convenio-credit-service";
 import { CreditoEficazLista } from "./credito-eficaz-lista";
 import { CreditoEficazPauseToggle } from "./credito-eficaz-pause-toggle";
 import { CreditoEficazConfigPanel } from "./credito-eficaz-config-panel";
+import { ConvenioCreditoPanel } from "./convenio-credito-panel";
+import { CarteiraCredito } from "./carteira-credito";
 
 export default async function CreditoEficazPage() {
   const { user, tenant } = await requireTenant();
@@ -22,12 +29,16 @@ export default async function CreditoEficazPage() {
     );
   }
 
-  const [exposure, applications, health, cohorts] = await Promise.all([
-    getExposureSummary(user.tenantId),
-    listApplicationsForAdmin(user.tenantId),
-    getPortfolioHealth(user.tenantId),
-    getCreditCohorts(user.tenantId),
-  ]);
+  const [exposure, applications, health, cohorts, convenioPanels, convenioExposure, creditCustomers] =
+    await Promise.all([
+      getExposureSummary(user.tenantId),
+      listApplicationsForAdmin(user.tenantId),
+      getPortfolioHealth(user.tenantId),
+      getCreditCohorts(user.tenantId),
+      listConvenioCreditPanels(user.tenantId),
+      getConvenioExposure(user.tenantId),
+      listCreditoEficazCustomers(user.tenantId),
+    ]);
 
   const exposureLimit = tenant.creditoEficazExposureLimit != null ? Number(tenant.creditoEficazExposureLimit) : null;
   const exposureRatio = exposureLimit && exposureLimit > 0 ? health.totalUsed / exposureLimit : null;
@@ -166,12 +177,64 @@ export default async function CreditoEficazPage() {
         </div>
       )}
 
+      {convenioExposure.length > 0 && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900">Exposição Convênio</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Acompanhe o crescimento antes de aumentar limites. &quot;Exposição máxima potencial&quot; é a
+            soma dos limites concedidos (todos usando tudo); &quot;em aberto&quot; é a dívida real de hoje.
+          </p>
+          {convenioExposure.map((item) => (
+            <div key={item.convenioId} className="mb-4 last:mb-0">
+              <p className="mb-2 text-sm font-medium text-slate-900">
+                {item.convenioName} — {item.customers} cliente(s), limite médio{" "}
+                {formatBRL(item.averageLimit)}
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard label="Exposição máxima potencial" value={formatBRL(item.totalLimit)} />
+                <StatCard label="Utilizado" value={formatBRL(item.totalUsed)} />
+                <StatCard label="Disponível" value={formatBRL(item.totalAvailable)} tone="positive" />
+                <StatCard label="Em aberto" value={formatBRL(item.totalOpen)} />
+                <StatCard
+                  label="Vencido"
+                  value={formatBRL(item.totalOverdue)}
+                  tone={item.totalOverdue > 0 ? "negative" : "default"}
+                />
+                <StatCard label="Recebido" value={formatBRL(item.totalReceived)} tone="positive" />
+                <StatCard label="Bônus concedidos" value={formatBRL(item.totalBonus)} />
+                <StatCard
+                  label="Clientes com atraso"
+                  value={String(item.overdueCustomers)}
+                  tone={item.overdueCustomers > 0 ? "negative" : "default"}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Crédito automático por convênio</h2>
+        <p className="mb-4 text-xs text-slate-500">
+          O segundo caminho de entrada para o mesmo Crédito Eficaz: em vez da análise manual, o
+          colaborador aprovado no convênio recebe um limite inicial automático. Tudo começa OFFLINE.
+        </p>
+        <ConvenioCreditoPanel panels={convenioPanels} />
+      </div>
+
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-900">Configuração do programa</h2>
         <CreditoEficazConfigPanel
           initialExposureLimit={exposureLimit}
           initialMaxInstallments={tenant.creditoEficazMaxInstallments}
           initialSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
+        />
+      </div>
+
+      <div className="mb-6">
+        <CarteiraCredito
+          rows={creditCustomers}
+          convenios={convenioPanels.map((panel) => ({ id: panel.convenioId, name: panel.convenioName }))}
         />
       </div>
 

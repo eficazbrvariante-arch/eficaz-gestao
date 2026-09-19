@@ -294,9 +294,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: sale.id,
-        amount: 50,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 50, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(result.ok).toBe(true);
@@ -313,9 +312,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: exactSale.id,
-        amount: 150,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 150, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(exact.ok).toBe(true);
@@ -329,9 +327,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: overSale.id,
-        amount: 1,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 1, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(over.ok).toBe(false);
@@ -354,9 +351,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: blockedSale.id,
-        amount: 10,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 10, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(blockedResult.ok).toBe(false);
@@ -368,9 +364,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: unblockedSale.id,
-        amount: 10,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 10, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(unblockedResult.ok).toBe(true);
@@ -384,9 +379,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: sale.id,
-        amount: 30,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 30, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
 
@@ -395,7 +389,7 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
     const summaryAfter = await getCustomerCreditSummary(tenantId, customerId);
     expect(summaryAfter?.availableAmount).toBe(summaryBefore?.availableAmount);
 
-    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: sale.id } });
+    const usage = await prisma.creditoEficazUsage.findFirstOrThrow({ where: { saleId: sale.id } });
     expect(usage.status).toBe("CANCELLED");
   });
 
@@ -408,31 +402,30 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
         tenantId,
         customerId,
         saleId: sale.id,
-        amount: 300,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 300, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(usageResult.ok).toBe(true);
     if (!usageResult.ok) return;
 
-    const partial = await registerManualPayment(tenantId, usageResult.usageId, adminId, 100, new Date(), "PIX");
+    const partial = await registerManualPayment(tenantId, usageResult.usageIds[0], adminId, 100, new Date(), "PIX");
     expect(partial.ok).toBe(true);
 
     const usageAfterPartial = await prisma.creditoEficazUsage.findUniqueOrThrow({
-      where: { id: usageResult.usageId },
+      where: { id: usageResult.usageIds[0] },
     });
     expect(usageAfterPartial.status).toBe("OPEN");
 
-    const full = await registerManualPayment(tenantId, usageResult.usageId, adminId, 200, new Date(), "PIX");
+    const full = await registerManualPayment(tenantId, usageResult.usageIds[0], adminId, 200, new Date(), "PIX");
     expect(full.ok).toBe(true);
 
     const usageAfterFull = await prisma.creditoEficazUsage.findUniqueOrThrow({
-      where: { id: usageResult.usageId },
+      where: { id: usageResult.usageIds[0] },
     });
     expect(usageAfterFull.status).toBe("PAID");
 
-    const overpay = await registerManualPayment(tenantId, usageResult.usageId, adminId, 1, new Date(), "PIX");
+    const overpay = await registerManualPayment(tenantId, usageResult.usageIds[0], adminId, 1, new Date(), "PIX");
     expect(overpay.ok).toBe(false);
   });
 
@@ -457,9 +450,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
           tenantId,
           customerId: concurrencyCustomer.id,
           saleId: saleA.id,
-          amount: 100,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           operatorId: adminId,
+          installments: [{ amount: 100, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
         })
       ),
       prisma.$transaction((tx) =>
@@ -467,9 +459,8 @@ describe("Crédito Eficaz — uso, bloqueio, estorno e pagamento", () => {
           tenantId,
           customerId: concurrencyCustomer.id,
           saleId: saleB.id,
-          amount: 100,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           operatorId: adminId,
+          installments: [{ amount: 100, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
         })
       ),
     ]);
@@ -537,7 +528,7 @@ describe("Crédito Eficaz — integração real via createSale/cancelSale (Fase 
     expect(summary?.availableAmount).toBe(500 - UNIT_PRICE);
 
     if (result.ok) {
-      const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+      const usage = await prisma.creditoEficazUsage.findFirstOrThrow({ where: { saleId: result.saleId } });
       expect(Number(usage.amount)).toBe(UNIT_PRICE);
       expect(usage.status).toBe("OPEN");
     }
@@ -603,7 +594,7 @@ describe("Crédito Eficaz — integração real via createSale/cancelSale (Fase 
     const afterCancel = await getCustomerCreditSummary(tenantId, buyerId);
     expect(afterCancel?.availableAmount).toBe(500);
 
-    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+    const usage = await prisma.creditoEficazUsage.findFirstOrThrow({ where: { saleId: result.saleId } });
     expect(usage.status).toBe("CANCELLED");
   });
 
@@ -652,9 +643,8 @@ describe("Crédito Eficaz — Adendo: pausa, teto global e financiamento de OS",
         tenantId,
         customerId: buyerId,
         saleId: sale.id,
-        amount: 50,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 50, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(result.ok).toBe(false);
@@ -667,9 +657,8 @@ describe("Crédito Eficaz — Adendo: pausa, teto global e financiamento de OS",
         tenantId,
         customerId: buyerId,
         saleId: sale2.id,
-        amount: 50,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         operatorId: adminId,
+        installments: [{ amount: 50, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
       })
     );
     expect(result2.ok).toBe(true);
@@ -693,9 +682,8 @@ describe("Crédito Eficaz — Adendo: pausa, teto global e financiamento de OS",
           tenantId,
           customerId: buyerA,
           saleId: saleA.id,
-          amount: 100,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           operatorId: adminId,
+          installments: [{ amount: 100, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
         })
       );
       expect(resultA.ok).toBe(true);
@@ -708,9 +696,8 @@ describe("Crédito Eficaz — Adendo: pausa, teto global e financiamento de OS",
           tenantId,
           customerId: buyerB,
           saleId: saleB.id,
-          amount: 50,
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           operatorId: adminId,
+          installments: [{ amount: 50, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }],
         })
       );
       expect(resultB.ok).toBe(false);
@@ -1024,7 +1011,7 @@ describe("Crédito Eficaz — acréscimo sobre a parte no crédito e cancelament
     expect(Number(sale.items[0].total)).toBe(UNIT_PRICE); // comissão sai daqui — não muda
     expect(sale.payments.map((p) => [p.method, Number(p.amount)])).toEqual([["CREDITO_EFICAZ", 110]]);
 
-    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+    const usage = await prisma.creditoEficazUsage.findFirstOrThrow({ where: { saleId: result.saleId } });
     expect(Number(usage.amount)).toBe(110);
     expect((await getCustomerCreditSummary(tenantId, buyerId))?.availableAmount).toBe(390);
   });
@@ -1092,7 +1079,7 @@ describe("Crédito Eficaz — acréscimo sobre a parte no crédito e cancelament
     const customer = await prisma.customer.findUniqueOrThrow({ where: { id: buyerId } });
     expect(Number(customer.creditBalance)).toBe(40); // só o Pix vira crédito de loja
     expect(Number(customer.creditoEficazAvailableAmount)).toBe(500); // os 66 voltam ao limite
-    const usage = await prisma.creditoEficazUsage.findUniqueOrThrow({ where: { saleId: result.saleId } });
+    const usage = await prisma.creditoEficazUsage.findFirstOrThrow({ where: { saleId: result.saleId } });
     expect(usage.status).toBe("CANCELLED");
   });
 

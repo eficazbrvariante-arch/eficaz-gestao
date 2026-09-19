@@ -10,7 +10,11 @@ import { ResetCustomerPasswordPanel } from "../reset-password-panel";
 import { FiadoPanel } from "../fiado-panel";
 import { MergeCustomerPanel } from "../merge-customer-panel";
 import { CreditoEficazPanel } from "../credito-eficaz-panel";
-import { getCustomerCreditSummary, listCustomerUsages } from "@/modules/credito-eficaz/credito-eficaz-service";
+import {
+  getCustomerCreditSummary,
+  listCustomerUsages,
+  listCustomerLimitChanges,
+} from "@/modules/credito-eficaz/credito-eficaz-service";
 
 export default async function FichaClientePage({
   params,
@@ -60,6 +64,18 @@ export default async function FichaClientePage({
         installmentNumber: usage.installmentNumber,
         installmentCount: usage.installmentCount,
         repairOrderNumber: usage.financing?.repairOrder.number ?? null,
+      }))
+    : [];
+  /** Toda mudança de limite, com motivo — concessão, bônus, manual, em massa. */
+  const creditoEficazLimitChanges = showCreditoEficaz
+    ? (await listCustomerLimitChanges(user.tenantId, customer.id)).map((change) => ({
+        id: change.id,
+        previousLimit: Number(change.previousLimit),
+        newLimit: Number(change.newLimit),
+        reason: change.reason,
+        note: change.note,
+        changedByName: change.changedBy?.name ?? null,
+        createdAt: change.createdAt,
       }))
     : [];
   const fiadoRows = fiadoEntries.map((entry) => ({
@@ -264,6 +280,7 @@ export default async function FichaClientePage({
               customerId={customer.id}
               summary={creditoEficazSummary}
               usages={creditoEficazUsages}
+              limitChanges={creditoEficazLimitChanges}
             />
           </div>
         </div>

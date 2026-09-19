@@ -170,6 +170,9 @@ model Tenant {
   creditoEficazPayments       CreditoEficazPayment[]
   creditoEficazBillings       CreditoEficazBilling[]
   creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
+  convenioCreditPolicies      ConvenioCreditPolicy[]
+  creditoEficazCampaigns      CreditoEficazCampaign[]
+  creditoEficazCampaignEntries CreditoEficazCampaignEntry[]
   devices                     Device[]
   visitorSessions             VisitorSession[]
   analyticsEvents             AnalyticsEvent[]
@@ -296,6 +299,7 @@ model User {
   creditoEficazUsagesOperated       CreditoEficazUsage[]       @relation("CreditoEficazUsageOperator")
   creditoEficazPaymentsRegistered   CreditoEficazPayment[]     @relation("CreditoEficazPaymentRegisteredBy")
   creditoEficazServiceFinancingsCreated CreditoEficazServiceFinancing[] @relation("CreditoEficazServiceFinancingCreatedBy")
+  convenioCreditPoliciesUpdated     ConvenioCreditPolicy[]     @relation("ConvenioCreditPolicyUpdatedBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -784,11 +788,26 @@ model Customer {
   /// trocável depois por outro método sem mudar o resto da arquitetura.
   creditoEficazPinHash         String?
   creditoEficazPinSetAt        DateTime?
+  /// De onde veio o limite atual: `MANUAL` (fluxo normal — solicitação
+  /// analisada e aprovada pelo Admin) ou `CONVENIO` (concessão automática
+  /// de um convênio com `ConvenioCreditPolicy.enabled`). É só a ORIGEM,
+  /// nunca uma segunda carteira: limite/disponível/obrigações continuam
+  /// nos mesmos campos de sempre. Um cliente de convênio que depois receba
+  /// uma aprovação manual passa a `MANUAL` — a decisão humana manda.
+  creditoEficazSource          CreditoEficazLimitSource @default(MANUAL)
+  /// Convênio que originou o limite automático — nulo quando a origem é
+  /// `MANUAL`. Usado nos filtros e no indicador de exposição por convênio.
+  creditoEficazSourceConvenioId String?
+  /// Carimbo da concessão automática — é ele que torna o liga/desliga da
+  /// chave IDEMPOTENTE: quem já tem carimbo nunca recebe a concessão
+  /// inicial de novo, por mais vezes que a chave seja ligada.
+  creditoEficazAutoGrantedAt   DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   tenant                      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   convenioMember              ConvenioMember?          @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
+  creditoEficazSourceConvenio Convenio?                @relation("CreditoEficazSourceConvenio", fields: [creditoEficazSourceConvenioId], references: [id], onDelete: SetNull)
   sales                       Sale[]
   orders                      Order[]
   creditMovements             CustomerCreditMovement[]
@@ -802,10 +821,12 @@ model Customer {
   creditoEficazLimitChanges   CreditoEficazLimitChange[]
   creditoEficazUsages         CreditoEficazUsage[]
   creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
+  creditoEficazCampaignEntries CreditoEficazCampaignEntry[]
 
   @@unique([tenantId, username])
   @@unique([tenantId, eficazNumber])
   @@index([tenantId, name])
+  @@index([tenantId, creditoEficazSource])
   @@map("customers")
 }
 
@@ -1203,7 +1224,7 @@ model Sale {
   fiadoEntries       FiadoEntry[]
   itemDefects        SaleItemDefect[]
   convenioRedemption ConvenioRedemption?
-  creditoEficazUsage CreditoEficazUsage?
+  creditoEficazUsages CreditoEficazUsage[]
   commissionPayment  CommissionPaymentSale?
 
   @@unique([tenantId, number])
@@ -1588,6 +1609,9 @@ model Convenio {
   invites          ConvenioInvite[]
   redemptions      ConvenioRedemption[]
   productDiscounts ConvenioProductDiscount[]
+  creditPolicy     ConvenioCreditPolicy?
+  creditCustomers  Customer[]                @relation("CreditoEficazSourceConvenio")
+  creditCampaigns  CreditoEficazCampaign[]
 
   @@unique([tenantId, slug])
   @@map("convenios")
@@ -2282,6 +2306,29 @@ enum CreditoEficazApplicationStatus {
   BLOCKED
 }
 
+/// Origem do limite de Crédito Eficaz de um cliente (ver
+/// `Customer.creditoEficazSource`) — jamais uma segunda carteira, só a
+/// procedência do número que já existe.
+enum CreditoEficazLimitSource {
+  MANUAL
+  CONVENIO
+}
+
+/// Motivo de uma linha de `CreditoEficazLimitChange`. `MANUAL_ADJUSTMENT`
+/// é o padrão histórico (tudo que existia antes do crédito de convênio).
+enum CreditoEficazLimitChangeReason {
+  /// Alteração individual feita por um Admin na tela do cliente.
+  MANUAL_ADJUSTMENT
+  /// Aprovação de uma solicitação do fluxo normal.
+  APPLICATION_APPROVAL
+  /// Concessão automática do convênio (chave ONLINE).
+  CONVENIO_AUTO_GRANT
+  /// Aumento permanente por parcela paga em dia.
+  PUNCTUALITY_BONUS
+  /// Alteração em massa (vários clientes de uma vez).
+  BULK_ADJUSTMENT
+}
+
 enum CreditoEficazDocumentType {
   ID_DOCUMENT
   RESIDENCE_PROOF
@@ -2380,6 +2427,14 @@ model CreditoEficazLimitChange {
   previousLimit Decimal  @db.Decimal(12, 2)
   newLimit      Decimal  @db.Decimal(12, 2)
   note          String?
+  /// Por que o limite mudou — é o que deixa o histórico legível sem
+  /// depender de interpretar o texto livre de `note` ("Bônus por pagamento
+  /// pontual" vs "Alteração manual do administrador").
+  reason        CreditoEficazLimitChangeReason @default(MANUAL_ADJUSTMENT)
+  /// Parcela que originou um bônus de pontualidade — nulo em qualquer
+  /// outro motivo. É a trava de idempotência do bônus: uma parcela nunca
+  /// gera dois aumentos (ver o índice único abaixo).
+  sourceUsageId String?
   changedById   String
   createdAt     DateTime @default(now())
 
@@ -2387,7 +2442,9 @@ model CreditoEficazLimitChange {
   customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   changedBy User     @relation("CreditoEficazLimitChangeBy", fields: [changedById], references: [id], onDelete: Restrict)
 
+  @@unique([sourceUsageId, reason])
   @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, reason, createdAt])
   @@map("credito_eficaz_limit_changes")
 }
 
@@ -2406,9 +2463,17 @@ model CreditoEficazUsage {
   id                String                    @id @default(cuid())
   tenantId          String
   customerId        String
-  saleId            String?                   @unique
+  /// Deixou de ser único sozinho quando a venda do PDV passou a poder ser
+  /// parcelada (crédito de convênio): a unicidade agora é
+  /// `[saleId, installmentNumber]` — uma linha por parcela da mesma venda,
+  /// mesma ideia já usada pelo financiamento de OS.
+  saleId            String?
   financingId       String?
-  /// Só preenchidos numa parcela de financiamento de serviço (ex.: "2 de 3").
+  /// Número/total de parcelas ("2 de 3"). Preenchidos no financiamento de
+  /// OS e, desde o crédito de convênio, também nas vendas do PDV (inclusive
+  /// "1 de 1", pra a unicidade `[saleId, installmentNumber]` valer de
+  /// verdade). Nulos só nas linhas anteriores a essa mudança — a tela só
+  /// mostra "parcela x/y" quando o total é maior que 1.
   installmentNumber Int?
   installmentCount  Int?
   amount            Decimal                   @db.Decimal(12, 2)
@@ -2429,6 +2494,7 @@ model CreditoEficazUsage {
   payments  CreditoEficazPayment[]
   billings  CreditoEficazBilling[]
 
+  @@unique([saleId, installmentNumber])
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, status, dueDate])
   @@index([tenantId, financingId])
@@ -2522,4 +2588,106 @@ model CreditoEficazBilling {
 
   @@index([tenantId, usageId])
   @@map("credito_eficaz_billings")
+}
+
+
+// ---------------------------------------------------------------------------
+// Crédito Eficaz × Convênio — concessão automática de limite
+// ---------------------------------------------------------------------------
+
+/// Regras do crédito automático de UM convênio. Nasce só quando o Admin
+/// abre a configuração, e nasce DESLIGADA (`enabled = false`): enquanto
+/// estiver assim, nada acontece — nenhuma concessão, nenhum cliente
+/// alterado, o Crédito Eficaz segue exatamente como sempre foi. Fica por
+/// convênio (e não uma chave global) porque `Convenio` sempre foi genérico:
+/// liga na Havan hoje sem prometer nada aos outros convênios.
+model ConvenioCreditPolicy {
+  id         String  @id @default(cuid())
+  tenantId   String
+  convenioId String  @unique
+  /// A chave mestre. Ligar aplica a regra a quem já está aprovado E aos
+  /// futuros aprovados; desligar só interrompe NOVAS concessões — nunca
+  /// retira limite, dívida ou histórico de quem já recebeu.
+  enabled    Boolean @default(false)
+  /// Limite concedido na entrada do colaborador. Configurável (o valor
+  /// inicial sugerido de R$ 100 é só o default do banco, nunca uma regra
+  /// cravada no código).
+  defaultLimitAmount      Decimal @default(100) @db.Decimal(12, 2)
+  /// Acréscimo (%) do parcelamento deste convênio — sobrepõe
+  /// `Tenant.creditoEficazSurchargePercent` só para estes clientes.
+  surchargePercent        Decimal @default(10) @db.Decimal(5, 2)
+  /// Parcelas da compra no PDV e intervalo entre elas: 2 × 30 dias = o
+  /// "30 + 60" combinado. Ambos configuráveis.
+  installmentCount        Int     @default(2)
+  installmentIntervalDays Int     @default(30)
+  /// Segunda chave, independente da primeira e também OFFLINE de início.
+  bonusEnabled            Boolean @default(false)
+  /// Quanto do valor da parcela paga em dia vira aumento permanente de
+  /// limite (50% = R$ 27,50 numa parcela de R$ 55).
+  bonusPercent            Decimal @default(50) @db.Decimal(5, 2)
+  /// Teto do crescimento AUTOMÁTICO — o Admin continua podendo conceder
+  /// manualmente acima disso; o automático é que para aqui.
+  autoLimitCap            Decimal @default(300) @db.Decimal(12, 2)
+  /// Bloqueia novas compras enquanto existir parcela vencida em aberto.
+  /// Nunca apaga limite: só impede nova utilização.
+  blockOnOverdue          Boolean @default(true)
+  /// Campanha de pontualidade — terceira chave, DESLIGADA e sem nenhum
+  /// sorteio implementado (ver `CreditoEficazCampaign`).
+  campaignEnabled         Boolean @default(false)
+  /// Dia do mês da apuração da campanha (1-28).
+  campaignDayOfMonth      Int     @default(20)
+  enabledAt   DateTime?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio  Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  updatedBy User?    @relation("ConvenioCreditPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, enabled])
+  @@map("convenio_credit_policies")
+}
+
+/// Apuração mensal da campanha "Pague em dia e concorra" — estrutura
+/// preparada e DESLIGADA. Por envolver promoção/sorteio, nada aqui é
+/// executado automaticamente: não há job agendado, não há sorteio, não há
+/// prêmio registrado. Só existe pra a apuração de elegíveis poder ser
+/// criada depois da validação administrativa/jurídica.
+model CreditoEficazCampaign {
+  id             String    @id @default(cuid())
+  tenantId       String
+  convenioId     String?
+  /// Mês de referência no formato `YYYY-MM` — um por convênio.
+  referenceMonth String
+  /// `DRAFT` é o único estado que o código cria hoje.
+  status         String    @default("DRAFT")
+  drawnAt        DateTime?
+  createdAt      DateTime  @default(now())
+
+  tenant   Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenio Convenio?                    @relation(fields: [convenioId], references: [id], onDelete: Cascade)
+  entries  CreditoEficazCampaignEntry[]
+
+  @@unique([tenantId, convenioId, referenceMonth])
+  @@map("credito_eficaz_campaigns")
+}
+
+/// Participação de um cliente numa campanha — UMA por cliente por campanha
+/// (o índice único é a regra em si). Nunca existe "peso" ou número de
+/// chances: pontualidade é o critério, não o tamanho da dívida.
+model CreditoEficazCampaignEntry {
+  id         String   @id @default(cuid())
+  tenantId   String
+  campaignId String
+  customerId String
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign CreditoEficazCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, customerId])
+  @@index([tenantId, campaignId])
+  @@map("credito_eficaz_campaign_entries")
 }

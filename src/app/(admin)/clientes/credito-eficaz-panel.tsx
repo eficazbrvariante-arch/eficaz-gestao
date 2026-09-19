@@ -17,6 +17,7 @@ import {
   registerCreditoEficazPaymentAction,
 } from "../credito-eficaz/actions";
 import type { CustomerCreditSummary } from "@/modules/credito-eficaz/credito-eficaz-service";
+import type { CreditoEficazLimitChangeReason } from "@/generated/prisma/enums";
 
 export type CreditoEficazUsageRow = {
   id: string;
@@ -36,14 +37,41 @@ export type CreditoEficazUsageRow = {
   repairOrderNumber: number | null;
 };
 
+export type CreditoEficazLimitChangeRow = {
+  id: string;
+  previousLimit: number;
+  newLimit: number;
+  reason: CreditoEficazLimitChangeReason;
+  note: string | null;
+  changedByName: string | null;
+  createdAt: Date;
+};
+
+/** Texto do motivo — o histórico precisa dizer POR QUE o limite mudou. */
+const LIMIT_CHANGE_REASON_LABEL: Record<CreditoEficazLimitChangeReason, string> = {
+  MANUAL_ADJUSTMENT: "Alteração manual realizada pelo administrador",
+  APPLICATION_APPROVAL: "Aprovação da solicitação",
+  CONVENIO_AUTO_GRANT: "Limite automático concedido — Convênio",
+  PUNCTUALITY_BONUS: "Bônus por pagamento pontual",
+  BULK_ADJUSTMENT: "Alteração em massa realizada pelo administrador",
+};
+
+/** "— parcela 2/3"; some quando a operação é de parcela única. */
+function installmentLabel(usage: CreditoEficazUsageRow): string {
+  if (!usage.installmentNumber || !usage.installmentCount || usage.installmentCount <= 1) return "";
+  return ` — parcela ${usage.installmentNumber}/${usage.installmentCount}`;
+}
+
 export function CreditoEficazPanel({
   customerId,
   summary,
   usages,
+  limitChanges = [],
 }: {
   customerId: string;
   summary: CustomerCreditSummary;
   usages: CreditoEficazUsageRow[];
+  limitChanges?: CreditoEficazLimitChangeRow[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string }>();
@@ -153,6 +181,19 @@ export function CreditoEficazPanel({
       {summary.blocked && summary.blockedReason && (
         <p className="text-sm text-red-600">Motivo do bloqueio: {summary.blockedReason}</p>
       )}
+      <p className="text-sm text-slate-500">
+        Origem do limite:{" "}
+        <strong className="text-slate-900">
+          {summary.source === "CONVENIO"
+            ? `Convênio ${summary.sourceConvenioName ?? ""}`
+            : "Crédito Eficaz (análise manual)"}
+        </strong>
+        {summary.overdueAmount > 0 && (
+          <span className="text-red-600">
+            {" "}· {formatBRL(summary.overdueAmount)} vencido em aberto
+          </span>
+        )}
+      </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-md border border-slate-200 p-3">
@@ -195,15 +236,16 @@ export function CreditoEficazPanel({
                 <tr key={usage.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-2 text-slate-500">
                     {usage.saleId && usage.saleNumber ? (
-                      <Link href={`/vendas/${usage.saleId}`} className="hover:underline">
-                        Venda #{usage.saleNumber}
-                      </Link>
+                      <span>
+                        <Link href={`/vendas/${usage.saleId}`} className="hover:underline">
+                          Venda #{usage.saleNumber}
+                        </Link>
+                        {installmentLabel(usage)}
+                      </span>
                     ) : usage.repairOrderNumber ? (
                       <span>
                         OS #{usage.repairOrderNumber}
-                        {usage.installmentNumber && usage.installmentCount
-                          ? ` — parcela ${usage.installmentNumber}/${usage.installmentCount}`
-                          : ""}
+                        {installmentLabel(usage)}
                       </span>
                     ) : (
                       "-"
@@ -264,6 +306,51 @@ export function CreditoEficazPanel({
           </tbody>
         </table>
       </div>
+
+      {limitChanges.length > 0 && (
+        <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
+            Histórico de limite
+          </div>
+          <table className="w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Quando</th>
+                <th className="px-3 py-2 font-medium">Alteração</th>
+                <th className="px-3 py-2 font-medium">Motivo</th>
+                <th className="px-3 py-2 font-medium">Responsável</th>
+              </tr>
+            </thead>
+            <tbody>
+              {limitChanges.map((change) => {
+                const delta = round2(change.newLimit - change.previousLimit);
+                return (
+                  <tr key={change.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-3 py-2 text-slate-500">{formatDateTime(change.createdAt)}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={
+                          delta > 0 ? "font-medium text-emerald-700" : delta < 0 ? "font-medium text-red-600" : ""
+                        }
+                      >
+                        {delta > 0 ? "+" : delta < 0 ? "−" : ""}
+                        {formatBRL(Math.abs(delta))}
+                      </span>
+                      <span className="ml-2 text-xs text-slate-400">
+                        {formatBRL(change.previousLimit)} → {formatBRL(change.newLimit)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {change.note?.trim() || LIMIT_CHANGE_REASON_LABEL[change.reason]}
+                    </td>
+                    <td className="px-3 py-2 text-slate-500">{change.changedByName ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-slate-200 p-4">

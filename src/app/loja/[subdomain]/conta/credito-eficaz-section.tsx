@@ -140,6 +140,17 @@ export function CreditoEficazSection({
             <p className="font-semibold text-slate-900">{formatBRL(summary.openAmount)}</p>
           </div>
         </div>
+        {summary.source === "CONVENIO" && summary.sourceConvenioName && (
+          <p className="mt-3 text-xs text-slate-500">
+            Seu limite veio do Convênio {summary.sourceConvenioName}.
+          </p>
+        )}
+        {summary.overdueAmount > 0 && (
+          <p className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+            Você tem {formatBRL(summary.overdueAmount)} vencido em aberto. Novas compras com Crédito
+            Eficaz podem ficar indisponíveis até o pagamento — seu limite continua aqui, esperando.
+          </p>
+        )}
         {summary.nextDueDate && (
           <p className="mt-3 text-xs text-slate-500">
             Próximo vencimento: {formatDate(summary.nextDueDate)}

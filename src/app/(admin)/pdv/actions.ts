@@ -19,6 +19,10 @@ import {
   type PendingConvenioMember,
   type ReviewDecision,
 } from "@/modules/convenios/convenio-member-review-service";
+import {
+  grantConvenioCreditOnApproval,
+  resolveCustomerCreditTerms,
+} from "@/modules/credito-eficaz/convenio-credit-service";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
 import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
@@ -306,12 +310,51 @@ export async function reviewConvenioSignupAction(
         : `Recusou pelo PDV o cadastro de ${result.memberName} no convênio ${result.convenioName}: ${reason?.trim()}`,
   });
 
+  // Crédito automático do convênio: só faz algo se a chave estiver ONLINE
+  // e o colaborador tiver cadastro de cliente. Nunca derruba a aprovação —
+  // o benefício do convênio vale na hora, com ou sem crédito.
+  let creditGranted = false;
+  if (decision === "APPROVE") {
+    const granted = await grantConvenioCreditOnApproval(
+      user.tenantId,
+      result.convenioId,
+      memberId,
+      user.id
+    );
+    creditGranted = granted === "granted";
+    if (creditGranted) {
+      await recordAudit({
+        tenantId: user.tenantId,
+        userId: user.id,
+        userName: user.name ?? user.email ?? "Usuário",
+        action: "credito_eficaz.convenio_auto_grant",
+        entity: "ConvenioMember",
+        entityId: memberId,
+        description: `Limite automático de Crédito Eficaz concedido a ${result.memberName} — Convênio ${result.convenioName}.`,
+      });
+    }
+  }
+
   revalidatePath("/pdv");
   revalidatePath(`/convenios/${result.convenioId}`);
+  revalidatePath("/credito-eficaz");
   return {
     success:
       decision === "APPROVE"
-        ? `${result.memberName} aprovado(a) — o QR do convênio já vale no caixa.`
+        ? `${result.memberName} aprovado(a) — o QR do convênio já vale no caixa.${creditGranted ? " Crédito Eficaz automático liberado." : ""}`
         : `Cadastro de ${result.memberName} recusado.`,
   };
+}
+
+/**
+ * Condições do Crédito Eficaz do cliente escolhido — acréscimo, parcelas e
+ * se existe parcela vencida travando novas compras. Carregado ao SELECIONAR
+ * o cliente (não na busca) porque só aí importa, e o PDV precisa mostrar
+ * tudo isso ao cliente antes do PIN.
+ */
+export async function getCreditoEficazTermsAction(customerId: string) {
+  const user = await requireUser();
+  if (!canSell(user.role)) return { error: "Seu perfil não pode vender." };
+  const terms = await resolveCustomerCreditTerms(user.tenantId, customerId);
+  return { terms };
 }

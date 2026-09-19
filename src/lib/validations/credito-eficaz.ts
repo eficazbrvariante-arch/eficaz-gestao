@@ -95,3 +95,87 @@ export const setCreditoEficazSurchargePercentSchema = z.object({
     .max(100, "O acréscimo máximo é 100%."),
 });
 export type SetCreditoEficazSurchargePercentInput = z.infer<typeof setCreditoEficazSurchargePercentSchema>;
+
+// ---------------------------------------------------------------------------
+// Crédito automático por convênio
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuração do crédito automático de um convênio. Todo campo é
+ * opcional: a tela manda só o que o Admin mexeu, e nada tem valor cravado
+ * no código — os padrões vivem no banco (ver `ConvenioCreditPolicy`).
+ */
+export const convenioCreditPolicySchema = z.object({
+  enabled: z.boolean().optional(),
+  defaultLimitAmount: z.coerce
+    .number()
+    .min(0, "O limite inicial não pode ser negativo.")
+    .max(100000, "Limite inicial acima do teto permitido (R$ 100.000).")
+    .optional(),
+  surchargePercent: z.coerce
+    .number()
+    .min(0, "O acréscimo não pode ser negativo.")
+    .max(100, "O acréscimo máximo é 100%.")
+    .optional(),
+  installmentCount: z.coerce
+    .number()
+    .int()
+    .min(1, "Mínimo 1 parcela.")
+    .max(12, "Máximo 12 parcelas.")
+    .optional(),
+  installmentIntervalDays: z.coerce
+    .number()
+    .int()
+    .min(1, "Mínimo 1 dia entre parcelas.")
+    .max(180, "Máximo 180 dias entre parcelas.")
+    .optional(),
+  bonusEnabled: z.boolean().optional(),
+  bonusPercent: z.coerce
+    .number()
+    .min(0, "O bônus não pode ser negativo.")
+    .max(100, "O bônus máximo é 100% da parcela.")
+    .optional(),
+  autoLimitCap: z.coerce
+    .number()
+    .min(0, "O teto não pode ser negativo.")
+    .max(100000, "Teto acima do máximo permitido (R$ 100.000).")
+    .optional(),
+  blockOnOverdue: z.boolean().optional(),
+  campaignEnabled: z.boolean().optional(),
+  campaignDayOfMonth: z.coerce
+    .number()
+    .int()
+    .min(1, "Escolha um dia entre 1 e 28.")
+    .max(28, "Escolha um dia entre 1 e 28 (evita problema em mês curto).")
+    .optional(),
+});
+export type ConvenioCreditPolicyInput = z.infer<typeof convenioCreditPolicySchema>;
+export type ConvenioCreditPolicyFormValues = z.input<typeof convenioCreditPolicySchema>;
+
+/**
+ * Alteração de limite em massa. `convenioId` altera todos os clientes com
+ * limite daquele convênio; `customerIds` altera só o grupo escolhido. Um
+ * dos dois, nunca os dois.
+ */
+export const bulkCreditoEficazLimitSchema = z
+  .object({
+    convenioId: z.string().trim().min(1).optional(),
+    customerIds: z.array(z.string().trim().min(1)).optional(),
+    newLimit: z.coerce
+      .number()
+      .min(0, "O limite não pode ser negativo.")
+      .max(100000, "Limite acima do teto permitido (R$ 100.000)."),
+    note: z.string().trim().max(500).optional().or(z.literal("")),
+  })
+  .refine((data) => Boolean(data.convenioId) !== Boolean(data.customerIds?.length), {
+    message: "Escolha um convênio OU uma lista de clientes.",
+  });
+export type BulkCreditoEficazLimitInput = z.infer<typeof bulkCreditoEficazLimitSchema>;
+export type BulkCreditoEficazLimitFormValues = z.input<typeof bulkCreditoEficazLimitSchema>;
+
+/** Mês de referência da campanha de pontualidade — `AAAA-MM`. */
+export const creditoEficazCampaignSchema = z.object({
+  convenioId: z.string().trim().min(1),
+  referenceMonth: z.string().regex(/^\d{4}-\d{2}$/, "Informe o mês no formato AAAA-MM."),
+});
+export type CreditoEficazCampaignInput = z.infer<typeof creditoEficazCampaignSchema>;
