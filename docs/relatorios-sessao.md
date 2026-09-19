@@ -1,5 +1,77 @@
 # Relatórios de sessão
 
+## 2026-09-18 — Crédito Eficaz × Convênio: segundo caminho para o mesmo crédito
+
+Pedido do usuário: evoluir o Crédito Eficaz existente com uma integração
+para clientes do Convênio Havan — chave ON/OFF, limite inicial
+configurável, condição 30+60 com 10%, recomposição de limite, bônus por
+pontualidade, teto automático, bloqueio por atraso, histórico com motivo,
+alteração em massa, dashboard com filtros e a estrutura (desligada) de uma
+campanha mensal. Nada de sistema novo, carteira nova ou cliente duplicado.
+
+Mapeei o que já existia antes de tocar em qualquer coisa e apresentei
+quatro decisões: parcelamento no PDV só para o convênio; chave por
+convênio (a arquitetura de `Convenio` sempre foi genérica, nunca
+"Havan"); colaboradores sem cadastro de cliente ficam de fora e são
+listados; branch nova. Usuário aprovou as quatro recomendações.
+
+**Schema** (`20260917120000_credito_eficaz_convenio`): `Customer` ganhou
+`creditoEficazSource` (MANUAL/CONVENIO), `creditoEficazSourceConvenioId` e
+`creditoEficazAutoGrantedAt` (o carimbo que torna o liga/desliga
+idempotente); `CreditoEficazLimitChange` ganhou `reason` e `sourceUsageId`
+(único por `[sourceUsageId, reason]` — uma parcela nunca gera dois
+bônus); `CreditoEficazUsage.saleId` deixou de ser único sozinho e passou a
+`[saleId, installmentNumber]`, porque a venda do PDV agora pode ter mais
+de uma parcela; novas tabelas `ConvenioCreditPolicy`,
+`CreditoEficazCampaign` e `CreditoEficazCampaignEntry`. Nenhum dado
+alterado: tudo que existia continua `MANUAL`/`MANUAL_ADJUSTMENT`. Migration
+escrita à mão (via `migrate diff` entre os dois schemas) porque o
+`dev-local` tem drift da branch `feat/desconto-combo-capinha-pelicula`,
+ainda não mergeada — `migrate dev` queria resetar o banco.
+
+**Serviços:** `credito-eficaz-limit.ts` (novo) isolou `changeCreditLimitInTx`
+pra os dois módulos usarem sem ciclo de import — é o único caminho que
+mexe em limite, e sempre grava histórico. `convenio-credit-service.ts`
+(novo) tem a política por convênio, a concessão idempotente, os termos do
+cliente, o bônus de pontualidade, o guard de inadimplência, a alteração em
+massa com simulação e a exposição por convênio. No serviço existente:
+`recordCreditoEficazUsageInTx` passou a receber parcelas (débito único
+pela soma, uma obrigação por parcela, igual ao financiamento de OS);
+`reverseCreditoEficazUsageInTx` agora estorna todas as parcelas e devolve
+só a fatia não paga (antes devolvia o valor cheio, o que estava errado se
+houvesse pagamento parcial antes do cancelamento); `registerManualPayment`
+aplica o bônus quando a parcela é quitada em dia.
+
+**PDV:** ao selecionar o cliente, carrega as condições dele e mostra as
+parcelas com vencimento antes do PIN; o acréscimo do convênio sobrepõe o do
+tenant e o servidor reconfere (mesma proteção anti-tela-desatualizada que
+já existia). Cliente do fluxo normal não mudou em nada.
+
+**Telas:** painel `/credito-eficaz` ganhou "Exposição Convênio", o cartão
+de configuração por convênio (três chaves, todas OFFLINE de nascença) e a
+carteira filtrável com alteração em massa que exige simulação antes de
+confirmar. Painel do cliente mostra origem do limite e o histórico de
+limite com motivo (que existia no banco e nunca aparecia na tela). Painel
+da loja mostra a origem e avisa sobre parcela vencida.
+
+**Testes:** `convenio-credit.integration.test.ts` novo, 25 casos (OFFLINE
+inerte, idempotência do liga/desliga, limite manual nunca sobrescrito,
+30+60, recomposição, bônus só em dia, teto, bloqueio por atraso, massa
+sem tocar na dívida, campanha). `npm test` 168 ok, `npm run test:integration`
+112 ok (os 87 anteriores continuam passando), lint sem warning novo (9
+antes, 9 depois), `build:app` ok.
+
+**Riscos e pendências:** a migration foi aplicada no `dev-local` (via
+`db execute` + `migrate resolve`), nunca em produção; publicar exige
+`npm run build` completo. O acréscimo do convênio vale no PDV, não no
+financiamento de OS — a OS segue com o percentual do tenant e o
+parcelamento escolhido pelo operador. Reduzir limite abaixo do já
+utilizado (só na alteração em massa) zera o disponível e deixa a dívida
+intacta, como combinado: nesse caso "utilizado" (limite − disponível) fica
+menor que a dívida real, e quem mostra a verdade é o "em aberto". A
+campanha está desligada e sem qualquer sorteio — só apura elegíveis por
+clique do Admin.
+
 ## 2026-08-26 — Sangria/Suprimento com foto do comprovante, direto no PDV
 
 Pedido do usuário: no PDV, um jeito de colocar dinheiro no caixa
@@ -2840,3 +2912,11 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 **Estado final:** lint 0 erros (9 avisos pré-existentes), typecheck limpo, 168/168 testes, build compilando. **Teste visual no navegador continua pendente** — depende de login.
 
 **Ajuste pedido depois de ver no ar (16/09):** Cliente e Vendedor saíram da coluna da direita e subiram para **cima da barra de busca**, na coluna da esquerda. Motivo do dono: na prática a venda começa identificando quem vende e quem compra, e só depois o leitor de código de barras entra em ação — com os cards embaixo, o operador passava o produto primeiro e voltava atrás. A lateral ficou só com as funções auxiliares (Caixa, Convênio, Cadastros, Proteção, Troca). O dono mandou um vídeo (`IMG_2084.mov`); **não consegui assistir** (o ambiente não lê vídeo e não tem ffmpeg para extrair quadros), então a mudança saiu da descrição escrita dele.
+
+## 17/09/2026 — Caixa: valor contado na abertura visível no histórico
+
+- **Pedido**: no caixa de 15/09/2026 (falta de R$ 485,00 em dinheiro) não dava pra ver quanto foi contado na abertura.
+- **Arquivos**: `src/app/(admin)/caixa/historico/[id]/page.tsx` (valor contado na abertura no cabeçalho + cartão "Como chegamos no dinheiro esperado": abertura + vendas/assistência/fiado em dinheiro + suprimentos − sangrias, com aviso se o recálculo divergir do esperado gravado); `src/app/(admin)/caixa/historico/page.tsx` (coluna própria "Contado na abertura").
+- **Dados**: nenhuma alteração — `openingAmount` já era gravado em todos os caixas; só não aparecia. Sem migration.
+- **Testes**: `lint` (9 warnings, mesmos de antes), `typecheck`, `build:app` ok. Não testado no navegador.
+- **Pendências**: não commitado nem publicado.
