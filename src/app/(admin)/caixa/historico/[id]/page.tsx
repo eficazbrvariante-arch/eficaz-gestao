@@ -12,6 +12,58 @@ import { formatBRL, formatDateTime, type DecimalLike } from "@/lib/format";
 import { FinalizeReviewForm, ClosedRegisterPanel, type ClosedRegisterEntry } from "../../cash-forms";
 import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
 import type { CashDifferenceEntry } from "@/lib/cash-diagnosis";
+import { getCashSummary, type CashSummary } from "@/modules/cash/cash-service";
+
+/**
+ * De onde sai o "Dinheiro esperado": valor contado na abertura + entradas em
+ * dinheiro - sangrias. Recalculado agora a partir das vendas/movimentações —
+ * se não bater com o esperado gravado no fechamento (ex.: venda cancelada
+ * depois), avisa em vez de esconder a divergência.
+ */
+function ExpectedCashBreakdown({
+  summary,
+  storedExpected,
+}: {
+  summary: CashSummary;
+  storedExpected: DecimalLike | null;
+}) {
+  const rows: { label: string; value: number; sign: "+" | "-" | "" }[] = [
+    { label: "Contado na abertura", value: summary.openingAmount, sign: "" },
+    { label: "Vendas em dinheiro", value: summary.cashSales, sign: "+" },
+    { label: "Assistência técnica em dinheiro", value: summary.repairCashReceipts, sign: "+" },
+    { label: "Fiado recebido em dinheiro", value: summary.fiadoCashReceipts, sign: "+" },
+    { label: "Suprimentos", value: summary.supplies, sign: "+" },
+    { label: "Sangrias", value: summary.withdrawals, sign: "-" },
+  ];
+  const differsFromStored =
+    storedExpected !== null && Math.abs(Number(storedExpected) - summary.expectedInDrawer) >= 0.005;
+  return (
+    <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-slate-900">Como chegamos no dinheiro esperado</h2>
+      <dl className="mt-3 max-w-md space-y-1 text-sm">
+        {rows.map((r, i) => (
+          <div key={r.label} className={"flex justify-between" + (i === 0 ? " font-semibold" : "")}>
+            <dt className="text-slate-600">{r.label}</dt>
+            <dd className={r.sign === "-" && r.value > 0 ? "text-red-600" : "text-slate-900"}>
+              {r.sign && r.value > 0 ? `${r.sign} ` : ""}
+              {formatBRL(r.value)}
+            </dd>
+          </div>
+        ))}
+        <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold">
+          <dt className="text-slate-900">Dinheiro esperado</dt>
+          <dd className="text-slate-900">{formatBRL(summary.expectedInDrawer)}</dd>
+        </div>
+      </dl>
+      {differsFromStored && storedExpected !== null && (
+        <p className="mt-3 text-xs text-amber-700">
+          No fechamento o sistema gravou {formatBRL(storedExpected)} como esperado — as vendas ou
+          movimentações deste caixa mudaram depois disso (ex.: venda cancelada).
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Cartão estático (fechamento já finalizado, ou sem permissão de finalizar) de uma forma que não passa pela gaveta: esperado, o que veio de fato e a diferença. */
 function ExpectedCountedCard({
@@ -100,6 +152,7 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
   ].filter((e): e is CashDifferenceEntry => e.difference !== null);
 
   const canSeeAmounts = canViewReports(user.role);
+  const cashSummary = canSeeAmounts ? await getCashSummary(user.tenantId, register.id) : null;
   const canFinalize = canFinalizeCashRegisterReview(user.role) && register.status === "PENDING_REVIEW";
 
   const closedEntries: ClosedRegisterEntry[] | null =
@@ -150,6 +203,7 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
               {formatDateTime(register.reviewSubmittedAt)}
             </>
           )}
+          {canSeeAmounts && <> · contado na abertura: {formatBRL(register.openingAmount)}</>}
         </p>
       </div>
 
@@ -231,6 +285,10 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
             </>
           )}
         </>
+      )}
+
+      {cashSummary && (
+        <ExpectedCashBreakdown summary={cashSummary} storedExpected={register.expectedAmount} />
       )}
 
       <div className="mb-6">

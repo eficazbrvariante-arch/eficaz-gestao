@@ -48,6 +48,7 @@ export default async function HistoricoCaixaPage() {
           <thead className="border-b border-slate-200 text-left text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Abertura</th>
+              <th className="px-4 py-3 font-medium">Contado na abertura</th>
               <th className="px-4 py-3 font-medium">Enviado p/ revisão</th>
               <th className="px-4 py-3 font-medium">Fechamento</th>
               <th className="px-4 py-3 font-medium">Vendas</th>
@@ -69,9 +70,10 @@ export default async function HistoricoCaixaPage() {
                   <td className="px-4 py-3">
                     <div className="text-slate-900">{formatDateTime(r.openedAt)}</div>
                     <div className="text-xs text-slate-400">
-                      {r.openedBy.name} · {formatBRL(r.openingAmount)}
+                      {r.openedBy.name}
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-slate-900">{formatBRL(r.openingAmount)}</td>
                   <td className="px-4 py-3">
                     {r.reviewSubmittedAt ? (
                       <>
@@ -165,7 +167,7 @@ export default async function HistoricoCaixaPage() {
             })}
             {registers.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
                   {seeAll ? "Nenhum caixa registrado ainda." : "Nenhum caixa aberto no momento."}
                 </td>
               </tr>
