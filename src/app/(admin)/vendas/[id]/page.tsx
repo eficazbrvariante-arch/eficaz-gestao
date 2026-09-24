@@ -17,6 +17,16 @@ const METHOD_LABELS: Record<string, string> = {
   CREDITO_EFICAZ: "Crédito Eficaz",
 };
 
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
+// Últimos 4 dígitos do telefone, pra nota impressa não expor o número inteiro.
+function phoneTail(phone: string | null | undefined) {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
 export default async function ComprovantePage({
   params,
   searchParams,
@@ -223,7 +233,10 @@ export default async function ComprovantePage({
             <div className="flex justify-between text-slate-600">
               <span>
                 Benefício Convênio {sale.convenioRedemption.convenio.name} —{" "}
-                {sale.convenioRedemption.member.name}
+                <span className="print:hidden">{sale.convenioRedemption.member.name}</span>
+                <span className="hidden print:inline">
+                  {firstName(sale.convenioRedemption.member.name)}
+                </span>
                 {sale.convenioRedemption.reversedAt ? " (revertido)" : ""}
               </span>
               <span>-{formatBRL(sale.convenioDiscount)}</span>
@@ -274,12 +287,22 @@ export default async function ComprovantePage({
 
         {sale.customer && (
           <div className="mt-3 space-y-0.5 border-t border-dashed border-slate-300 pt-3 text-xs text-slate-600">
-            <p className="font-medium text-slate-900">{sale.customer.name}</p>
-            {sale.customer.document && <p>CPF: {sale.customer.document}</p>}
-            {(sale.customer.phone || sale.customer.whatsapp) && (
-              <p>Contato: {sale.customer.phone || sale.customer.whatsapp}</p>
-            )}
-            {sale.customer.notes && <p>Obs.: {sale.customer.notes}</p>}
+            {/* Tela: dados completos pra equipe conferir. */}
+            <div className="space-y-0.5 print:hidden">
+              <p className="font-medium text-slate-900">{sale.customer.name}</p>
+              {sale.customer.document && <p>CPF: {sale.customer.document}</p>}
+              {(sale.customer.phone || sale.customer.whatsapp) && (
+                <p>Contato: {sale.customer.phone || sale.customer.whatsapp}</p>
+              )}
+              {sale.customer.notes && <p>Obs.: {sale.customer.notes}</p>}
+            </div>
+            {/* Impressão: a nota fica com o cliente e pode ser perdida — só o mínimo. */}
+            <div className="hidden space-y-0.5 print:block">
+              <p className="font-medium text-slate-900">Cliente: {firstName(sale.customer.name)}</p>
+              {phoneTail(sale.customer.phone || sale.customer.whatsapp) && (
+                <p>Contato: final {phoneTail(sale.customer.phone || sale.customer.whatsapp)}</p>
+              )}
+            </div>
           </div>
         )}
       </div>
