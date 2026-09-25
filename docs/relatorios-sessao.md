@@ -3015,3 +3015,11 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   (6/6). Suíte de integração inteira 118/118.
 - **Pendente**: testar no navegador logado. Commit e publicação só quando pedido
   (a publicação roda a migration na produção).
+- **Publicação (25/09)**: lint, typecheck, `build:app` e `prisma validate` rodados de novo, tudo
+  ok. Commit `7726448` na branch `feat/catalogo-servicos-assistencia`, juntado na `main` sem
+  merge extra (`--ff-only`) e enviado. No build da Vercel, a migration
+  `20260925120000_catalogo_servicos_assistencia` foi aplicada na produção sem erro.
+  `check:deploy`: todas as páginas ok, `comprar-whatsapp` → 307. Nos logs só aparecem
+  logins com senha errada (`CredentialsSignin`), nada deste deploy. `.codex/` e
+  `docs/PWA_EFICAZ_relatorio.pdf` ficaram fora do commit.
+- **Pendente**: testar no navegador logado (Admin e Vendedor) a tela de serviços e a busca na OS.
