@@ -27,6 +27,9 @@ import {
 } from "@/lib/payment-slots";
 
 import { searchCustomersAction } from "../clientes/actions";
+import { searchRepairServicesAction } from "./servicos/actions";
+import { RepairServiceFormDialog } from "./servicos/repair-service-form-dialog";
+import type { RepairServiceOption } from "@/modules/repairs/repair-service-catalog";
 import { listActiveSellersAction, type PdvSellerOption } from "../pdv/actions";
 import {
   cancelRepairOrderWithoutBillingAction,
@@ -70,6 +73,11 @@ type ServiceLine = {
   description: string;
   unitPrice: number;
   quantity: number;
+  /** Serviço do catálogo de onde a linha saiu (`null` = digitada à mão). */
+  repairServiceId: string | null;
+  /** Custo unitário — só preenchido para o Admin, e só para exibir o lucro;
+   *  o servidor nunca lê isto (ver `resolveRepairItemCosts`). */
+  unitCost: number | null;
 };
 
 type CustomerOption = {
@@ -128,7 +136,14 @@ export type RepairOrderDefaults = {
   discount: number;
   /** `null` também quando o papel atual não pode ver o custo desta OS — não só quando ele não existe. */
   costPrice: number | null;
-  items: { description: string; unitPrice: number; quantity: number }[];
+  items: {
+    description: string;
+    unitPrice: number;
+    quantity: number;
+    repairServiceId?: string | null;
+    /** `null` também quando o papel atual não vê custo. */
+    unitCost?: number | null;
+  }[];
   photoUrls: string[];
 };
 
@@ -156,7 +171,14 @@ function round2(value: number) {
 
 let lineKeySeq = 0;
 function toServiceLines(items: RepairOrderDefaults["items"]): ServiceLine[] {
-  return items.map((item) => ({ ...item, key: lineKeySeq++ }));
+  return items.map((item) => ({
+    description: item.description,
+    unitPrice: item.unitPrice,
+    quantity: item.quantity,
+    repairServiceId: item.repairServiceId ?? null,
+    unitCost: item.unitCost ?? null,
+    key: lineKeySeq++,
+  }));
 }
 
 export function RepairOrderWorkspace({
@@ -235,6 +257,15 @@ export function RepairOrderWorkspace({
   const [items, setItems] = useState<ServiceLine[]>(() => toServiceLines(defaults.items));
   const [photoUrls, setPhotoUrls] = useState<string[]>(defaults.photoUrls);
 
+  // Busca no catálogo de serviços — se nada for achado, oferece registrar
+  // um serviço novo com o que foi digitado (ver `RepairServiceFormDialog`).
+  const [serviceTerm, setServiceTerm] = useState("");
+  const [serviceResults, setServiceResults] = useState<RepairServiceOption[]>([]);
+  const [searchingService, setSearchingService] = useState(false);
+  const [serviceSearched, setServiceSearched] = useState(false);
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const serviceSearchTimeout = useRef<number | undefined>(undefined);
+
   const [status, setStatus] = useState<RepairOrderStatusValue>(meta?.status ?? "RECEIVED");
 
   const [error, setError] = useState<string>();
@@ -247,6 +278,8 @@ export function RepairOrderWorkspace({
 
   const servicesTotal = round2(items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
   const totalWithDiscount = round2(Math.max(0, servicesTotal - discount));
+  // Só tem valor para o Admin — nos outros perfis `unitCost` chega sempre `null`.
+  const servicesCost = round2(items.reduce((sum, item) => sum + (item.unitCost ?? 0) * item.quantity, 0));
 
   // Entrada antecipada — painel só aparece quando o atendente clica em
   // "Registrar pagamento", pra não poluir a tela em toda OS aberta.
@@ -477,7 +510,45 @@ export function RepairOrderWorkspace({
   }
 
   function addServiceLine() {
-    setItems((current) => [...current, { key: lineKeySeq++, description: "", unitPrice: 0, quantity: 1 }]);
+    setItems((current) => [
+      ...current,
+      { key: lineKeySeq++, description: "", unitPrice: 0, quantity: 1, repairServiceId: null, unitCost: null },
+    ]);
+  }
+
+  function addCatalogService(service: RepairServiceOption) {
+    setItems((current) => [
+      ...current,
+      {
+        key: lineKeySeq++,
+        description: service.name,
+        unitPrice: service.price,
+        quantity: 1,
+        repairServiceId: service.id,
+        unitCost: service.costPrice,
+      },
+    ]);
+    setServiceTerm("");
+    setServiceResults([]);
+  }
+
+  function searchServices(term: string) {
+    setServiceTerm(term);
+    window.clearTimeout(serviceSearchTimeout.current);
+    if (term.trim().length < 2) {
+      setServiceResults([]);
+      setServiceSearched(false);
+      return;
+    }
+    serviceSearchTimeout.current = window.setTimeout(() => {
+      setSearchingService(true);
+      startSearchTransition(async () => {
+        const results = await searchRepairServicesAction(term);
+        setServiceResults(results);
+        setServiceSearched(true);
+        setSearchingService(false);
+      });
+    }, 250);
   }
 
   function updateServiceLine(key: number, patch: Partial<ServiceLine>) {
@@ -508,6 +579,7 @@ export function RepairOrderWorkspace({
         description: line.description,
         unitPrice: line.unitPrice,
         quantity: line.quantity,
+        repairServiceId: line.repairServiceId ?? "",
       })),
       photoUrls,
       warrantyOriginalId: warrantyOriginal?.id ?? "",
@@ -906,9 +978,66 @@ export function RepairOrderWorkspace({
                 onClick={addServiceLine}
                 className="text-xs font-medium text-slate-700 hover:underline print:hidden"
               >
-                + Adicionar serviço
+                + Serviço avulso
               </button>
             </div>
+
+            <div className="relative mb-3 print:hidden">
+              <Input
+                value={serviceTerm}
+                onChange={(e) => searchServices(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter escolhe o primeiro resultado, ou abre o cadastro se nada foi achado.
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  if (serviceResults[0]) addCatalogService(serviceResults[0]);
+                  else if (serviceSearched && serviceTerm.trim().length >= 2) setServiceDialogOpen(true);
+                }}
+                placeholder="Buscar serviço (ex.: tela, bateria)..."
+                aria-label="Buscar serviço"
+              />
+              {serviceTerm.trim().length >= 2 && (
+                <div className="mt-1 rounded-md border border-slate-200 bg-white shadow-sm">
+                  {searchingService && serviceResults.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-slate-400">Buscando...</p>
+                  ) : serviceResults.length > 0 ? (
+                    <ul className="max-h-56 overflow-y-auto">
+                      {serviceResults.map((service) => (
+                        <li key={service.id}>
+                          <button
+                            type="button"
+                            onClick={() => addCatalogService(service)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-900 hover:bg-slate-50"
+                          >
+                            <span className="min-w-0 truncate">{service.name}</span>
+                            <span className="shrink-0 font-medium">{formatBRL(service.price)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : serviceSearched ? (
+                    <div className="px-3 py-2 text-sm text-slate-600">
+                      Nenhum serviço encontrado.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setServiceDialogOpen(true)}
+                        className="font-medium text-slate-900 underline"
+                      >
+                        Registrar “{serviceTerm.trim()}”
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            <RepairServiceFormDialog
+              open={serviceDialogOpen}
+              onClose={() => setServiceDialogOpen(false)}
+              initialName={serviceTerm.trim()}
+              canSetCost={canViewProfit}
+              onSaved={addCatalogService}
+            />
 
             {items.length === 0 ? (
               <p className="text-sm text-slate-400">Nenhum serviço adicionado.</p>
@@ -1007,9 +1136,23 @@ export function RepairOrderWorkspace({
                 className="h-9 w-full rounded border border-slate-300 px-2 text-sm"
               />
               {canViewProfit && (
-                <div className="mt-3 flex justify-between border-t border-amber-200 pt-2 text-sm font-semibold text-slate-900">
-                  <span>Lucro estimado</span>
-                  <span>{formatBRL(totalWithDiscount - (costPrice ?? 0))}</span>
+                <div className="mt-3 space-y-1 border-t border-amber-200 pt-2 text-sm text-slate-700">
+                  <div className="flex justify-between">
+                    <span>Custo da peça</span>
+                    <span>{formatBRL(costPrice ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Custo dos serviços</span>
+                    <span>{formatBRL(servicesCost)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Custo total</span>
+                    <span>{formatBRL(round2((costPrice ?? 0) + servicesCost))}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-amber-200 pt-2 font-semibold text-slate-900">
+                    <span>Lucro estimado</span>
+                    <span>{formatBRL(round2(totalWithDiscount - (costPrice ?? 0) - servicesCost))}</span>
+                  </div>
                 </div>
               )}
             </div>

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { RepairOrderInput } from "@/lib/validations/repair-order";
 import { REPAIR_ORDER_STATUS_LABELS } from "@/lib/validations/repair-order";
 import type { RepairOrderStatus } from "@/generated/prisma/enums";
+import { resolveRepairItemCosts } from "./repair-service-catalog";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -61,6 +62,8 @@ export async function createRepairOrder(
     warrantyOriginal = original;
   }
 
+  const itemCosts = await resolveRepairItemCosts(ctx.tenantId, input.items);
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       // Incremento atômico garante numeração única mesmo com OS abertas ao mesmo tempo.
@@ -91,10 +94,12 @@ export async function createRepairOrder(
           createdById: ctx.userId,
           warrantyOriginalId: warrantyOriginal?.id ?? null,
           items: {
-            create: input.items.map((item) => ({
+            create: input.items.map((item, index) => ({
               description: item.description,
               unitPrice: item.unitPrice,
               quantity: item.quantity,
+              repairServiceId: itemCosts[index].repairServiceId,
+              unitCost: itemCosts[index].unitCost,
             })),
           },
           photos: {
@@ -137,7 +142,12 @@ export async function updateRepairOrder(
 ): Promise<RepairOrderResult> {
   const existing = await prisma.repairOrder.findFirst({
     where: { id, tenantId },
-    select: { id: true, number: true, costPrice: true },
+    select: {
+      id: true,
+      number: true,
+      costPrice: true,
+      items: { select: { repairServiceId: true, unitCost: true } },
+    },
   });
   if (!existing) return { ok: false, error: "Ordem de serviço não encontrada." };
 
@@ -173,6 +183,8 @@ export async function updateRepairOrder(
     return { ok: false, error: "O desconto não pode ser maior que o total dos serviços." };
   }
 
+  const itemCosts = await resolveRepairItemCosts(tenantId, input.items, existing.items);
+
   try {
     await prisma.$transaction(async (tx) => {
       // Serviços e fotos não têm identidade própria fora da OS: mais simples
@@ -205,10 +217,12 @@ export async function updateRepairOrder(
           // preservando o valor gravado por quem tinha permissão antes.
           ...(canWriteCost ? { costPrice: input.costPrice ?? null } : {}),
           items: {
-            create: input.items.map((item) => ({
+            create: input.items.map((item, index) => ({
               description: item.description,
               unitPrice: item.unitPrice,
               quantity: item.quantity,
+              repairServiceId: itemCosts[index].repairServiceId,
+              unitCost: itemCosts[index].unitCost,
             })),
           },
           photos: {

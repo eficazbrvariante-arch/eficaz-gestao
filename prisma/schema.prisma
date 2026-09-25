@@ -12,172 +12,173 @@ datasource db {
 }
 
 model Tenant {
-  id                       String               @id @default(cuid())
-  name                     String
-  tradeName                String?
-  document                 String?
-  logoUrl                  String?
-  primaryColor             String?
-  secondaryColor           String?
-  phone                    String?
-  whatsapp                 String?
-  addressStreet            String?
-  addressNumber            String?
-  addressCity              String?
-  addressState             String?
-  addressZip               String?
-  subdomain                String               @unique
+  id                            String               @id @default(cuid())
+  name                          String
+  tradeName                     String?
+  document                      String?
+  logoUrl                       String?
+  primaryColor                  String?
+  secondaryColor                String?
+  phone                         String?
+  whatsapp                      String?
+  addressStreet                 String?
+  addressNumber                 String?
+  addressCity                   String?
+  addressState                  String?
+  addressZip                    String?
+  subdomain                     String               @unique
   /// E-mail de acesso da empresa — identifica o tenant no primeiro login de
   /// cada dispositivo (ver `resolveTenantLoginAction`); depois disso, a
   /// aprovação do dispositivo (`Device`) já resolve o tenant sozinha, sem
   /// precisar digitar de novo. Distinto do e-mail pessoal de cada `User`
   /// (opcional, ver `User.email`) — pode ser trocado livremente sem afetar
   /// a conta de ninguém.
-  email                    String               @unique
+  email                         String               @unique
   // Domínio próprio (Fase 7)
-  customDomain             String?              @unique
-  domainStatus             DomainStatus         @default(NONE)
+  customDomain                  String?              @unique
+  domainStatus                  DomainStatus         @default(NONE)
   /// Valor que a empresa publica num registro TXT para provar que é dona do domínio.
-  domainToken              String?
+  domainToken                   String?
   /// Quando a posse do domínio foi confirmada.
-  domainVerifiedAt         DateTime?
+  domainVerifiedAt              DateTime?
   /// Última tentativa de verificação, para mostrar "verificado há X".
-  domainCheckedAt          DateTime?
-  timezone                 String               @default("America/Sao_Paulo")
-  currency                 String               @default("BRL")
+  domainCheckedAt               DateTime?
+  timezone                      String               @default("America/Sao_Paulo")
+  currency                      String               @default("BRL")
   // Catálogo online (Fase 4)
-  catalogEnabled           Boolean              @default(true)
-  bannerUrl                String?
-  bannerTitle              String?
-  bannerSubtitle           String?
+  catalogEnabled                Boolean              @default(true)
+  bannerUrl                     String?
+  bannerTitle                   String?
+  bannerSubtitle                String?
   // Pedidos online (Fase 5)
-  deliveryEnabled          Boolean              @default(true)
-  pickupEnabled            Boolean              @default(true)
+  deliveryEnabled               Boolean              @default(true)
+  pickupEnabled                 Boolean              @default(true)
   /// Como o estoque reage a um pedido online (ver enum StockPolicy).
-  stockPolicy              StockPolicy          @default(RESERVE)
+  stockPolicy                   StockPolicy          @default(RESERVE)
   /// Instruções mostradas ao cliente na retirada (endereço, horário...).
-  pickupNotes              String?
+  pickupNotes                   String?
   // Vitrine institucional do catálogo (reformulação "premium")
-  instagramUrl             String?
+  instagramUrl                  String?
   /// Texto livre "quem somos", exibido numa página institucional própria.
-  aboutText                String?
+  aboutText                     String?
   /// Política de troca — some do rodapé/badges quando não preenchida.
-  exchangePolicy           String?
+  exchangePolicy                String?
   /// Política de garantia — some do rodapé/badges quando não preenchida.
-  warrantyPolicy           String?
-  privacyPolicy            String?
+  warrantyPolicy                String?
+  privacyPolicy                 String?
   /// Horário de atendimento por dia da semana: array de 7 entradas
   /// `{ day: 0-6, opensAt: "09:00", closesAt: "18:00", closed: boolean }`.
-  businessHours            Json?
+  businessHours                 Json?
   /// Oferta Relâmpago por dia da semana: array de 7 entradas
   /// `{ day: 0-6, active, productId, promoPrice, orderLimit, badgeText, icon,
   ///   bgColor, accentColor, soundEnabled }`. Mesma convenção de dia de
   /// `businessHours` (0 = domingo, Date#getDay()).
-  flashDealSchedule        Json?
+  flashDealSchedule             Json?
   /// Formas de pagamento que a loja aceita de fato — controla o que aparece
   /// no rodapé/barra de confiança (nunca uma lista fixa no código).
-  acceptedPaymentMethods   OrderPaymentMethod[]
+  acceptedPaymentMethods        OrderPaymentMethod[]
   /// Parcelamento informativo (sem gateway de cartão integrado). Nulo/0 = desligado.
-  maxInstallments          Int?
-  minInstallmentValue      Decimal?             @db.Decimal(10, 2)
+  maxInstallments               Int?
+  minInstallmentValue           Decimal?             @db.Decimal(10, 2)
   // Plano contratado (Fase 8). Os limites vêm de PLAN_LIMITS, no código —
   // assim ajustar um plano não exige migração nem atualizar cada empresa.
-  plan                     Plan                 @default(FREE)
+  plan                          Plan                 @default(FREE)
   /// Liga a impressão automática do comprovante (window.print()) assim que a
   /// venda é finalizada, na tela do comprovante. O botão manual "Imprimir"
   /// funciona sempre, independente deste campo.
-  autoPrintReceipt         Boolean              @default(false)
+  autoPrintReceipt              Boolean              @default(false)
   /// Comissão (%) padrão sobre o valor líquido de cada item vendido (já com
   /// desconto do item descontado) — vale pra qualquer produto sem comissão
   /// individual própria (ver `Product.commissionPercent`). Só Vendedor e
   /// Gerente acumulam comissão, mesmo que outro papel apareça como
   /// `Sale.sellerId`.
-  defaultCommissionPercent Decimal              @default(0) @db.Decimal(5, 2)
+  defaultCommissionPercent      Decimal              @default(0) @db.Decimal(5, 2)
   /// Liga/desliga o Ranking de Comissão no rodapé do PDV. Fica permanente
   /// (ligado por padrão), visível pra qualquer conta que opera o PDV — o
   /// botão do Admin é o interruptor pra desligar temporariamente quando
   /// quiser (ex.: pra não gerar expectativa/ansiedade durante o dia). Nunca
   /// afeta o Ranking do painel administrativo, só a versão exibida no PDV.
-  pdvRankingEnabled        Boolean              @default(true)
+  pdvRankingEnabled             Boolean              @default(true)
   // Contadores de numeração sequencial por empresa.
   // Incrementados atomicamente dentro da transação que cria o registro.
-  saleSequence             Int                  @default(0)
-  orderSequence            Int                  @default(0)
-  repairOrderSequence      Int                  @default(0)
+  saleSequence                  Int                  @default(0)
+  orderSequence                 Int                  @default(0)
+  repairOrderSequence           Int                  @default(0)
   /// Numeração do "Número Eficaz" (`EF-000001`, ver `Customer.eficazNumber`)
   /// — mesmo padrão dos contadores acima, incrementado atomicamente na
   /// transação que cria o cliente.
-  customerSequence         Int                  @default(0)
+  customerSequence              Int                  @default(0)
   /// Teto global de exposição do Crédito Eficaz (Adendo — saúde da
   /// carteira): `null` = sem teto configurado (comportamento de hoje).
   /// Quando configurado, nenhum novo débito pode fazer a exposição total
   /// (soma de `limitAmount - availableAmount` de todos os clientes) passar
   /// desse valor — checado dentro da própria transação de débito (ver
   /// `debitCreditoEficazInTx`), não é um saldo mantido à parte.
-  creditoEficazExposureLimit Decimal?           @db.Decimal(12, 2)
+  creditoEficazExposureLimit    Decimal?             @db.Decimal(12, 2)
   /// Pausa de emergência do Crédito Eficaz (Adendo): bloqueia só NOVO uso
   /// (débito) — pagamentos/cobranças existentes, histórico e consulta da
   /// carteira continuam funcionando normalmente. Nunca cancela/apaga nada.
-  creditoEficazPaused        Boolean            @default(false)
+  creditoEficazPaused           Boolean              @default(false)
   /// Máximo de parcelas ao financiar o saldo de uma Ordem de Serviço com
   /// Crédito Eficaz (Adendo) — configurável pelo Admin, nunca hardcoded na
   /// tela. Piloto conservador: começa em 3.
-  creditoEficazMaxInstallments Int              @default(3)
+  creditoEficazMaxInstallments  Int                  @default(3)
   /// Acréscimo (%) sobre a parte paga com Crédito Eficaz — no PDV
   /// (`Sale.creditoEficazSurcharge`) e no financiamento de OS
   /// (`CreditoEficazServiceFinancing.surchargeAmount`). Só a parte no
   /// crédito paga acréscimo, nunca o que o cliente paga em dinheiro/Pix/cartão
   /// na mesma compra. Decisão do dono: começa em 10%, configurável no painel.
-  creditoEficazSurchargePercent Decimal         @default(10) @db.Decimal(5, 2)
+  creditoEficazSurchargePercent Decimal              @default(10) @db.Decimal(5, 2)
   /// Reservado para jornada/escala/tolerância de atraso/banco de horas
   /// configuráveis por empresa (fase futura). Formato livre, não interpretado
   /// em nenhum código ainda — mesma convenção de `businessHours`/`flashDealSchedule`.
-  attendanceSettings       Json?
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
+  attendanceSettings            Json?
+  createdAt                     DateTime             @default(now())
+  updatedAt                     DateTime             @updatedAt
 
-  users                       User[]
-  categories                  Category[]
-  brands                      Brand[]
-  suppliers                   Supplier[]
-  products                    Product[]
-  stockMovements              StockMovement[]
-  customers                   Customer[]
-  cashRegisters               CashRegister[]
-  cashMovements               CashMovement[]
-  sales                       Sale[]
-  saleItemDefects             SaleItemDefect[]
-  orders                      Order[]
-  deliveryZones               DeliveryZone[]
-  auditLogs                   AuditLog[]
-  repairOrders                RepairOrder[]
-  repairOrderPayments         RepairOrderPayment[]
-  creditMovements             CustomerCreditMovement[]
-  fiadoEntries                FiadoEntry[]
-  employeeLedgerEntries       EmployeeLedgerEntry[]
-  commissionTierSets          CommissionTierSet[]
-  commissionSnapshots         CommissionMonthlySnapshot[]
-  convenios                   Convenio[]
-  convenioMembers             ConvenioMember[]
-  convenioInvites             ConvenioInvite[]
-  convenioRedemptions         ConvenioRedemption[]
-  convenioProductDiscounts    ConvenioProductDiscount[]
-  protecaoEficazRegistrations ProtecaoEficaz[]
-  creditoEficazApplications   CreditoEficazApplication[]
-  creditoEficazDocuments      CreditoEficazDocument[]
-  creditoEficazLimitChanges   CreditoEficazLimitChange[]
-  creditoEficazUsages         CreditoEficazUsage[]
-  creditoEficazPayments       CreditoEficazPayment[]
-  creditoEficazBillings       CreditoEficazBilling[]
+  users                          User[]
+  categories                     Category[]
+  brands                         Brand[]
+  suppliers                      Supplier[]
+  products                       Product[]
+  stockMovements                 StockMovement[]
+  customers                      Customer[]
+  cashRegisters                  CashRegister[]
+  cashMovements                  CashMovement[]
+  sales                          Sale[]
+  saleItemDefects                SaleItemDefect[]
+  orders                         Order[]
+  deliveryZones                  DeliveryZone[]
+  auditLogs                      AuditLog[]
+  repairOrders                   RepairOrder[]
+  repairServices                 RepairService[]
+  repairOrderPayments            RepairOrderPayment[]
+  creditMovements                CustomerCreditMovement[]
+  fiadoEntries                   FiadoEntry[]
+  employeeLedgerEntries          EmployeeLedgerEntry[]
+  commissionTierSets             CommissionTierSet[]
+  commissionSnapshots            CommissionMonthlySnapshot[]
+  convenios                      Convenio[]
+  convenioMembers                ConvenioMember[]
+  convenioInvites                ConvenioInvite[]
+  convenioRedemptions            ConvenioRedemption[]
+  convenioProductDiscounts       ConvenioProductDiscount[]
+  protecaoEficazRegistrations    ProtecaoEficaz[]
+  creditoEficazApplications      CreditoEficazApplication[]
+  creditoEficazDocuments         CreditoEficazDocument[]
+  creditoEficazLimitChanges      CreditoEficazLimitChange[]
+  creditoEficazUsages            CreditoEficazUsage[]
+  creditoEficazPayments          CreditoEficazPayment[]
+  creditoEficazBillings          CreditoEficazBilling[]
   creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
-  convenioCreditPolicies      ConvenioCreditPolicy[]
-  creditoEficazCampaigns      CreditoEficazCampaign[]
-  creditoEficazCampaignEntries CreditoEficazCampaignEntry[]
-  devices                     Device[]
-  visitorSessions             VisitorSession[]
-  analyticsEvents             AnalyticsEvent[]
-  attendanceEntries           AttendanceEntry[]
-  attendanceCorrections       AttendanceCorrection[]
+  convenioCreditPolicies         ConvenioCreditPolicy[]
+  creditoEficazCampaigns         CreditoEficazCampaign[]
+  creditoEficazCampaignEntries   CreditoEficazCampaignEntry[]
+  devices                        Device[]
+  visitorSessions                VisitorSession[]
+  analyticsEvents                AnalyticsEvent[]
+  attendanceEntries              AttendanceEntry[]
+  attendanceCorrections          AttendanceCorrection[]
 
   // Central de Atendimento WhatsApp (ver bloco "Fase 9" no fim do arquivo).
   whatsAppIntegration   WhatsAppIntegration?
@@ -262,44 +263,44 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant                       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  stockMovements               StockMovement[]
-  cashMovements                CashMovement[]
-  cashMovementsPerformed       CashMovement[]           @relation("CashMovementPerformedBy")
-  registersOpened              CashRegister[]           @relation("CashRegisterOpenedBy")
-  registersClosed              CashRegister[]           @relation("CashRegisterClosedBy")
-  registersSubmittedForReview  CashRegister[]           @relation("CashRegisterReviewSubmittedBy")
-  salesMade                    Sale[]                   @relation("SaleSeller")
-  salesCancelled               Sale[]                   @relation("SaleCancelledBy")
-  salesEdited                  Sale[]                   @relation("SaleEditedBy")
-  salesAssisted                Sale[]                   @relation("SaleAssistantSeller")
-  saleItemDefectsReported      SaleItemDefect[]
-  auditLogs                    AuditLog[]
-  repairOrdersCreated          RepairOrder[]            @relation("RepairOrderCreatedBy")
-  repairOrdersSold             RepairOrder[]            @relation("RepairOrderSeller")
-  repairOrdersDelivered        RepairOrder[]            @relation("RepairOrderDeliveredBy")
-  repairOrderPayments          RepairOrderPayment[]
-  creditMovements              CustomerCreditMovement[]
-  fiadoEntriesCreated          FiadoEntry[]
-  fiadoEntriesPaid             FiadoEntry[]             @relation("FiadoPaidBy")
-  employeeLedgerEntries        EmployeeLedgerEntry[]    @relation("EmployeeLedgerUser")
-  employeeLedgerEntriesCreated EmployeeLedgerEntry[]    @relation("EmployeeLedgerCreatedBy")
-  commissionTierSetsCreated    CommissionTierSet[]      @relation("CommissionTierSetCreatedBy")
-  commissionSnapshots          CommissionMonthlySnapshot[] @relation("CommissionSnapshotUser")
-  commissionSnapshotsApproved  CommissionMonthlySnapshot[] @relation("CommissionSnapshotApprovedBy")
-  convenioMembersStatusChanged ConvenioMember[]         @relation("ConvenioMemberStatusChangedBy")
-  convenioInvitesCreated       ConvenioInvite[]         @relation("ConvenioInviteCreatedBy")
-  convenioRedemptionsSold      ConvenioRedemption[]     @relation("ConvenioRedemptionSeller")
-  devicesRequested             Device[]                 @relation("DeviceRequestedBy")
-  devicesStatusChanged         Device[]                 @relation("DeviceStatusChangedBy")
-  protecaoEficazReviewed       ProtecaoEficaz[]         @relation("ProtecaoEficazReviewedBy")
-  protecaoEficazRedeemed       ProtecaoEficaz[]         @relation("ProtecaoEficazRedeemedBy")
-  creditoEficazApplicationsReviewed CreditoEficazApplication[] @relation("CreditoEficazApplicationReviewedBy")
-  creditoEficazLimitChangesMade     CreditoEficazLimitChange[] @relation("CreditoEficazLimitChangeBy")
-  creditoEficazUsagesOperated       CreditoEficazUsage[]       @relation("CreditoEficazUsageOperator")
-  creditoEficazPaymentsRegistered   CreditoEficazPayment[]     @relation("CreditoEficazPaymentRegisteredBy")
+  tenant                                Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockMovements                        StockMovement[]
+  cashMovements                         CashMovement[]
+  cashMovementsPerformed                CashMovement[]                  @relation("CashMovementPerformedBy")
+  registersOpened                       CashRegister[]                  @relation("CashRegisterOpenedBy")
+  registersClosed                       CashRegister[]                  @relation("CashRegisterClosedBy")
+  registersSubmittedForReview           CashRegister[]                  @relation("CashRegisterReviewSubmittedBy")
+  salesMade                             Sale[]                          @relation("SaleSeller")
+  salesCancelled                        Sale[]                          @relation("SaleCancelledBy")
+  salesEdited                           Sale[]                          @relation("SaleEditedBy")
+  salesAssisted                         Sale[]                          @relation("SaleAssistantSeller")
+  saleItemDefectsReported               SaleItemDefect[]
+  auditLogs                             AuditLog[]
+  repairOrdersCreated                   RepairOrder[]                   @relation("RepairOrderCreatedBy")
+  repairOrdersSold                      RepairOrder[]                   @relation("RepairOrderSeller")
+  repairOrdersDelivered                 RepairOrder[]                   @relation("RepairOrderDeliveredBy")
+  repairOrderPayments                   RepairOrderPayment[]
+  creditMovements                       CustomerCreditMovement[]
+  fiadoEntriesCreated                   FiadoEntry[]
+  fiadoEntriesPaid                      FiadoEntry[]                    @relation("FiadoPaidBy")
+  employeeLedgerEntries                 EmployeeLedgerEntry[]           @relation("EmployeeLedgerUser")
+  employeeLedgerEntriesCreated          EmployeeLedgerEntry[]           @relation("EmployeeLedgerCreatedBy")
+  commissionTierSetsCreated             CommissionTierSet[]             @relation("CommissionTierSetCreatedBy")
+  commissionSnapshots                   CommissionMonthlySnapshot[]     @relation("CommissionSnapshotUser")
+  commissionSnapshotsApproved           CommissionMonthlySnapshot[]     @relation("CommissionSnapshotApprovedBy")
+  convenioMembersStatusChanged          ConvenioMember[]                @relation("ConvenioMemberStatusChangedBy")
+  convenioInvitesCreated                ConvenioInvite[]                @relation("ConvenioInviteCreatedBy")
+  convenioRedemptionsSold               ConvenioRedemption[]            @relation("ConvenioRedemptionSeller")
+  devicesRequested                      Device[]                        @relation("DeviceRequestedBy")
+  devicesStatusChanged                  Device[]                        @relation("DeviceStatusChangedBy")
+  protecaoEficazReviewed                ProtecaoEficaz[]                @relation("ProtecaoEficazReviewedBy")
+  protecaoEficazRedeemed                ProtecaoEficaz[]                @relation("ProtecaoEficazRedeemedBy")
+  creditoEficazApplicationsReviewed     CreditoEficazApplication[]      @relation("CreditoEficazApplicationReviewedBy")
+  creditoEficazLimitChangesMade         CreditoEficazLimitChange[]      @relation("CreditoEficazLimitChangeBy")
+  creditoEficazUsagesOperated           CreditoEficazUsage[]            @relation("CreditoEficazUsageOperator")
+  creditoEficazPaymentsRegistered       CreditoEficazPayment[]          @relation("CreditoEficazPaymentRegisteredBy")
   creditoEficazServiceFinancingsCreated CreditoEficazServiceFinancing[] @relation("CreditoEficazServiceFinancingCreatedBy")
-  convenioCreditPoliciesUpdated     ConvenioCreditPolicy[]     @relation("ConvenioCreditPolicyUpdatedBy")
+  convenioCreditPoliciesUpdated         ConvenioCreditPolicy[]          @relation("ConvenioCreditPolicyUpdatedBy")
 
   attendanceEntries         AttendanceEntry[]      @relation("AttendanceEntryUser")
   attendanceSelfieWaivedFor AttendanceEntry[]      @relation("AttendanceEntrySelfieWaivedBy")
@@ -502,8 +503,9 @@ model Supplier {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  products Product[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products       Product[]
+  repairServices RepairService[]
 
   @@map("suppliers")
 }
@@ -514,71 +516,71 @@ enum CommissionType {
 }
 
 model Product {
-  id                String    @id @default(cuid())
-  tenantId          String
-  name              String
-  internalCode      String?
-  barcode           String?
-  categoryId        String?
-  brandId           String?
-  supplierId        String?
-  description       String?
-  costPrice         Decimal   @default(0) @db.Decimal(10, 2)
-  salePrice         Decimal   @default(0) @db.Decimal(10, 2)
-  promoPrice        Decimal?  @db.Decimal(10, 2)
+  id                    String         @id @default(cuid())
+  tenantId              String
+  name                  String
+  internalCode          String?
+  barcode               String?
+  categoryId            String?
+  brandId               String?
+  supplierId            String?
+  description           String?
+  costPrice             Decimal        @default(0) @db.Decimal(10, 2)
+  salePrice             Decimal        @default(0) @db.Decimal(10, 2)
+  promoPrice            Decimal?       @db.Decimal(10, 2)
   /// Preço que o cliente efetivamente paga (promocional quando existe, senão o de venda).
   /// Derivado de salePrice/promoPrice e mantido por `computeCatalogPrice` em toda escrita —
   /// existe para o catálogo poder ordenar e filtrar por preço real no banco.
-  catalogPrice      Decimal   @default(0) @db.Decimal(10, 2)
+  catalogPrice          Decimal        @default(0) @db.Decimal(10, 2)
   /// Início agendado da oferta relâmpago (opcional). Nulo = já vale a partir
   /// de quando `promoPrice` foi definido.
-  promoStartedAt    DateTime?
+  promoStartedAt        DateTime?
   /// Fim da oferta relâmpago. Só faz sentido junto de `promoPrice`; nulo = promoção comum.
-  promoEndsAt       DateTime?
+  promoEndsAt           DateTime?
   /// Quantidade disponível só nesta promoção (opcional). O valor exibido ao
   /// cliente é sempre `min(promoStockLimit, stockQty)` — nunca inventa número
   /// além do estoque real, só limita a promoção a um teto menor se o lojista quiser.
-  promoStockLimit   Int?
-  stockQty          Int       @default(0)
-  minStock          Int       @default(0)
-  active            Boolean   @default(true)
-  showInCatalog     Boolean   @default(true)
+  promoStockLimit       Int?
+  stockQty              Int            @default(0)
+  minStock              Int            @default(0)
+  active                Boolean        @default(true)
+  showInCatalog         Boolean        @default(true)
   /// Destaque manual — fura a fila na listagem geral do catálogo e entra
   /// primeiro no carrossel "Destaques" da home, sem misturar com o ranking
   /// real de vendas (ver `listBestSellers`, que continua 100% orgânico).
-  isFeatured        Boolean   @default(false)
+  isFeatured            Boolean        @default(false)
   /// Posição manual entre os destaques (menor aparece primeiro). Nulo = sem
   /// ordem definida, entra depois dos ordenados, por `updatedAt`.
-  featuredOrder     Int?
+  featuredOrder         Int?
   /// Fim opcional do período de destaque — depois disso o produto sai
   /// sozinho do carrossel "Destaques" mesmo com `isFeatured` ainda marcado.
-  featuredUntil     DateTime?
+  featuredUntil         DateTime?
   /// Média das avaliações lançadas (desnormalizada, ver `ProductReview`) —
   /// evita agregação por produto em toda renderização de card.
-  avgRating         Decimal?  @db.Decimal(2, 1)
-  reviewCount       Int       @default(0)
+  avgRating             Decimal?       @db.Decimal(2, 1)
+  reviewCount           Int            @default(0)
   /// Se este produto entra no cálculo de comissão — comissão não é padrão
   /// pra todo o catálogo, só pros produtos marcados explicitamente aqui
   /// (seleção em massa disponível na listagem de Produtos).
-  commissionEnabled Boolean   @default(false)
+  commissionEnabled     Boolean        @default(false)
   /// Comissão individual (%), só relevante quando `commissionEnabled` e
   /// `commissionType = PERCENT` — sobrescreve `Tenant.defaultCommissionPercent`
   /// quando definida. Nulo = usa a comissão geral da empresa.
-  commissionPercent Decimal?  @db.Decimal(5, 2)
+  commissionPercent     Decimal?       @db.Decimal(5, 2)
   /// Se a comissão deste produto é calculada em % (padrão, ver
   /// `commissionPercent`) ou em valor fixo por unidade vendida (ver
   /// `commissionFixedAmount`) — só relevante quando `commissionEnabled`.
-  commissionType    CommissionType @default(PERCENT)
+  commissionType        CommissionType @default(PERCENT)
   /// Comissão fixa em R$ por unidade vendida, só relevante quando
   /// `commissionEnabled` e `commissionType = FIXED`. Multiplicado pela
   /// quantidade do item na venda — não depende do preço/desconto praticado.
-  commissionFixedAmount Decimal? @db.Decimal(10, 2)
+  commissionFixedAmount Decimal?       @db.Decimal(10, 2)
   /// Quando o Colaborador de Estoque confirmou esse produto no ciclo de
   /// contagem atual. Nulo = ainda pendente (aparece na fila dele). Zerado
   /// em massa quando um novo ciclo de contagem é iniciado.
-  lastStockCheckAt  DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  lastStockCheckAt      DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category          Category?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -714,47 +716,47 @@ model StockMovement {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id                  String    @id @default(cuid())
-  tenantId            String
-  name                String
-  document            String?
-  phone               String?
-  whatsapp            String?
-  email               String?
-  addressStreet       String?
-  addressNumber       String?
-  addressCity         String?
-  addressState        String?
-  addressZip          String?
-  notes               String?
+  id                            String                   @id @default(cuid())
+  tenantId                      String
+  name                          String
+  document                      String?
+  phone                         String?
+  whatsapp                      String?
+  email                         String?
+  addressStreet                 String?
+  addressNumber                 String?
+  addressCity                   String?
+  addressState                  String?
+  addressZip                    String?
+  notes                         String?
   /// Reservado para ações de relacionamento futuras (ex.: mensagem de aniversário).
-  birthDate           DateTime?
+  birthDate                     DateTime?
   // Totais desnormalizados, mantidos pela transação de venda/cancelamento
   // para evitar recalcular a cada listagem.
-  totalSpent          Decimal   @default(0) @db.Decimal(12, 2)
-  lastPurchaseAt      DateTime?
+  totalSpent                    Decimal                  @default(0) @db.Decimal(12, 2)
+  lastPurchaseAt                DateTime?
   /// Saldo de crédito de loja (gerado por cancelamento, usável como forma de
   /// pagamento numa venda futura). Mantido pela mesma transação que gera ou
   /// resgata o crédito — nunca recalculado a partir do histórico.
-  creditBalance       Decimal   @default(0) @db.Decimal(12, 2)
+  creditBalance                 Decimal                  @default(0) @db.Decimal(12, 2)
   /// Login da loja pública (checkout com conta) — nulo para clientes cadastrados
   /// manualmente pelo lojista, que nunca ganharam login. Formato exibido como
   /// "@handle", guardado sem o "@". Único por loja, não globalmente.
-  username            String?
-  passwordHash        String?
-  lastLoginAt         DateTime?
+  username                      String?
+  passwordHash                  String?
+  lastLoginAt                   DateTime?
   /// Token de recuperação de senha (hash SHA-256, nunca o valor em claro —
   /// mesmo padrão de `User.resetToken`). Único globalmente: é só uma chave
   /// de busca, não precisa (nem faz sentido) ser único por loja.
-  resetToken          String?   @unique
-  resetTokenExpiresAt DateTime?
+  resetToken                    String?                  @unique
+  resetTokenExpiresAt           DateTime?
   /// Preenchido só quando esta conta nasceu junto com um cadastro de
   /// convênio (link público de autoatendimento) — os dois são criados na
   /// mesma transação, referência direta, nunca por comparação de CPF/telefone
   /// depois (ver decisão registrada em `mergeCustomers`, que evita vínculo
   /// automático por documento). Define se mostra o card do convênio e a
   /// vitrine de desconto no painel do cliente.
-  convenioMemberId    String?   @unique
+  convenioMemberId              String?                  @unique
   /// "Número Eficaz" (`EF-000001`) — identificador interno do cliente,
   /// único POR EMPRESA (mesma convenção de `Sale.number`; cada tenant
   /// numera a partir de 1, não é global), gerado a partir de
@@ -763,11 +765,11 @@ model Customer {
   /// com um. É só um IDENTIFICADOR (busca rápida no balcão) — nunca
   /// autoriza sozinho uma compra a crédito (ver
   /// `creditoEficazAvailableAmount`/`...Blocked`).
-  eficazNumber        String?
+  eficazNumber                  String?
   /// Teto do Crédito Eficaz definido manualmente pelo Admin na aprovação
   /// (ver `CreditoEficazApplication`) — só muda por ação explícita,
   /// histórico completo em `CreditoEficazLimitChange`.
-  creditoEficazLimitAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  creditoEficazLimitAmount      Decimal                  @default(0) @db.Decimal(12, 2)
   /// Saldo disponível de verdade do Crédito Eficaz — é este campo que é
   /// debitado/creditado atomicamente a cada venda/pagamento/estorno (mesmo
   /// espírito de `creditBalance`, mas nunca confundir os dois: um é crédito
@@ -775,53 +777,53 @@ model Customer {
   /// obrigação). "Usado" é sempre `creditoEficazLimitAmount -
   /// creditoEficazAvailableAmount`, nunca um campo próprio (evita os dois
   /// números saírem de sincronia).
-  creditoEficazAvailableAmount Decimal  @default(0) @db.Decimal(12, 2)
+  creditoEficazAvailableAmount  Decimal                  @default(0) @db.Decimal(12, 2)
   /// Bloqueio manual (Admin) ou automático (atraso) do uso do Crédito
   /// Eficaz — nunca apaga limite/saldo/histórico, só impede novo uso.
   /// Sempre reversível (ver `canManageCreditoEficaz`).
-  creditoEficazBlocked         Boolean  @default(false)
-  creditoEficazBlockedReason   String?
+  creditoEficazBlocked          Boolean                  @default(false)
+  creditoEficazBlockedReason    String?
   /// PIN de 4 dígitos definido pelo cliente no aceite dos termos, usado só
   /// pra confirmar o uso do Crédito Eficaz no PDV (hash SHA-256, nunca o
   /// valor em claro — mesmo padrão de `resetToken`). Não é biometria nem
   /// substitui identificação: é só o fator de confirmação deste Protótipo 1,
   /// trocável depois por outro método sem mudar o resto da arquitetura.
-  creditoEficazPinHash         String?
-  creditoEficazPinSetAt        DateTime?
+  creditoEficazPinHash          String?
+  creditoEficazPinSetAt         DateTime?
   /// De onde veio o limite atual: `MANUAL` (fluxo normal — solicitação
   /// analisada e aprovada pelo Admin) ou `CONVENIO` (concessão automática
   /// de um convênio com `ConvenioCreditPolicy.enabled`). É só a ORIGEM,
   /// nunca uma segunda carteira: limite/disponível/obrigações continuam
   /// nos mesmos campos de sempre. Um cliente de convênio que depois receba
   /// uma aprovação manual passa a `MANUAL` — a decisão humana manda.
-  creditoEficazSource          CreditoEficazLimitSource @default(MANUAL)
+  creditoEficazSource           CreditoEficazLimitSource @default(MANUAL)
   /// Convênio que originou o limite automático — nulo quando a origem é
   /// `MANUAL`. Usado nos filtros e no indicador de exposição por convênio.
   creditoEficazSourceConvenioId String?
   /// Carimbo da concessão automática — é ele que torna o liga/desliga da
   /// chave IDEMPOTENTE: quem já tem carimbo nunca recebe a concessão
   /// inicial de novo, por mais vezes que a chave seja ligada.
-  creditoEficazAutoGrantedAt   DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  creditoEficazAutoGrantedAt    DateTime?
+  createdAt                     DateTime                 @default(now())
+  updatedAt                     DateTime                 @updatedAt
 
-  tenant                      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  convenioMember              ConvenioMember?          @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
-  creditoEficazSourceConvenio Convenio?                @relation("CreditoEficazSourceConvenio", fields: [creditoEficazSourceConvenioId], references: [id], onDelete: SetNull)
-  sales                       Sale[]
-  orders                      Order[]
-  creditMovements             CustomerCreditMovement[]
-  fiadoEntries                FiadoEntry[]
-  repairOrders                RepairOrder[]
-  sessions                    CustomerSession[]
-  reviews                     ProductReview[]
-  whatsAppContacts            WhatsAppContact[]
-  protecaoEficazRegistrations ProtecaoEficaz[]
-  creditoEficazApplications   CreditoEficazApplication[]
-  creditoEficazLimitChanges   CreditoEficazLimitChange[]
-  creditoEficazUsages         CreditoEficazUsage[]
+  tenant                         Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convenioMember                 ConvenioMember?                 @relation(fields: [convenioMemberId], references: [id], onDelete: SetNull)
+  creditoEficazSourceConvenio    Convenio?                       @relation("CreditoEficazSourceConvenio", fields: [creditoEficazSourceConvenioId], references: [id], onDelete: SetNull)
+  sales                          Sale[]
+  orders                         Order[]
+  creditMovements                CustomerCreditMovement[]
+  fiadoEntries                   FiadoEntry[]
+  repairOrders                   RepairOrder[]
+  sessions                       CustomerSession[]
+  reviews                        ProductReview[]
+  whatsAppContacts               WhatsAppContact[]
+  protecaoEficazRegistrations    ProtecaoEficaz[]
+  creditoEficazApplications      CreditoEficazApplication[]
+  creditoEficazLimitChanges      CreditoEficazLimitChange[]
+  creditoEficazUsages            CreditoEficazUsage[]
   creditoEficazServiceFinancings CreditoEficazServiceFinancing[]
-  creditoEficazCampaignEntries CreditoEficazCampaignEntry[]
+  creditoEficazCampaignEntries   CreditoEficazCampaignEntry[]
 
   @@unique([tenantId, username])
   @@unique([tenantId, eficazNumber])
@@ -964,18 +966,18 @@ model RepairOrder {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer         Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  createdBy        User                 @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
-  seller           User                 @relation("RepairOrderSeller", fields: [sellerId], references: [id])
-  deliveredBy      User?                @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
-  warrantyOriginal RepairOrder?         @relation("RepairOrderWarrantyChain", fields: [warrantyOriginalId], references: [id], onDelete: SetNull)
-  warrantyClaims   RepairOrder[]        @relation("RepairOrderWarrantyChain")
-  items            RepairOrderItem[]
-  photos           RepairOrderPhoto[]
-  events           RepairOrderEvent[]
-  payments         RepairOrderPayment[]
-  fiadoEntries     FiadoEntry[]
+  tenant                 Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer               Customer?                      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy              User                           @relation("RepairOrderCreatedBy", fields: [createdById], references: [id])
+  seller                 User                           @relation("RepairOrderSeller", fields: [sellerId], references: [id])
+  deliveredBy            User?                          @relation("RepairOrderDeliveredBy", fields: [deliveredById], references: [id])
+  warrantyOriginal       RepairOrder?                   @relation("RepairOrderWarrantyChain", fields: [warrantyOriginalId], references: [id], onDelete: SetNull)
+  warrantyClaims         RepairOrder[]                  @relation("RepairOrderWarrantyChain")
+  items                  RepairOrderItem[]
+  photos                 RepairOrderPhoto[]
+  events                 RepairOrderEvent[]
+  payments               RepairOrderPayment[]
+  fiadoEntries           FiadoEntry[]
   creditoEficazFinancing CreditoEficazServiceFinancing?
 
   @@unique([tenantId, number])
@@ -992,9 +994,42 @@ model RepairOrderItem {
   unitPrice     Decimal @db.Decimal(10, 2)
   quantity      Int     @default(1)
 
-  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+  /// Serviço do catálogo de onde esta linha saiu. Nulo em linha avulsa
+  /// (digitada à mão) e em OS anteriores ao catálogo.
+  repairServiceId String?
+  /// Custo unitário congelado no momento em que o serviço entrou na OS —
+  /// sempre gravado pelo servidor a partir do catálogo, nunca vindo do
+  /// formulário. Mudar o custo no catálogo depois não mexe em OS antigas.
+  unitCost        Decimal? @db.Decimal(10, 2)
+
+  repairOrder   RepairOrder    @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+  repairService RepairService? @relation(fields: [repairServiceId], references: [id], onDelete: SetNull)
 
   @@map("repair_order_items")
+}
+
+/// Catálogo de serviços da assistência técnica (troca de tela, bateria etc.),
+/// usado para consultar preço e lançar serviço na OS. Custo e fornecedor são
+/// só do administrador (ver `canManageRepairServiceCatalog`).
+model RepairService {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  /// Preço final cobrado do cliente.
+  price      Decimal  @db.Decimal(10, 2)
+  costPrice  Decimal? @db.Decimal(10, 2)
+  supplierId String?
+  /// Desativado some da busca, mas continua ligado às OS antigas.
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items    RepairOrderItem[]
+
+  @@index([tenantId, active])
+  @@map("repair_services")
 }
 
 model RepairOrderPhoto {
@@ -1123,24 +1158,24 @@ enum CashMovementType {
 }
 
 model CashMovement {
-  id             String           @id @default(cuid())
-  tenantId       String
-  cashRegisterId String
-  type           CashMovementType
-  amount         Decimal          @db.Decimal(12, 2)
-  description    String?
+  id              String           @id @default(cuid())
+  tenantId        String
+  cashRegisterId  String
+  type            CashMovementType
+  amount          Decimal          @db.Decimal(12, 2)
+  description     String?
   /// Foto da nota/comprovante da compra paga com o dinheiro do caixa
   /// (sangria) ou do depósito de origem do suprimento — opcional.
   receiptPhotoUrl String?
   /// Quem executou a movimentação (escolhido no formulário) — pode ser
   /// diferente de `userId`, que é quem estava logado. Obrigatório nas novas
   /// (pedido do dono, 14/09/2026); nulo nas antigas.
-  performedById  String?
+  performedById   String?
   /// Selfie de quem fez a sangria SEM cupom — a sangria exige cupom OU
   /// selfie (ver `createCashMovementAction`).
-  selfieUrl      String?
-  userId         String
-  createdAt      DateTime         @default(now())
+  selfieUrl       String?
+  userId          String
+  createdAt       DateTime         @default(now())
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
@@ -1160,24 +1195,24 @@ enum SaleStatus {
 }
 
 model Sale {
-  id                    String     @id @default(cuid())
-  tenantId              String
+  id                     String     @id @default(cuid())
+  tenantId               String
   /// Número sequencial por empresa, exibido no comprovante.
-  number                Int
-  cashRegisterId        String
-  customerId            String?
-  sellerId              String
+  number                 Int
+  cashRegisterId         String
+  customerId             String?
+  sellerId               String
   /// Segunda pessoa envolvida na venda (opcional). Só estrutura de dados —
   /// nenhuma regra de comissão/relatório usa este campo ainda.
-  assistantSellerId     String?
-  status                SaleStatus @default(COMPLETED)
-  subtotal              Decimal    @db.Decimal(12, 2)
-  discount              Decimal    @default(0) @db.Decimal(12, 2)
+  assistantSellerId      String?
+  status                 SaleStatus @default(COMPLETED)
+  subtotal               Decimal    @db.Decimal(12, 2)
+  discount               Decimal    @default(0) @db.Decimal(12, 2)
   /// Benefício de Convênio Corporativo aplicado na venda — separado de
   /// `discount` de propósito: nunca reduz a comissão do vendedor (calculada
   /// em cima de `SaleItem.total`, que este campo nunca toca). Ver
   /// `ConvenioRedemption`, a linha que registra o uso em si.
-  convenioDiscount      Decimal    @default(0) @db.Decimal(12, 2)
+  convenioDiscount       Decimal    @default(0) @db.Decimal(12, 2)
   /// Acréscimo do Crédito Eficaz (ver `Tenant.creditoEficazSurchargePercent`)
   /// — calculado só sobre a parte paga no crédito e SOMADO ao `total`
   /// (`total = subtotal - discount - convenioDiscount + creditoEficazSurcharge`).
@@ -1185,47 +1220,47 @@ model Sale {
   /// `convenioDiscount`: nunca mexe no valor dos itens nem na comissão. Já
   /// está incluído no `Payment` de `CREDITO_EFICAZ` e na obrigação
   /// (`CreditoEficazUsage.amount`).
-  creditoEficazSurcharge Decimal   @default(0) @db.Decimal(12, 2)
+  creditoEficazSurcharge Decimal    @default(0) @db.Decimal(12, 2)
   /// Cliente abriu mão do desconto de película pra ganhar direito à
   /// Proteção Eficaz (troca da película em até 30 dias da venda) — marcado
   /// pelo vendedor no PDV, nunca inferido. Impresso no cupom; validado
   /// depois pelo cliente em `/conta` e aprovado manualmente pelo Admin (ver
   /// `ProtecaoEficaz`).
-  protecaoEficazOptedIn Boolean    @default(false)
-  total                 Decimal    @db.Decimal(12, 2)
+  protecaoEficazOptedIn  Boolean    @default(false)
+  total                  Decimal    @db.Decimal(12, 2)
   /// Soma do custo dos itens no momento da venda, para apurar lucro bruto.
-  costTotal             Decimal    @default(0) @db.Decimal(12, 2)
+  costTotal              Decimal    @default(0) @db.Decimal(12, 2)
   /// Valor em dinheiro recebido do cliente (apenas quando há pagamento em espécie).
-  cashReceived          Decimal?   @db.Decimal(12, 2)
-  changeAmount          Decimal    @default(0) @db.Decimal(12, 2)
-  notes                 String?
-  createdAt             DateTime   @default(now())
-  cancelledAt           DateTime?
-  cancelledById         String?
-  cancelReason          String?
+  cashReceived           Decimal?   @db.Decimal(12, 2)
+  changeAmount           Decimal    @default(0) @db.Decimal(12, 2)
+  notes                  String?
+  createdAt              DateTime   @default(now())
+  cancelledAt            DateTime?
+  cancelledById          String?
+  cancelReason           String?
   /// Preenchido quando um ADMIN corrige preço/desconto de um item já
   /// vendido (ver `editSaleItems`) — só a última edição fica aqui; o
   /// detalhe completo de cada correção (valor antigo → novo) vai pro log
   /// central de auditoria (`AuditLog`, ação `sale.edit`).
-  editedAt              DateTime?
-  editedById            String?
+  editedAt               DateTime?
+  editedById             String?
 
-  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  cashRegister       CashRegister             @relation(fields: [cashRegisterId], references: [id])
-  customer           Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  seller             User                     @relation("SaleSeller", fields: [sellerId], references: [id])
-  assistantSeller    User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
-  cancelledBy        User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
-  editedBy           User?                    @relation("SaleEditedBy", fields: [editedById], references: [id])
-  items              SaleItem[]
-  payments           Payment[]
-  stockMovements     StockMovement[]
-  creditMovements    CustomerCreditMovement[]
-  fiadoEntries       FiadoEntry[]
-  itemDefects        SaleItemDefect[]
-  convenioRedemption ConvenioRedemption?
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashRegister        CashRegister             @relation(fields: [cashRegisterId], references: [id])
+  customer            Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  seller              User                     @relation("SaleSeller", fields: [sellerId], references: [id])
+  assistantSeller     User?                    @relation("SaleAssistantSeller", fields: [assistantSellerId], references: [id], onDelete: SetNull)
+  cancelledBy         User?                    @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+  editedBy            User?                    @relation("SaleEditedBy", fields: [editedById], references: [id])
+  items               SaleItem[]
+  payments            Payment[]
+  stockMovements      StockMovement[]
+  creditMovements     CustomerCreditMovement[]
+  fiadoEntries        FiadoEntry[]
+  itemDefects         SaleItemDefect[]
+  convenioRedemption  ConvenioRedemption?
   creditoEficazUsages CreditoEficazUsage[]
-  commissionPayment  CommissionPaymentSale?
+  commissionPayment   CommissionPaymentSale?
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
@@ -1343,21 +1378,21 @@ enum FiadoStatus {
 /// PDV com a forma de pagamento "Fiado" (`saleId` preenchido), seja manual
 /// pela ficha do cliente (`saleId` nulo, ex.: produto entregue fora do PDV).
 model FiadoEntry {
-  id            String      @id @default(cuid())
-  tenantId      String
-  customerId    String
-  amount        Decimal     @db.Decimal(12, 2)
-  status        FiadoStatus @default(PENDING)
+  id                 String         @id @default(cuid())
+  tenantId           String
+  customerId         String
+  amount             Decimal        @db.Decimal(12, 2)
+  status             FiadoStatus    @default(PENDING)
   /// Data prevista de pagamento. Só relevante enquanto `status` é PENDING —
   /// depois dela, o lançamento pendente aparece como "Vencido" na UI.
-  dueDate       DateTime?
-  note          String?
+  dueDate            DateTime?
+  note               String?
   /// Preenchido só quando o lançamento nasceu de uma venda no PDV (forma de
   /// pagamento "Fiado"); nulo nos lançamentos manuais.
-  saleId        String?
+  saleId             String?
   /// Preenchido quando o lançamento nasceu do acerto financeiro de uma OS
   /// (saldo resolvido como fiado na entrega); nulo nos demais casos.
-  repairOrderId String?
+  repairOrderId      String?
   /// Recebimento (preenchido ao marcar como pago pela ficha do cliente):
   /// quando, como e quem recebeu, e em qual caixa entrou — o valor soma nos
   /// totais daquele caixa por forma de pagamento (ver `getCashSummary`).
@@ -1367,15 +1402,15 @@ model FiadoEntry {
   paymentMethod      PaymentMethod?
   paidById           String?
   paidCashRegisterId String?
-  createdById   String
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdById        String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  sale        Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
-  repairOrder RepairOrder? @relation(fields: [repairOrderId], references: [id], onDelete: SetNull)
-  createdBy   User         @relation(fields: [createdById], references: [id])
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer         Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale             Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  repairOrder      RepairOrder?  @relation(fields: [repairOrderId], references: [id], onDelete: SetNull)
+  createdBy        User          @relation(fields: [createdById], references: [id])
   paidBy           User?         @relation("FiadoPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
   paidCashRegister CashRegister? @relation(fields: [paidCashRegisterId], references: [id], onDelete: SetNull)
 
@@ -1414,32 +1449,32 @@ enum EmployeeLedgerStatus {
 /// Admin e Gerente) — separado do Fiado de propósito, que é sobre crédito a
 /// cliente externo, não controle interno da equipe.
 model EmployeeLedgerEntry {
-  id            String               @id @default(cuid())
-  tenantId      String
-  userId        String
-  type          EmployeeLedgerType
-  amount        Decimal              @db.Decimal(12, 2)
-  description   String?
-  status        EmployeeLedgerStatus @default(PENDING)
-  settledAt     DateTime?
+  id                   String               @id @default(cuid())
+  tenantId             String
+  userId               String
+  type                 EmployeeLedgerType
+  amount               Decimal              @db.Decimal(12, 2)
+  description          String?
+  status               EmployeeLedgerStatus @default(PENDING)
+  settledAt            DateTime?
   /// Selfie tirada pelo próprio colaborador ao confirmar o recebimento no
   /// Ponto — "assinatura" do pagamento. Nula quando o Admin/Gerente marcou
   /// como pago manualmente (ver `settleEmployeeLedgerEntry`), sem passar
   /// pela confirmação do colaborador.
-  paidSelfieUrl String?
+  paidSelfieUrl        String?
   /// Início/fim (inclusive) do período de Ponto já coberto por este
   /// lançamento — só preenchido quando `type = HOURLY_PAYMENT`. Usado pra
   /// nunca recontar, num pagamento futuro, horas que já viraram um
   /// lançamento (pendente ou pago) — ver `computeHourlyPaymentPreview`.
-  hourlyPeriodFrom DateTime?
-  hourlyPeriodTo   DateTime?
+  hourlyPeriodFrom     DateTime?
+  hourlyPeriodTo       DateTime?
   /// Início/fim (inclusive) do filtro usado ao pagar a comissão — só
   /// informativo (`type = COMMISSION_PAYMENT`). O que impede pagar a mesma
   /// venda duas vezes é `CommissionPaymentSale.saleId @unique`, não o período.
   commissionPeriodFrom DateTime?
   commissionPeriodTo   DateTime?
-  createdById   String
-  createdAt     DateTime             @default(now())
+  createdById          String
+  createdAt            DateTime             @default(now())
 
   tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user            User                    @relation("EmployeeLedgerUser", fields: [userId], references: [id])
@@ -1531,20 +1566,20 @@ model CommissionTier {
 /// `APROVADA` sempre lê `totalCommission`/`tierBreakdown` daqui, nunca
 /// recalcula.
 model CommissionMonthlySnapshot {
-  id              String    @id @default(cuid())
+  id              String   @id @default(cuid())
   tenantId        String
   userId          String
   /// Sempre dia 1 do mês às 00:00 — identifica o mês do snapshot.
   month           DateTime
-  totalSales      Decimal   @db.Decimal(12, 2)
-  totalCommission Decimal   @db.Decimal(12, 2)
+  totalSales      Decimal  @db.Decimal(12, 2)
+  totalCommission Decimal  @db.Decimal(12, 2)
   /// Detalhamento faixa a faixa no momento da aprovação — mesmo formato
   /// devolvido por `computeProgressiveCommission` (nome, min, max, percent,
   /// valor comissionado naquela faixa).
   tierBreakdown   Json
   approvedById    String
-  approvedAt      DateTime  @default(now())
-  createdAt       DateTime  @default(now())
+  approvedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user       User   @relation("CommissionSnapshotUser", fields: [userId], references: [id])
@@ -2421,11 +2456,11 @@ model CreditoEficazDocument {
 /// qualquer mudança futura de limite precisa passar por aqui antes de tocar
 /// `Customer.creditoEficazLimitAmount`.
 model CreditoEficazLimitChange {
-  id            String   @id @default(cuid())
+  id            String                         @id @default(cuid())
   tenantId      String
   customerId    String
-  previousLimit Decimal  @db.Decimal(12, 2)
-  newLimit      Decimal  @db.Decimal(12, 2)
+  previousLimit Decimal                        @db.Decimal(12, 2)
+  newLimit      Decimal                        @db.Decimal(12, 2)
   note          String?
   /// Por que o limite mudou — é o que deixa o histórico legível sem
   /// depender de interpretar o texto livre de `note` ("Bônus por pagamento
@@ -2436,7 +2471,7 @@ model CreditoEficazLimitChange {
   /// gera dois aumentos (ver o índice único abaixo).
   sourceUsageId String?
   changedById   String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime                       @default(now())
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -2460,7 +2495,7 @@ model CreditoEficazLimitChange {
 /// `availableAfter` são o snapshot do saldo do cliente no momento exato
 /// desta operação, pra auditoria não depender de reconstruir o histórico.
 model CreditoEficazUsage {
-  id                String                    @id @default(cuid())
+  id                String                   @id @default(cuid())
   tenantId          String
   customerId        String
   /// Deixou de ser único sozinho quando a venda do PDV passou a poder ser
@@ -2476,15 +2511,15 @@ model CreditoEficazUsage {
   /// mostra "parcela x/y" quando o total é maior que 1.
   installmentNumber Int?
   installmentCount  Int?
-  amount            Decimal                   @db.Decimal(12, 2)
-  availableBefore   Decimal                   @db.Decimal(12, 2)
-  availableAfter    Decimal                   @db.Decimal(12, 2)
+  amount            Decimal                  @db.Decimal(12, 2)
+  availableBefore   Decimal                  @db.Decimal(12, 2)
+  availableAfter    Decimal                  @db.Decimal(12, 2)
   dueDate           DateTime
-  status            CreditoEficazUsageStatus  @default(OPEN)
+  status            CreditoEficazUsageStatus @default(OPEN)
   /// Quem operava o caixa (venda) ou registrou o financiamento (OS) no
   /// momento — mesmo campo/motivo de `FiadoEntry.createdById`.
   operatorId        String
-  createdAt         DateTime                  @default(now())
+  createdAt         DateTime                 @default(now())
 
   tenant    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer  Customer                       @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -2511,25 +2546,25 @@ model CreditoEficazUsage {
 /// informativo: a entrada em si já foi registrada como um
 /// `RepairOrderPayment` normal (dinheiro/PIX/cartão), não duplicada aqui.
 model CreditoEficazServiceFinancing {
-  id                       String    @id @default(cuid())
+  id                       String   @id @default(cuid())
   tenantId                 String
-  repairOrderId            String    @unique
+  repairOrderId            String   @unique
   customerId               String
-  totalAmount              Decimal   @db.Decimal(12, 2)
-  downPayment              Decimal   @default(0) @db.Decimal(12, 2)
-  financedAmount           Decimal   @db.Decimal(12, 2)
+  totalAmount              Decimal  @db.Decimal(12, 2)
+  downPayment              Decimal  @default(0) @db.Decimal(12, 2)
+  financedAmount           Decimal  @db.Decimal(12, 2)
   /// Acréscimo do Crédito Eficaz (ver `Tenant.creditoEficazSurchargePercent`)
   /// já INCLUÍDO em `financedAmount` e nas parcelas. O saldo da OS em si
   /// (`RepairOrderPayment` de `CREDITO_EFICAZ`) fecha pelo valor sem
   /// acréscimo — o acréscimo é custo do financiamento, não do serviço.
-  surchargeAmount          Decimal   @default(0) @db.Decimal(12, 2)
+  surchargeAmount          Decimal  @default(0) @db.Decimal(12, 2)
   installmentCount         Int
   /// Avaliação opcional do vendedor: "sem o Crédito Eficaz, esse serviço
   /// provavelmente seria perdido?" — nunca obrigatório, `null` = não
   /// respondido (ver Adendo, item 11).
   wouldBeLostWithoutCredit Boolean?
   createdById              String
-  createdAt                DateTime  @default(now())
+  createdAt                DateTime @default(now())
 
   tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   repairOrder RepairOrder          @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
@@ -2590,7 +2625,6 @@ model CreditoEficazBilling {
   @@map("credito_eficaz_billings")
 }
 
-
 // ---------------------------------------------------------------------------
 // Crédito Eficaz × Convênio — concessão automática de limite
 // ---------------------------------------------------------------------------
@@ -2602,44 +2636,44 @@ model CreditoEficazBilling {
 /// convênio (e não uma chave global) porque `Convenio` sempre foi genérico:
 /// liga na Havan hoje sem prometer nada aos outros convênios.
 model ConvenioCreditPolicy {
-  id         String  @id @default(cuid())
-  tenantId   String
-  convenioId String  @unique
+  id                      String    @id @default(cuid())
+  tenantId                String
+  convenioId              String    @unique
   /// A chave mestre. Ligar aplica a regra a quem já está aprovado E aos
   /// futuros aprovados; desligar só interrompe NOVAS concessões — nunca
   /// retira limite, dívida ou histórico de quem já recebeu.
-  enabled    Boolean @default(false)
+  enabled                 Boolean   @default(false)
   /// Limite concedido na entrada do colaborador. Configurável (o valor
   /// inicial sugerido de R$ 100 é só o default do banco, nunca uma regra
   /// cravada no código).
-  defaultLimitAmount      Decimal @default(100) @db.Decimal(12, 2)
+  defaultLimitAmount      Decimal   @default(100) @db.Decimal(12, 2)
   /// Acréscimo (%) do parcelamento deste convênio — sobrepõe
   /// `Tenant.creditoEficazSurchargePercent` só para estes clientes.
-  surchargePercent        Decimal @default(10) @db.Decimal(5, 2)
+  surchargePercent        Decimal   @default(10) @db.Decimal(5, 2)
   /// Parcelas da compra no PDV e intervalo entre elas: 2 × 30 dias = o
   /// "30 + 60" combinado. Ambos configuráveis.
-  installmentCount        Int     @default(2)
-  installmentIntervalDays Int     @default(30)
+  installmentCount        Int       @default(2)
+  installmentIntervalDays Int       @default(30)
   /// Segunda chave, independente da primeira e também OFFLINE de início.
-  bonusEnabled            Boolean @default(false)
+  bonusEnabled            Boolean   @default(false)
   /// Quanto do valor da parcela paga em dia vira aumento permanente de
   /// limite (50% = R$ 27,50 numa parcela de R$ 55).
-  bonusPercent            Decimal @default(50) @db.Decimal(5, 2)
+  bonusPercent            Decimal   @default(50) @db.Decimal(5, 2)
   /// Teto do crescimento AUTOMÁTICO — o Admin continua podendo conceder
   /// manualmente acima disso; o automático é que para aqui.
-  autoLimitCap            Decimal @default(300) @db.Decimal(12, 2)
+  autoLimitCap            Decimal   @default(300) @db.Decimal(12, 2)
   /// Bloqueia novas compras enquanto existir parcela vencida em aberto.
   /// Nunca apaga limite: só impede nova utilização.
-  blockOnOverdue          Boolean @default(true)
+  blockOnOverdue          Boolean   @default(true)
   /// Campanha de pontualidade — terceira chave, DESLIGADA e sem nenhum
   /// sorteio implementado (ver `CreditoEficazCampaign`).
-  campaignEnabled         Boolean @default(false)
+  campaignEnabled         Boolean   @default(false)
   /// Dia do mês da apuração da campanha (1-28).
-  campaignDayOfMonth      Int     @default(20)
-  enabledAt   DateTime?
-  updatedById String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  campaignDayOfMonth      Int       @default(20)
+  enabledAt               DateTime?
+  updatedById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   convenio  Convenio @relation(fields: [convenioId], references: [id], onDelete: Cascade)

@@ -44,6 +44,10 @@ export type AuditAction =
   | "repair.courtesy_grant"
   | "repair.cancel_without_billing"
   | "repair.payment_method_edit"
+  | "repair.service_create"
+  | "repair.service_edit"
+  | "repair.service_deactivate"
+  | "repair.service_reactivate"
   | "employee_ledger.confirm_paid"
   | "employee_ledger.delete"
   | "employee_ledger.revert_to_pending"
@@ -107,6 +111,10 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "repair.courtesy_grant": "Cortesia concedida em OS de assistência técnica",
   "repair.cancel_without_billing": "OS cancelada sem faturamento",
   "repair.payment_method_edit": "Forma de pagamento corrigida em OS",
+  "repair.service_create": "Serviço de assistência cadastrado",
+  "repair.service_edit": "Serviço de assistência editado",
+  "repair.service_deactivate": "Serviço de assistência desativado",
+  "repair.service_reactivate": "Serviço de assistência reativado",
   "employee_ledger.confirm_paid": "Pagamento confirmado por selfie pelo colaborador",
   "employee_ledger.delete": "Lançamento de colaborador excluído",
   "employee_ledger.revert_to_pending": "Lançamento de colaborador revertido de pago para pendente",

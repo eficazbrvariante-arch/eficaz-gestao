@@ -43,8 +43,21 @@ export const repairOrderItemSchema = z.object({
   description: z.string().trim().min(1, "Descreva o serviço"),
   unitPrice: z.coerce.number().min(0, "Informe o valor do serviço"),
   quantity: z.coerce.number().int().positive("Quantidade deve ser maior que zero"),
+  /** Serviço do catálogo de onde a linha saiu — o custo nunca vem daqui, o
+   *  servidor relê do catálogo (ver `resolveRepairItemCosts`). */
+  repairServiceId: z.string().trim().optional().or(z.literal("")),
 });
 export type RepairOrderItemInput = z.infer<typeof repairOrderItemSchema>;
+
+/** Cadastro/edição de um serviço do catálogo da assistência. Custo e
+ *  fornecedor só são gravados quando o perfil pode (decidido no servidor). */
+export const repairServiceSchema = z.object({
+  name: z.string().trim().min(2, "Informe o nome do serviço"),
+  price: z.coerce.number().positive("Informe o preço final do serviço"),
+  costPrice: z.coerce.number().min(0, "O valor de custo não pode ser negativo").nullable().optional(),
+  supplierId: z.string().trim().optional().or(z.literal("")),
+});
+export type RepairServiceInput = z.infer<typeof repairServiceSchema>;
 
 export const repairOrderSchema = z.object({
   customerId: z.string().trim().min(1, "Selecione ou cadastre um cliente"),

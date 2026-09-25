@@ -8,6 +8,7 @@ import {
   REPAIR_ORDER_STATUS_LABELS,
 } from "@/lib/validations/repair-order";
 import { StatCard } from "@/components/admin/stat-card";
+import { repairOrderTotalCost } from "@/modules/repairs/repair-service-catalog";
 import { PeriodPicker } from "../relatorios/report-nav";
 import { resolvePeriod } from "../relatorios/period";
 
@@ -62,7 +63,7 @@ export default async function AssistenciaTecnicaPage({
           select: {
             discount: true,
             costPrice: true,
-            items: { select: { unitPrice: true, quantity: true } },
+            items: { select: { unitPrice: true, quantity: true, unitCost: true } },
           },
         })
       : Promise.resolve(null),
@@ -75,7 +76,7 @@ export default async function AssistenciaTecnicaPage({
         0
       );
       acc.revenue += Math.max(0, gross - Number(order.discount));
-      acc.cost += Number(order.costPrice ?? 0);
+      acc.cost += repairOrderTotalCost(order.costPrice, order.items);
       return acc;
     },
     { revenue: 0, cost: 0 }
@@ -88,12 +89,20 @@ export default async function AssistenciaTecnicaPage({
           <h1 className="text-xl font-semibold text-foreground">Assistência Técnica</h1>
           <p className="text-sm text-text-muted">Ordens de serviço de reparo e manutenção.</p>
         </div>
-        <Link
-          href="/assistencia-tecnica/novo"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          Nova OS
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/assistencia-tecnica/servicos"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Serviços e preços
+          </Link>
+          <Link
+            href="/assistencia-tecnica/novo"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Nova OS
+          </Link>
+        </div>
       </div>
 
       {canSeeFinancials && financials && (
@@ -105,7 +114,7 @@ export default async function AssistenciaTecnicaPage({
           <PeriodPicker period={period} extraParams={{ q }} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Faturamento" value={formatBRL(financials.revenue)} />
-            <StatCard label="Gastos (custo de peças)" value={formatBRL(financials.cost)} />
+            <StatCard label="Gastos (custo de peças e serviços)" value={formatBRL(financials.cost)} />
             <StatCard
               label="Lucro"
               value={formatBRL(financials.revenue - financials.cost)}

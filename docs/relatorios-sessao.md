@@ -2940,3 +2940,78 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   Admin ligar em `/credito-eficaz`.
 - Pendente: testar no navegador logado (depende de senha) e decidir quando ligar
   a primeira política de convênio.
+
+## 19/09/2026 — Correção do crédito de loja da cliente Auria Neto
+
+- **Pedido**: a venda #1867 (R$ 75,00, 2 itens) foi cancelada inteira, mas só a
+  caixinha de som (R$ 45,00) deveria ter sido devolvida. O saldo estava em R$ 75,00
+  e deveria ficar em R$ 45,00. Também foi pedido que o crédito de loja aparecesse
+  como forma de pagamento na OS.
+- **Dados (produção, pela tela de Admin em `/clientes/[id]`, sem SQL direto)**:
+  "Zerar crédito" (−R$ 75,00, `ADJUSTED_REMOVE`) + "Conceder crédito" (+R$ 45,00,
+  `ADJUSTED_ADD`), os dois com motivo citando a venda #1867 e registrados na auditoria.
+  O saldo final foi conferido na tela: R$ 45,00.
+- **Código**: nenhuma alteração. O "Crédito de loja" já existia nas formas de
+  pagamento da OS (`repair-order-workspace.tsx` + `repair-payment-service.ts`). Ele
+  só fica desabilitado quando a OS não tem cliente ou o cliente está com saldo zero.
+- **Ajuste rápido da venda #1867 (escolhido pelo usuário, em vez de criar
+  cancelamento parcial)**: saída manual de 1 "Película 3D - POCO - M6 PRO" em
+  `/estoque/novo`, de 29 para 28. A película tinha voltado ao estoque no
+  cancelamento, mas está aplicada no celular da cliente. O motivo registrado cita a
+  venda #1867.
+- **O que ficou como está**: a #1867 continua "Cancelada" no histórico, e o
+  faturamento de 06/09 fica R$ 30,00 abaixo do real. O "Total gasto" da cliente
+  continua R$ 0,00: não existe tela para ajustar esse campo, e a senha do banco de
+  produção não fica acessível daqui. A caixa de som com defeito ("som sai muito
+  baixo") voltou para o estoque como vendável (hoje 4 unidades de BM-S205). Se ela
+  foi para garantia ou troca com o fornecedor, é preciso dar saída nela também.
+- **Sistema**: não existe cancelamento parcial por item de venda. Se isso se
+  repetir, vale criar o recurso (envolve mudança de schema).
+
+## 24/09/2026 — Comprovante impresso sem dados pessoais do cliente
+
+- **Pedido**: a nota impressa da venda #3209 trazia o nome completo e o telefone
+  inteiro do cliente. Se a nota for perdida, quem encontrar fica com esses dados.
+- **Código** (`src/app/(admin)/vendas/[id]/page.tsx`): a **impressão** agora mostra
+  só "Cliente: <primeiro nome>" e "Contato: final <4 últimos dígitos>". CPF e
+  observações do cliente não saem mais no papel. O nome do beneficiário do Convênio
+  também sai só com o primeiro nome. **Na tela**, a equipe continua vendo tudo.
+- **Testes**: `npm run lint` (9 warnings, todos já existiam antes; o arquivo alterado
+  não tem nenhum), `npm run typecheck` e `npm run build:app` ok. A impressão ainda
+  não foi testada no navegador.
+- **Publicação**: commit `13ac36e` (branch `comprovante-sem-dados-pessoais`), juntado na
+  `main` e publicado em 24/09 junto com o commit pendente `cbeb0b6` (só relatório).
+  As branches antigas (`feat/desconto-combo-capinha-pelicula`, `fix/comprimir-imagem-upload`,
+  `vendas-reativar-nota`) ficaram de fora.
+
+## 25/09/2026 — Assistência Técnica: catálogo e busca de serviços
+
+- **Pedido**: buscar serviços dentro da Assistência Técnica e, quando não achar,
+  registrar na hora (nome já preenchido + preço final; valor de custo e fornecedor
+  opcionais e só para o Admin). O custo do serviço entra no custo da OS para o lucro.
+- **Branch**: `feat/catalogo-servicos-assistencia` (não commitado, não publicado).
+- **Banco**: tabela nova `repair_services` (nome, preço, custo, fornecedor,
+  ativo) + dois campos em `repair_order_items` (`repairServiceId`, `unitCost`).
+  Migration `20260925120000_catalogo_servicos_assistencia`, só acréscimos, gerada
+  com `migrate diff` e aplicada no `dev-local`. Na produção só entra ao publicar.
+  Atenção: a saída do dotenv (`◇ injected env...`) caiu dentro do `.sql` na primeira
+  geração; foi limpa e a tentativa marcada como `rolled-back` no dev-local.
+- **Telas**:
+  - `/assistencia-tecnica/servicos` (botão "Serviços e preços" na listagem de OS):
+    busca instantânea sem acento; se não achar, "Registrar '<termo>'". Admin vê
+    custo, lucro e fornecedor, edita e desativa/reativa.
+  - Na OS, o quadro "Serviço(s) a Realizar" ganhou uma busca: escolher lança o
+    serviço com o preço; Enter pega o primeiro; se não achar, abre o cadastro rápido
+    e o serviço já entra na OS. "+ Serviço avulso" mantém a linha digitada à mão.
+- **Custo**: gravado pelo servidor a partir do catálogo, nunca vindo do navegador.
+  Fica congelado na OS: mudar o custo no catálogo não mexe em OS antigas, nem quando
+  a OS é salva de novo. O Admin vê na OS: custo da peça + custo dos serviços = custo
+  total, e o lucro. O card "Gastos" da listagem passou a somar os dois.
+- **Permissões**: nova `canManageRepairServiceCatalog` (só ADMIN). Gerente e
+  Vendedor buscam e registram só nome e preço. O custo não chega ao navegador deles.
+- **Auditoria**: `repair.service_create/edit/deactivate/reactivate`.
+- **Testes**: `lint` (0 erros, mesmos 9 avisos), `typecheck`, `build:app`, `npm test`
+  168/168. Teste de integração novo `repair-service-catalog.integration.test.ts`
+  (6/6). Suíte de integração inteira 118/118.
+- **Pendente**: testar no navegador logado. Commit e publicação só quando pedido
+  (a publicação roda a migration na produção).

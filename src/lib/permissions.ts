@@ -194,6 +194,15 @@ export function canManageRepairOrderCostAnytime(role: UserRole) {
 }
 
 /**
+ * Catálogo de serviços da assistência: ver/gravar custo e fornecedor, editar
+ * preço e desativar serviço. Só o administrador — os outros perfis que abrem
+ * OS só buscam e cadastram serviço novo com nome e preço.
+ */
+export function canManageRepairServiceCatalog(role: UserRole) {
+  return role === "ADMIN";
+}
+
+/**
  * Informar o preço de custo no instante em que a OS é criada.
  * Gerente tem esse acesso só na criação — depois de salva, só ADMIN vê/edita
  * (ver canManageRepairOrderCostAnytime).

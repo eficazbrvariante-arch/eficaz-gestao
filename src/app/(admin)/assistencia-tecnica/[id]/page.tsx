@@ -73,7 +73,15 @@ export default async function OrdemServicoPage({
         },
       },
       seller: { select: { id: true, name: true } },
-      items: { select: { description: true, unitPrice: true, quantity: true } },
+      items: {
+        select: {
+          description: true,
+          unitPrice: true,
+          quantity: true,
+          repairServiceId: true,
+          unitCost: true,
+        },
+      },
       photos: { select: { url: true }, orderBy: { order: "asc" } },
       events: {
         select: { id: true, message: true, createdAt: true },
@@ -142,6 +150,9 @@ export default async function OrdemServicoPage({
       description: item.description,
       unitPrice: Number(item.unitPrice),
       quantity: item.quantity,
+      repairServiceId: item.repairServiceId,
+      // Custo do serviço só vai para o navegador de quem vê o lucro (Admin).
+      unitCost: canViewProfit && item.unitCost !== null ? Number(item.unitCost) : null,
     })),
     photoUrls: order.photos.map((photo) => photo.url),
   };
