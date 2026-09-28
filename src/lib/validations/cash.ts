@@ -64,9 +64,24 @@ export const editCashRegisterSchema = z.object({
   countedCreditAmount: money,
   countedPixAmount: money,
   notes: z.string().trim().optional().or(z.literal("")),
+  /** Obrigatória quando algum valor muda (conferido no servidor, ver `editClosedCashRegister`). */
+  reason: z.string().trim().optional().or(z.literal("")),
 });
 export type EditCashRegisterInput = z.infer<typeof editCashRegisterSchema>;
 export type EditCashRegisterFormValues = z.input<typeof editCashRegisterSchema>;
+
+/**
+ * Correção do dinheiro contado às cegas de um caixa ainda pendente de revisão
+ * (só ADMIN) — ex.: colaborador digitou um zero a mais. A justificativa é
+ * obrigatória e fica registrada junto do valor que o colaborador informou.
+ */
+export const correctCashCountSchema = z.object({
+  registerId: z.string().trim().min(1),
+  countedAmount: money,
+  reason: z.string().trim().min(5, "Escreva a justificativa da correção"),
+});
+export type CorrectCashCountInput = z.infer<typeof correctCashCountSchema>;
+export type CorrectCashCountFormValues = z.input<typeof correctCashCountSchema>;
 
 /** Campos do formulário de sangria/suprimento, sem a regra cruzada de cupom/selfie. */
 export const cashMovementBaseSchema = z.object({

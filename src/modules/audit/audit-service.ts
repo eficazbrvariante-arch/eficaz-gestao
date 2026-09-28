@@ -13,6 +13,7 @@ export type AuditAction =
   | "sale.edit"
   | "sale.payment_method_edit"
   | "sale.item_defect"
+  | "cash.count_correction"
   | "customer.merge"
   | "customer.credit_adjust"
   | "fiado.receive"
@@ -80,6 +81,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.edit": "Preço/desconto (e, se for o caso, total e pagamento) corrigido em venda concluída",
   "sale.payment_method_edit": "Forma de pagamento corrigida em venda concluída",
   "sale.item_defect": "Troca por defeito registrada",
+  "cash.count_correction": "Valor conferido de caixa corrigido pelo Admin (com justificativa)",
   "customer.merge": "Cadastros de cliente mesclados",
   "customer.credit_adjust": "Crédito de loja ajustado manualmente pelo Admin",
   "fiado.receive": "Fiado recebido",

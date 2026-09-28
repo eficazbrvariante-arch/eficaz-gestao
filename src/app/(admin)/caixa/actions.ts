@@ -12,6 +12,7 @@ import {
   canRecordCashMovement,
 } from "@/lib/permissions";
 import {
+  correctPendingCashCount,
   editClosedCashRegister,
   finalizeCashRegisterReview,
   getCashSummary,
@@ -24,14 +25,17 @@ import {
   submitCashForReviewSchema,
   finalizeCashReviewSchema,
   editCashRegisterSchema,
+  correctCashCountSchema,
   cashMovementSchema,
   type OpenCashInput,
   type CloseCashInput,
   type SubmitCashForReviewInput,
   type FinalizeCashReviewInput,
   type EditCashRegisterInput,
+  type CorrectCashCountInput,
   type CashMovementInput,
 } from "@/lib/validations/cash";
+import { recordAudit } from "@/modules/audit/audit-service";
 
 function revalidateCashPages() {
   revalidatePath("/caixa");
@@ -163,15 +167,62 @@ export async function editCashRegisterAction(input: EditCashRegisterInput) {
   const parsed = editCashRegisterSchema.safeParse(input);
   if (!parsed.success) return { error: "Dados inválidos." };
 
+  const userName = user.name ?? user.email ?? "Usuário";
   const result = await editClosedCashRegister(
-    { tenantId: user.tenantId, userId: user.id, userName: user.name ?? user.email ?? "Usuário" },
+    { tenantId: user.tenantId, userId: user.id, userName },
     parsed.data
   );
   if (!result.ok) return { error: result.error };
 
+  if (result.changeDescription) {
+    await recordAudit({
+      tenantId: user.tenantId,
+      userId: user.id,
+      userName,
+      action: "cash.count_correction",
+      entity: "CashRegister",
+      entityId: parsed.data.registerId,
+      description: `Editou os valores de um caixa fechado — ${result.changeDescription}`,
+    });
+  }
+
   revalidatePath("/caixa/historico");
   revalidatePath(`/caixa/historico/${parsed.data.registerId}`);
   return { success: "Caixa atualizado." };
+}
+
+/** Só ADMIN — corrige o dinheiro contado de um caixa pendente de revisão, com justificativa. */
+export async function correctCashCountAction(input: CorrectCashCountInput) {
+  const user = await requireUser();
+  if (!canEditClosedCashRegister(user.role)) {
+    return { error: "Seu perfil não tem permissão para corrigir a contagem do caixa." };
+  }
+
+  const parsed = correctCashCountSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const userName = user.name ?? user.email ?? "Usuário";
+  const result = await correctPendingCashCount(
+    { tenantId: user.tenantId, userId: user.id, userName },
+    parsed.data
+  );
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName,
+    action: "cash.count_correction",
+    entity: "CashRegister",
+    entityId: parsed.data.registerId,
+    description: `Corrigiu a contagem de um caixa pendente de revisão — ${result.changeDescription}`,
+  });
+
+  revalidatePath("/caixa/historico");
+  revalidatePath(`/caixa/historico/${parsed.data.registerId}`);
+  return { success: "Contagem corrigida." };
 }
 
 export async function createCashMovementAction(input: CashMovementInput) {

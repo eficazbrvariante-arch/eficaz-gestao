@@ -26,9 +26,11 @@ import {
   submitCashRegisterForReviewAction,
   finalizeCashRegisterReviewAction,
   editCashRegisterAction,
+  correctCashCountAction,
   createCashMovementAction,
 } from "./actions";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,9 @@ import {
   editCashRegisterSchema,
   type EditCashRegisterFormValues,
   type EditCashRegisterInput,
+  correctCashCountSchema,
+  type CorrectCashCountFormValues,
+  type CorrectCashCountInput,
 } from "@/lib/validations/cash";
 
 type Feedback = { type: "success" | "error"; message: string } | undefined;
@@ -405,6 +410,7 @@ export function ClosedRegisterPanel({
     countedCreditAmount: entries.find((e) => e.key === "countedCreditAmount")?.counted ?? 0,
     countedPixAmount: entries.find((e) => e.key === "countedPixAmount")?.counted ?? 0,
     notes: notes ?? "",
+    reason: "",
   };
 
   const {
@@ -489,9 +495,22 @@ export function ClosedRegisterPanel({
         entries={liveEntries.map((e) => ({ label: e.label, difference: e.counted - e.expected }))}
       />
 
-      <div className="mb-6">
+      <div className="mb-4">
         <Label htmlFor="notes">Observações</Label>
         <Input id="notes" {...register("notes")} />
+      </div>
+
+      <div className="mb-6 max-w-xl">
+        <Label htmlFor="reason">Justificativa da alteração (obrigatória se mudar algum valor)</Label>
+        <Textarea
+          id="reason"
+          rows={3}
+          placeholder="Ex.: colaborador digitou um zero a mais na contagem; conferido com a gaveta."
+          {...register("reason")}
+        />
+        <p className="mt-1 text-xs text-text-muted">
+          Fica registrada no caixa junto com o valor antigo, quem contou e o seu nome.
+        </p>
       </div>
 
       <div className="flex gap-3">
@@ -506,6 +525,141 @@ export function ClosedRegisterPanel({
           onClick={() => {
             reset(defaultValues);
             setIsEditing(false);
+          }}
+        >
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Caixa pendente de revisão: o Admin corrige o dinheiro contado às cegas
+ * quando o colaborador digitou errado (ex.: um zero a mais). Justificativa
+ * obrigatória; o valor original e quem contou ficam nas observações do caixa.
+ */
+export function CorrectCashCountForm({
+  registerId,
+  countedAmount,
+  expectedAmount,
+  countedByName,
+}: {
+  registerId: string;
+  countedAmount: number;
+  expectedAmount: number;
+  countedByName: string | null;
+}) {
+  const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>();
+  const [isPending, startTransition] = useTransition();
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    formState: { errors },
+  } = useForm<CorrectCashCountFormValues, unknown, CorrectCashCountInput>({
+    resolver: zodResolver(correctCashCountSchema),
+    defaultValues: { registerId, countedAmount, reason: "" },
+  });
+  const newCounted = Number(useWatch({ control, name: "countedAmount" }) ?? countedAmount);
+  const newDifference = newCounted - expectedAmount;
+
+  const onSubmit = (data: CorrectCashCountInput) => {
+    setFeedback(undefined);
+    startTransition(async () => {
+      const result = await correctCashCountAction(data);
+      if (result?.error) {
+        setFeedback({ type: "error", message: result.error });
+        return;
+      }
+      setIsOpen(false);
+      reset({ registerId, countedAmount: data.countedAmount, reason: "" });
+      router.refresh();
+    });
+  };
+
+  if (!isOpen) {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        fullWidth={false}
+        className="mb-6 px-6"
+        onClick={() => setIsOpen(true)}
+      >
+        Corrigir dinheiro contado
+      </Button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className="mb-6 max-w-xl rounded-xl border border-amber-200 bg-amber-50 p-5"
+    >
+      <h2 className="mb-1 text-sm font-semibold text-slate-900">Corrigir dinheiro contado</h2>
+      <p className="mb-3 text-sm text-slate-700">
+        Valor informado{countedByName ? ` por ${countedByName}` : ""}: {formatBRL(countedAmount)}. Esse
+        valor original, a justificativa e o seu nome ficam registrados no caixa.
+      </p>
+      <FormBanner message={feedback?.message} variant={feedback?.type} />
+
+      <div className="mb-3">
+        <Label htmlFor="correctedCountedAmount">Valor correto do dinheiro contado (R$)</Label>
+        <Input
+          id="correctedCountedAmount"
+          type="number"
+          step="0.01"
+          min={0}
+          {...register("countedAmount")}
+        />
+        <FieldError message={errors.countedAmount?.message} />
+        <p className="mt-1 text-xs text-slate-700">
+          Nova diferença:{" "}
+          <span
+            className={
+              Math.abs(newDifference) < 0.005
+                ? "font-medium text-slate-900"
+                : newDifference > 0
+                  ? "font-medium text-emerald-700"
+                  : "font-medium text-red-600"
+            }
+          >
+            {newDifference > 0 ? "+" : ""}
+            {formatBRL(newDifference)}
+          </span>
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <Label htmlFor="correctionReason">Justificativa (obrigatória)</Label>
+        <Textarea
+          id="correctionReason"
+          rows={3}
+          placeholder="Ex.: colaborador digitou um zero a mais; conferido com a gaveta."
+          {...register("reason")}
+        />
+        <FieldError message={errors.reason?.message} />
+      </div>
+
+      <div className="flex gap-3">
+        <Button type="submit" disabled={isPending} fullWidth={false} className="px-6">
+          {isPending ? "Salvando..." : "Salvar correção"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth={false}
+          className="px-6"
+          onClick={() => {
+            reset({ registerId, countedAmount, reason: "" });
+            setFeedback(undefined);
+            setIsOpen(false);
           }}
         >
           Cancelar

@@ -3045,4 +3045,26 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Sem mudança de banco.**
 - **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test`
   168/168, integração 126/126 (8 novos em `sale-total-edit.integration.test.ts`).
+## 28/09/2026 — Caixa: detalhe das sangrias e correção da contagem com justificativa
+
+- **Branch**: `feat/caixa-detalhe-sangria` (não commitado, não publicado). A mudança
+  "Editar venda: permitir mudar o total" (26/09) está guardada no
+  `git stash` ("editar-venda-mudar-total"), para voltar à branch
+  `feat/editar-venda-mudar-total`.
+- **Sangrias** (`caixa/historico/[id]/page.tsx`): em "Como chegamos no dinheiro
+  esperado", a linha Sangrias ganhou "Ver mais". Abre cada sangria com data/hora,
+  valor, quem fez (e quem registrou, se for outra pessoa), motivo e links do cupom/selfie.
+- **Correção do dinheiro contado** (pedido pelo caixa de 23/09: contado R$ 11.280,00,
+  esperado R$ 936,08, provável erro de digitação):
+  - Caixa **pendente de revisão**: botão "Corrigir dinheiro contado" (só Admin),
+    com novo valor, nova diferença na hora e **justificativa obrigatória**
+    (`correctPendingCashCount`).
+  - Caixa **fechado**: o "Editar valores" que já existia passou a exigir
+    justificativa quando algum valor muda.
+  - Nos dois casos, o valor original, **quem contou** (colaborador que enviou/fechou),
+    quem corrigiu, a data e a justificativa ficam nas observações do caixa. Também
+    vão para o log de auditoria (`cash.count_correction`).
+- **Sem mudança de banco.**
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test`
+  168/168, integração 124/124 (6 novos em `cash-count-correction.integration.test.ts`).
 - **Pendente**: testar no navegador; commit e publicação quando pedido.
