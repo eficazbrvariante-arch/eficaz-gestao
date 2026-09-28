@@ -232,7 +232,17 @@ export async function finalizeCashRegisterReview(
   return { ok: true };
 }
 
-export type EditClosedCashRegisterResult = { ok: true } | { ok: false; error: string };
+export type EditClosedCashRegisterResult =
+  | { ok: true; changeDescription: string | null }
+  | { ok: false; error: string };
+
+/** Nome de quem contou o dinheiro: quem enviou pra revisão ou, no fechamento direto, quem fechou. */
+async function cashCounterName(register: { reviewSubmittedById: string | null; closedById: string | null }) {
+  const counterId = register.reviewSubmittedById ?? register.closedById;
+  if (!counterId) return null;
+  const counter = await prisma.user.findUnique({ where: { id: counterId }, select: { name: true } });
+  return counter?.name ?? null;
+}
 
 /**
  * Corrige os valores conferidos de um caixa já fechado (só ADMIN, ver
@@ -241,7 +251,8 @@ export type EditClosedCashRegisterResult = { ok: true } | { ok: false; error: st
  * valores "esperado" de cada forma não mudam (continuam o que o sistema
  * calculou na hora do fechamento). Cada campo alterado vira uma linha
  * automática no fim das observações, pra manter rastro de que o caixa foi
- * editado depois de fechado — sem precisar de uma tabela de auditoria nova.
+ * editado depois de fechado — com a justificativa (obrigatória quando algum
+ * valor muda) e, no dinheiro, o nome de quem contou o valor original.
  */
 export async function editClosedCashRegister(
   ctx: { tenantId: string; userId: string; userName: string },
@@ -252,6 +263,7 @@ export async function editClosedCashRegister(
     countedCreditAmount: number;
     countedPixAmount: number;
     notes?: string;
+    reason?: string;
   }
 ): Promise<EditClosedCashRegisterResult> {
   const register = await prisma.cashRegister.findFirst({
@@ -264,7 +276,12 @@ export async function editClosedCashRegister(
     if (before !== null && Math.abs(Number(before) - after) < 0.005) return;
     changes.push(`${label} ${before !== null ? formatBRL(before) : "-"} → ${formatBRL(after)}`);
   };
-  trackChange("dinheiro contado", register.countedAmount ? Number(register.countedAmount) : null, input.countedAmount);
+  const counter = await cashCounterName(register);
+  trackChange(
+    counter ? `dinheiro contado (informado por ${counter})` : "dinheiro contado",
+    register.countedAmount !== null ? Number(register.countedAmount) : null,
+    input.countedAmount
+  );
   trackChange(
     "débito conferido",
     register.countedDebitAmount ? Number(register.countedDebitAmount) : null,
@@ -281,11 +298,17 @@ export async function editClosedCashRegister(
     input.countedPixAmount
   );
 
+  const reason = input.reason?.trim() ?? "";
+  if (changes.length > 0 && reason.length < 5) {
+    return { ok: false, error: "Escreva a justificativa da alteração dos valores." };
+  }
+
   const baseNotes = input.notes || register.notes || "";
-  const auditLine =
-    changes.length > 0
-      ? `Editado por ${ctx.userName} em ${formatDateTime(new Date())}: ${changes.join("; ")}.`
-      : null;
+  const changeDescription =
+    changes.length > 0 ? `${changes.join("; ")}. Justificativa: ${reason}` : null;
+  const auditLine = changeDescription
+    ? `Editado por ${ctx.userName} em ${formatDateTime(new Date())}: ${changeDescription}`
+    : null;
   const notes = auditLine ? `${baseNotes ? `${baseNotes}\n\n` : ""}${auditLine}` : baseNotes || null;
 
   await prisma.cashRegister.update({
@@ -299,5 +322,50 @@ export async function editClosedCashRegister(
     },
   });
 
-  return { ok: true };
+  return { ok: true, changeDescription };
+}
+
+export type CorrectCashCountResult =
+  | { ok: true; changeDescription: string }
+  | { ok: false; error: string };
+
+/**
+ * Corrige o dinheiro contado às cegas de um caixa ainda pendente de revisão
+ * (só ADMIN, ver `canEditClosedCashRegister`) — ex.: o colaborador digitou
+ * R$ 11.280,00 no lugar de R$ 1.280,00. O valor original e o nome de quem
+ * contou nunca se perdem: viram uma linha nas observações do caixa (e no log
+ * de auditoria, pela action), junto com a justificativa obrigatória.
+ */
+export async function correctPendingCashCount(
+  ctx: { tenantId: string; userId: string; userName: string },
+  input: { registerId: string; countedAmount: number; reason: string }
+): Promise<CorrectCashCountResult> {
+  const register = await prisma.cashRegister.findFirst({
+    where: { id: input.registerId, tenantId: ctx.tenantId, status: "PENDING_REVIEW" },
+  });
+  if (!register) return { ok: false, error: "Caixa pendente de revisão não encontrado." };
+  if (register.countedAmount === null) {
+    return { ok: false, error: "Este caixa ainda não tem dinheiro contado." };
+  }
+
+  const before = Number(register.countedAmount);
+  if (Math.abs(before - input.countedAmount) < 0.005) {
+    return { ok: false, error: "O valor informado é igual ao que já está registrado." };
+  }
+  const reason = input.reason.trim();
+  if (reason.length < 5) return { ok: false, error: "Escreva a justificativa da correção." };
+
+  const counter = await cashCounterName(register);
+  const changeDescription = `dinheiro contado${counter ? ` (informado por ${counter})` : ""} ${formatBRL(before)} → ${formatBRL(input.countedAmount)}. Justificativa: ${reason}`;
+  const auditLine = `Corrigido por ${ctx.userName} em ${formatDateTime(new Date())}: ${changeDescription}`;
+
+  await prisma.cashRegister.update({
+    where: { id: register.id },
+    data: {
+      countedAmount: input.countedAmount,
+      notes: register.notes ? `${register.notes}\n\n${auditLine}` : auditLine,
+    },
+  });
+
+  return { ok: true, changeDescription };
 }

@@ -9,7 +9,12 @@ import {
   canViewReports,
 } from "@/lib/permissions";
 import { formatBRL, formatDateTime, type DecimalLike } from "@/lib/format";
-import { FinalizeReviewForm, ClosedRegisterPanel, type ClosedRegisterEntry } from "../../cash-forms";
+import {
+  FinalizeReviewForm,
+  ClosedRegisterPanel,
+  CorrectCashCountForm,
+  type ClosedRegisterEntry,
+} from "../../cash-forms";
 import { CashDiagnosisCard } from "@/components/cash-diagnosis-card";
 import type { CashDifferenceEntry } from "@/lib/cash-diagnosis";
 import { getCashSummary, type CashSummary } from "@/modules/cash/cash-service";
@@ -20,12 +25,75 @@ import { getCashSummary, type CashSummary } from "@/modules/cash/cash-service";
  * se não bater com o esperado gravado no fechamento (ex.: venda cancelada
  * depois), avisa em vez de esconder a divergência.
  */
+type WithdrawalDetail = {
+  id: string;
+  amount: DecimalLike;
+  description: string | null;
+  createdAt: Date;
+  receiptPhotoUrl: string | null;
+  selfieUrl: string | null;
+  user: { name: string };
+  performedBy: { name: string } | null;
+};
+
+/** Sangrias do caixa uma a uma: quando, quanto, quem fez e o motivo. */
+function WithdrawalList({ withdrawals }: { withdrawals: WithdrawalDetail[] }) {
+  return (
+    <ul className="mt-2 space-y-2">
+      {withdrawals.map((w) => (
+        <li key={w.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex justify-between gap-3">
+            <span className="text-xs text-slate-600">{formatDateTime(w.createdAt)}</span>
+            <span className="font-medium text-red-600">- {formatBRL(w.amount)}</span>
+          </div>
+          <p className="mt-1 text-slate-900">
+            <span className="font-medium">Quem fez:</span> {w.performedBy?.name ?? w.user.name}
+            {w.performedBy && w.performedBy.name !== w.user.name && (
+              <span className="text-xs text-slate-600"> (registrado por {w.user.name})</span>
+            )}
+          </p>
+          <p className="text-slate-900">
+            <span className="font-medium">Motivo:</span>{" "}
+            {w.description?.trim() || <span className="text-slate-600">não informado</span>}
+          </p>
+          {(w.receiptPhotoUrl || w.selfieUrl) && (
+            <div className="mt-1 flex gap-3">
+              {w.receiptPhotoUrl && (
+                <a
+                  href={w.receiptPhotoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-600 underline hover:text-slate-900"
+                >
+                  Ver cupom
+                </a>
+              )}
+              {w.selfieUrl && (
+                <a
+                  href={w.selfieUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-600 underline hover:text-slate-900"
+                >
+                  Ver selfie (sem cupom)
+                </a>
+              )}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ExpectedCashBreakdown({
   summary,
   storedExpected,
+  withdrawals,
 }: {
   summary: CashSummary;
   storedExpected: DecimalLike | null;
+  withdrawals: WithdrawalDetail[];
 }) {
   const rows: { label: string; value: number; sign: "+" | "-" | "" }[] = [
     { label: "Contado na abertura", value: summary.openingAmount, sign: "" },
@@ -33,28 +101,56 @@ function ExpectedCashBreakdown({
     { label: "Assistência técnica em dinheiro", value: summary.repairCashReceipts, sign: "+" },
     { label: "Fiado recebido em dinheiro", value: summary.fiadoCashReceipts, sign: "+" },
     { label: "Suprimentos", value: summary.supplies, sign: "+" },
-    { label: "Sangrias", value: summary.withdrawals, sign: "-" },
   ];
   const differsFromStored =
     storedExpected !== null && Math.abs(Number(storedExpected) - summary.expectedInDrawer) >= 0.005;
+  const withdrawalsValue = (
+    <span className={summary.withdrawals > 0 ? "text-red-600" : "text-slate-900"}>
+      {summary.withdrawals > 0 ? "- " : ""}
+      {formatBRL(summary.withdrawals)}
+    </span>
+  );
   return (
     <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold text-slate-900">Como chegamos no dinheiro esperado</h2>
-      <dl className="mt-3 max-w-md space-y-1 text-sm">
+      <div className="mt-3 max-w-md space-y-1 text-sm">
         {rows.map((r, i) => (
           <div key={r.label} className={"flex justify-between" + (i === 0 ? " font-semibold" : "")}>
-            <dt className="text-slate-600">{r.label}</dt>
-            <dd className={r.sign === "-" && r.value > 0 ? "text-red-600" : "text-slate-900"}>
+            <span className="text-slate-600">{r.label}</span>
+            <span className="text-slate-900">
               {r.sign && r.value > 0 ? `${r.sign} ` : ""}
               {formatBRL(r.value)}
-            </dd>
+            </span>
           </div>
         ))}
+        {withdrawals.length > 0 ? (
+          // <details> abre/fecha sem JavaScript — a lista já vem do servidor.
+          <details className="group">
+            <summary className="flex cursor-pointer list-none justify-between gap-3 [&::-webkit-details-marker]:hidden">
+              <span className="text-slate-600">
+                Sangrias{" "}
+                <span className="ml-1 text-xs font-medium text-brand underline group-open:hidden">
+                  Ver mais
+                </span>
+                <span className="ml-1 hidden text-xs font-medium text-brand underline group-open:inline">
+                  Ver menos
+                </span>
+              </span>
+              {withdrawalsValue}
+            </summary>
+            <WithdrawalList withdrawals={withdrawals} />
+          </details>
+        ) : (
+          <div className="flex justify-between">
+            <span className="text-slate-600">Sangrias</span>
+            {withdrawalsValue}
+          </div>
+        )}
         <div className="flex justify-between border-t border-slate-100 pt-2 font-semibold">
-          <dt className="text-slate-900">Dinheiro esperado</dt>
-          <dd className="text-slate-900">{formatBRL(summary.expectedInDrawer)}</dd>
+          <span className="text-slate-900">Dinheiro esperado</span>
+          <span className="text-slate-900">{formatBRL(summary.expectedInDrawer)}</span>
         </div>
-      </dl>
+      </div>
       {differsFromStored && storedExpected !== null && (
         <p className="mt-3 text-xs text-amber-700">
           No fechamento o sistema gravou {formatBRL(storedExpected)} como esperado — as vendas ou
@@ -152,7 +248,16 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
   ].filter((e): e is CashDifferenceEntry => e.difference !== null);
 
   const canSeeAmounts = canViewReports(user.role);
-  const cashSummary = canSeeAmounts ? await getCashSummary(user.tenantId, register.id) : null;
+  const [cashSummary, withdrawals] = canSeeAmounts
+    ? await Promise.all([
+        getCashSummary(user.tenantId, register.id),
+        prisma.cashMovement.findMany({
+          where: { tenantId: user.tenantId, cashRegisterId: register.id, type: "WITHDRAWAL" },
+          include: { user: { select: { name: true } }, performedBy: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        }),
+      ])
+    : [null, []];
   const canFinalize = canFinalizeCashRegisterReview(user.role) && register.status === "PENDING_REVIEW";
 
   const closedEntries: ClosedRegisterEntry[] | null =
@@ -255,6 +360,17 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
             </div>
           </div>
 
+          {canEditClosedCashRegister(user.role) &&
+            register.status === "PENDING_REVIEW" &&
+            register.countedAmount !== null && (
+              <CorrectCashCountForm
+                registerId={register.id}
+                countedAmount={Number(register.countedAmount)}
+                expectedAmount={Number(register.expectedAmount ?? 0)}
+                countedByName={register.reviewSubmittedBy?.name ?? null}
+              />
+            )}
+
           {/* Quando ainda dá pra finalizar, o próprio formulário abaixo já
               mostra esperado + campo pra digitar + diferença, tudo no mesmo
               cartão — evita duplicar esses três cartões aqui em cima. */}
@@ -288,7 +404,11 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
       )}
 
       {cashSummary && (
-        <ExpectedCashBreakdown summary={cashSummary} storedExpected={register.expectedAmount} />
+        <ExpectedCashBreakdown
+          summary={cashSummary}
+          storedExpected={register.expectedAmount}
+          withdrawals={withdrawals}
+        />
       )}
 
       <div className="mb-6">
@@ -318,7 +438,7 @@ export default async function CaixaDetalhePage({ params }: { params: Promise<{ i
           </div>
         )}
         {register.notes && (
-          <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-900">
+          <p className="mt-4 whitespace-pre-line border-t border-slate-100 pt-3 text-sm text-slate-900">
             <span className="font-medium">Observações:</span> {register.notes}
           </p>
         )}
