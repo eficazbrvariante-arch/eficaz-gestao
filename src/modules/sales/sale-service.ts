@@ -750,33 +750,54 @@ export async function cancelSale(
 }
 
 export type EditSaleItemInput = { itemId: string; unitPrice: number; discount: number };
+/** Novo valor de um pagamento quando a correção muda o total da venda. */
+export type EditSalePaymentAmountInput = { paymentId: string; amount: number };
 export type EditSaleItemChange = {
   nameSnapshot: string;
   before: { unitPrice: number; discount: number };
   after: { unitPrice: number; discount: number };
 };
+export type EditSalePaymentAmountChange = { method: string; before: number; after: number };
 export type EditSaleResult =
-  | { ok: true; changes: EditSaleItemChange[] }
+  | {
+      ok: true;
+      changes: EditSaleItemChange[];
+      totalBefore: number;
+      totalAfter: number;
+      paymentChanges: EditSalePaymentAmountChange[];
+    }
   | { ok: false; error: string };
 
 /**
  * Corrige preço unitário e/ou desconto de itens já vendidos — nunca troca
- * produto, quantidade, nem adiciona/remove linha. O total da venda (o que o
- * cliente já pagou) precisa continuar exatamente igual: a correção só
- * redistribui valor entre itens (ex.: um item estava caro demais, outro
- * barato demais), nunca gera saldo a cobrar ou a devolver — isso é troca ou
- * cancelamento, não edição. Bloqueada se o caixa da venda já fechou, pra não
- * mudar um relatório de caixa que já foi conferido.
+ * produto, quantidade, nem adiciona/remove linha. Bloqueada se o caixa da
+ * venda já fechou, pra não mudar um relatório de caixa que já foi conferido.
+ *
+ * O total pode mudar (ex.: desconto esquecido na hora da venda). Nesse caso
+ * os pagamentos são ajustados junto (`paymentAmounts`) até somarem o novo
+ * total — o caixa é calculado a partir deles, então o fechamento passa a
+ * esperar o valor que ficou de fato; a diferença é devolvida/cobrada do
+ * cliente fora do sistema. Só pagamentos em Dinheiro, PIX e Cartão mudam de
+ * valor: crédito de loja, fiado e Crédito Eficaz têm um saldo/débito do
+ * cliente por trás, então uma venda com eles só redistribui entre itens
+ * (mudar o total ali é cancelamento). O `totalSpent` do cliente acompanha a
+ * diferença; a comissão (calculada em cima de `SaleItem.total`) também.
  */
 export async function editSaleItems(
   tenantId: string,
   saleId: string,
   userId: string,
-  edits: EditSaleItemInput[]
+  edits: EditSaleItemInput[],
+  paymentAmounts: EditSalePaymentAmountInput[] = []
 ): Promise<EditSaleResult> {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId },
-    include: { items: true, cashRegister: { select: { status: true } } },
+    include: {
+      items: true,
+      payments: true,
+      cashRegister: { select: { status: true } },
+      commissionPayment: { select: { saleId: true } },
+    },
   });
   if (!sale) return { ok: false, error: "Venda não encontrada." };
   if (sale.status === "CANCELLED") {
@@ -810,7 +831,10 @@ export async function editSaleItems(
     newSubtotal = round2(newSubtotal + grossTotal);
     newDiscount = round2(newDiscount + itemDiscount);
 
-    if (edit) {
+    const unchanged =
+      Math.abs(unitPrice - Number(item.unitPrice)) <= CENT &&
+      Math.abs(itemDiscount - Number(item.discount)) <= CENT;
+    if (edit && !unchanged) {
       changes.push({
         itemId: item.id,
         nameSnapshot: item.nameSnapshot,
@@ -824,14 +848,65 @@ export async function editSaleItems(
 
   if (changes.length === 0) return { ok: false, error: "Nenhuma alteração informada." };
 
+  const oldTotal = Number(sale.total);
   const newTotal = round2(
     newSubtotal - newDiscount - Number(sale.convenioDiscount) + Number(sale.creditoEficazSurcharge)
   );
-  if (Math.abs(newTotal - Number(sale.total)) > CENT) {
-    return {
-      ok: false,
-      error: `Essa correção mudaria o total da venda de ${formatBRL(Number(sale.total))} para ${formatBRL(newTotal)} — ajuste os valores até o total ficar igual ao original.`,
-    };
+  const totalChanged = Math.abs(newTotal - oldTotal) > CENT;
+
+  const paymentUpdates: { paymentId: string; method: string; before: number; after: number }[] = [];
+  if (totalChanged) {
+    if (newTotal < 0) {
+      return { ok: false, error: "O total da venda não pode ficar negativo." };
+    }
+    const lockedPayment = sale.payments.find((p) => !EDITABLE_PAYMENT_METHODS.has(p.method));
+    if (lockedPayment) {
+      return {
+        ok: false,
+        error: `Esta venda tem pagamento em "${PAYMENT_METHOD_LABELS[lockedPayment.method]}" — o total não pode mudar por aqui, só ser redistribuído entre os itens. Para mudar o valor, cancele a venda.`,
+      };
+    }
+    if (sale.commissionPayment) {
+      return { ok: false, error: "A comissão desta venda já foi paga — o total não pode mais mudar." };
+    }
+
+    const amountByPaymentId = new Map(paymentAmounts.map((p) => [p.paymentId, round2(p.amount)]));
+    for (const paymentId of amountByPaymentId.keys()) {
+      if (!sale.payments.some((p) => p.id === paymentId)) {
+        return { ok: false, error: "Pagamento não encontrado nesta venda." };
+      }
+    }
+    let paymentsSum = 0;
+    for (const payment of sale.payments) {
+      const before = Number(payment.amount);
+      const after = amountByPaymentId.get(payment.id) ?? before;
+      if (after < 0) return { ok: false, error: "O valor de um pagamento não pode ser negativo." };
+      paymentsSum = round2(paymentsSum + after);
+      if (Math.abs(after - before) > CENT) {
+        paymentUpdates.push({ paymentId: payment.id, method: payment.method, before, after });
+      }
+    }
+    if (Math.abs(paymentsSum - newTotal) > CENT) {
+      return {
+        ok: false,
+        error: `Os pagamentos somam ${formatBRL(paymentsSum)}, mas o novo total da venda é ${formatBRL(newTotal)} — ajuste os pagamentos até baterem.`,
+      };
+    }
+  }
+
+  // Troco do comprovante: o dinheiro entregue pelo cliente não muda. Se a
+  // parte em dinheiro baixou, a diferença aparece como troco a mais; se subiu
+  // além do que foi entregue, o recebido passa a ser a própria parte em dinheiro.
+  let cashFields: { cashReceived: number; changeAmount: number } | undefined;
+  if (sale.cashReceived !== null && paymentUpdates.some((u) => u.method === "CASH")) {
+    const afterById = new Map(paymentUpdates.map((u) => [u.paymentId, u.after]));
+    const newCashPortion = round2(
+      sale.payments
+        .filter((p) => p.method === "CASH")
+        .reduce((sum, p) => sum + (afterById.get(p.id) ?? Number(p.amount)), 0)
+    );
+    const cashReceived = Math.max(Number(sale.cashReceived), newCashPortion);
+    cashFields = { cashReceived, changeAmount: round2(cashReceived - newCashPortion) };
   }
 
   try {
@@ -842,15 +917,32 @@ export async function editSaleItems(
           data: { unitPrice: change.unitPrice, discount: change.discount, total: change.total },
         });
       }
+      for (const update of paymentUpdates) {
+        // Pagamento zerado (ex.: desconto cobriu toda a parte no PIX) sai da
+        // venda — o valor antigo fica no log de auditoria.
+        if (update.after <= CENT) {
+          await tx.payment.delete({ where: { id: update.paymentId } });
+        } else {
+          await tx.payment.update({ where: { id: update.paymentId }, data: { amount: update.after } });
+        }
+      }
       await tx.sale.update({
         where: { id: saleId },
         data: {
           subtotal: newSubtotal,
           discount: newDiscount,
+          ...(totalChanged ? { total: newTotal } : {}),
+          ...cashFields,
           editedAt: new Date(),
           editedById: userId,
         },
       });
+      if (totalChanged && sale.customerId) {
+        await tx.customer.update({
+          where: { id: sale.customerId },
+          data: { totalSpent: { increment: round2(newTotal - oldTotal) } },
+        });
+      }
     });
 
     return {
@@ -859,6 +951,13 @@ export async function editSaleItems(
         nameSnapshot: c.nameSnapshot,
         before: c.before,
         after: { unitPrice: c.unitPrice, discount: c.discount },
+      })),
+      totalBefore: oldTotal,
+      totalAfter: totalChanged ? newTotal : oldTotal,
+      paymentChanges: paymentUpdates.map((u) => ({
+        method: PAYMENT_METHOD_LABELS[u.method] ?? u.method,
+        before: u.before,
+        after: u.after,
       })),
     };
   } catch {

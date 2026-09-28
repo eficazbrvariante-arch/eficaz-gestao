@@ -84,16 +84,29 @@ export async function editSaleAction(saleId: string, input: EditSaleInput) {
     return { error: parsed.error.issues[0]?.message ?? "Informe os valores corrigidos." };
   }
 
-  const result = await editSaleItems(user.tenantId, saleId, user.id, parsed.data.edits);
+  const result = await editSaleItems(
+    user.tenantId,
+    saleId,
+    user.id,
+    parsed.data.edits,
+    parsed.data.paymentAmounts
+  );
   if (!result.ok) return { error: result.error };
 
-  const sale = await prisma.sale.findUnique({ where: { id: saleId }, select: { number: true, total: true } });
+  const sale = await prisma.sale.findUnique({ where: { id: saleId }, select: { number: true } });
   const description = result.changes
     .map(
       (c) =>
         `"${c.nameSnapshot}": preço ${formatBRL(c.before.unitPrice)} → ${formatBRL(c.after.unitPrice)}, desconto ${formatBRL(c.before.discount)} → ${formatBRL(c.after.discount)}`
     )
     .join("; ");
+  const totalChanged = result.totalAfter !== result.totalBefore;
+  const paymentsDescription = result.paymentChanges
+    .map((p) => `${p.method} ${formatBRL(p.before)} → ${formatBRL(p.after)}`)
+    .join("; ");
+  const totalDescription = totalChanged
+    ? `Total alterado de ${formatBRL(result.totalBefore)} para ${formatBRL(result.totalAfter)} (${result.totalAfter < result.totalBefore ? "devolvido ao cliente" : "cobrado a mais do cliente"}: ${formatBRL(Math.abs(result.totalAfter - result.totalBefore))}). Pagamentos: ${paymentsDescription}.`
+    : `Total mantido em ${formatBRL(result.totalAfter)}.`;
   await recordAudit({
     tenantId: user.tenantId,
     userId: user.id,
@@ -101,11 +114,16 @@ export async function editSaleAction(saleId: string, input: EditSaleInput) {
     action: "sale.edit",
     entity: "Sale",
     entityId: saleId,
-    description: `Corrigiu a venda #${sale?.number} — ${description}. Total mantido em ${formatBRL(Number(sale?.total ?? 0))}.`,
+    description: `Corrigiu a venda #${sale?.number} — ${description}. ${totalDescription}`,
   });
 
   revalidatePath(`/vendas/${saleId}`);
   revalidatePath("/vendas");
+  if (totalChanged) {
+    revalidatePath("/caixa");
+    revalidatePath("/dashboard");
+    revalidatePath("/clientes");
+  }
 
   return { success: "Venda corrigida." };
 }

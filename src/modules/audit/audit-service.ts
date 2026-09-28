@@ -77,7 +77,7 @@ export type AuditAction =
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "sale.cancel": "Venda cancelada",
-  "sale.edit": "Preço/desconto de item corrigido em venda concluída",
+  "sale.edit": "Preço/desconto (e, se for o caso, total e pagamento) corrigido em venda concluída",
   "sale.payment_method_edit": "Forma de pagamento corrigida em venda concluída",
   "sale.item_defect": "Troca por defeito registrada",
   "customer.merge": "Cadastros de cliente mesclados",

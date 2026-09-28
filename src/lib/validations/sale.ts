@@ -76,8 +76,14 @@ export const editSaleItemSchema = z.object({
   unitPrice: z.coerce.number().min(0, "Preço não pode ser negativo"),
   discount: z.coerce.number().min(0, "Desconto não pode ser negativo").default(0),
 });
+export const editSalePaymentAmountSchema = z.object({
+  paymentId: z.string().trim().min(1),
+  amount: z.coerce.number().min(0, "Valor do pagamento não pode ser negativo"),
+});
 export const editSaleSchema = z.object({
   edits: z.array(editSaleItemSchema).min(1, "Corrija ao menos um item"),
+  /** Só quando a correção muda o total — novo valor de cada pagamento (ver `editSaleItems`). */
+  paymentAmounts: z.array(editSalePaymentAmountSchema).default([]),
 });
 export type EditSaleInput = z.infer<typeof editSaleSchema>;
 

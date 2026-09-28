@@ -3023,3 +3023,26 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   logins com senha errada (`CredentialsSignin`), nada deste deploy. `.codex/` e
   `docs/PWA_EFICAZ_relatorio.pdf` ficaram fora do commit.
 - **Pendente**: testar no navegador logado (Admin e Vendedor) a tela de serviços e a busca na OS.
+
+## 26/09/2026 — Editar venda: permitir mudar o total
+
+- **Pedido**: em "Editar venda", dar o desconto esquecido e a nota baixar de R$ 100 para
+  R$ 90. Antes o total era travado e "Salvar correção" ficava apagado. A pessoa
+  escolheu permitir **baixar e aumentar** o total.
+- **Branch**: `feat/editar-venda-mudar-total` (não commitado, não publicado).
+- **Código**:
+  - `src/modules/sales/sale-service.ts` (`editSaleItems`): aceita novo total com
+    `paymentAmounts`. Os pagamentos precisam somar o novo total, e um pagamento que
+    fica zerado sai da venda. O `totalSpent` do cliente acompanha a diferença. No
+    dinheiro, o valor recebido fica igual e a diferença vira troco.
+  - Só Dinheiro/PIX/Cartão mudam de valor. Com Crédito de loja, Fiado ou Crédito
+    Eficaz na venda, o total continua travado. Também fica travado se a comissão da
+    venda já foi paga ou se o caixa já fechou (regra antiga).
+  - Tela `vendas/[id]/sale-controls.tsx`: mostra "Devolver R$ X ao cliente" ou
+    "Cobrar R$ X a mais" e sugere o ajuste no pagamento (editável). A soma precisa
+    bater. A devolução ou cobrança em si é feita fora do sistema.
+  - Auditoria `sale.edit` agora registra total antes/depois e os pagamentos ajustados.
+- **Sem mudança de banco.**
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test`
+  168/168, integração 126/126 (8 novos em `sale-total-edit.integration.test.ts`).
+- **Pendente**: testar no navegador; commit e publicação quando pedido.

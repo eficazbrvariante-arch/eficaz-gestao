@@ -143,13 +143,68 @@ export function SaleActions({
     }, totalAdjustment)
   );
   const storeCreditRefund = round2(Math.max(0, saleTotal - creditoEficazPaid));
-  const editedTotalMatches = Math.abs(editedTotal - saleTotal) <= CENT;
+  const totalDifference = round2(editedTotal - saleTotal);
+  const totalChanged = Math.abs(totalDifference) > CENT;
+
+  // Mudar o total exige ajustar os pagamentos junto (ver `editSaleItems`) —
+  // só Dinheiro/PIX/Cartão mudam de valor; com qualquer outra forma na venda,
+  // o total fica travado.
+  const hasLockedPayment = editablePayments.some(
+    (p) => !(EDITABLE_PAYMENT_METHODS as readonly string[]).includes(p.method)
+  );
+  const [paymentAmountValues, setPaymentAmountValues] = useState<Record<string, string>>({});
+  const [paymentAmountsTouched, setPaymentAmountsTouched] = useState(false);
+  // Sugestão automática: a diferença sai (ou entra) no primeiro pagamento que
+  // comporta; se nenhum sozinho comporta a redução, vai baixando um por um.
+  const suggestedPaymentAmounts = (() => {
+    const amounts: Record<string, number> = Object.fromEntries(
+      editablePayments.map((p) => [p.id, p.amount])
+    );
+    if (!totalChanged || editablePayments.length === 0) return amounts;
+    const absorber = editablePayments.find((p) => p.amount + totalDifference >= -CENT);
+    if (absorber) {
+      amounts[absorber.id] = round2(absorber.amount + totalDifference);
+      return amounts;
+    }
+    let remaining = -totalDifference;
+    for (const p of editablePayments) {
+      const cut = Math.min(p.amount, remaining);
+      amounts[p.id] = round2(p.amount - cut);
+      remaining = round2(remaining - cut);
+    }
+    return amounts;
+  })();
+  const effectivePaymentAmounts: Record<string, number> = paymentAmountsTouched
+    ? Object.fromEntries(
+        editablePayments.map((p) => [p.id, Number(paymentAmountValues[p.id]) || 0])
+      )
+    : suggestedPaymentAmounts;
+  const paymentsSum = round2(
+    editablePayments.reduce((sum, p) => sum + (effectivePaymentAmounts[p.id] ?? 0), 0)
+  );
+  const paymentsMatch = Math.abs(paymentsSum - editedTotal) <= CENT;
+  const canSubmitEdit =
+    !totalChanged || (!hasLockedPayment && editedTotal >= 0 && paymentsMatch);
+
+  function changePaymentAmount(paymentId: string, value: string) {
+    setPaymentAmountValues((prev) => ({
+      ...(paymentAmountsTouched
+        ? prev
+        : Object.fromEntries(
+            Object.entries(suggestedPaymentAmounts).map(([id, amount]) => [id, String(amount)])
+          )),
+      [paymentId]: value,
+    }));
+    setPaymentAmountsTouched(true);
+  }
 
   function openEdit() {
     setEditValues(
       editableItems.map((item) => ({ unitPrice: String(item.unitPrice), discount: String(item.discount) }))
     );
     setEditError(undefined);
+    setPaymentAmountValues({});
+    setPaymentAmountsTouched(false);
     setPaymentMethodValues(Object.fromEntries(editablePayments.map((p) => [p.id, p.method])));
     setPaymentMethodError(undefined);
     setShowEdit(true);
@@ -157,8 +212,12 @@ export function SaleActions({
 
   function submitEdit() {
     setEditError(undefined);
-    if (!editedTotalMatches) {
-      setEditError("O total corrigido precisa ficar igual ao total original da venda.");
+    if (!canSubmitEdit) {
+      setEditError(
+        hasLockedPayment
+          ? "Esta venda tem pagamento que não pode mudar de valor — o total precisa continuar igual."
+          : "Os pagamentos precisam somar o novo total da venda."
+      );
       return;
     }
     startEditTransition(async () => {
@@ -168,6 +227,9 @@ export function SaleActions({
           unitPrice: Number(editValues[index]?.unitPrice) || 0,
           discount: Number(editValues[index]?.discount) || 0,
         })),
+        paymentAmounts: totalChanged
+          ? editablePayments.map((p) => ({ paymentId: p.id, amount: effectivePaymentAmounts[p.id] ?? 0 }))
+          : [],
       });
       if (result?.error) {
         setEditError(result.error);
@@ -361,8 +423,8 @@ export function SaleActions({
         <div className="mt-4 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="mb-3 text-sm text-amber-900">
             Corrija preço unitário e/ou desconto dos itens já vendidos — o produto e a quantidade
-            não mudam. O total precisa continuar {formatBRL(saleTotal)}; a correção fica registrada
-            no histórico com seu nome.
+            não mudam. Se o total mudar (ex.: desconto esquecido), o pagamento é ajustado junto. A
+            correção fica registrada no histórico com seu nome.
           </p>
           <FormBanner message={editError} variant="error" />
 
@@ -408,22 +470,74 @@ export function SaleActions({
             ))}
           </div>
 
-          <div
-            className={
-              editedTotalMatches
-                ? "mb-3 flex justify-between rounded-md bg-white px-3 py-2 text-sm font-medium text-emerald-700"
-                : "mb-3 flex justify-between rounded-md bg-white px-3 py-2 text-sm font-medium text-red-700"
-            }
-          >
+          <div className="mb-3 flex justify-between rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-900">
             <span>Total corrigido</span>
             <span>
-              {formatBRL(editedTotal)} {editedTotalMatches ? "" : `(original: ${formatBRL(saleTotal)})`}
+              {formatBRL(editedTotal)}{" "}
+              {totalChanged && (
+                <span className="text-slate-500">(original: {formatBRL(saleTotal)})</span>
+              )}
             </span>
           </div>
 
+          {totalChanged && hasLockedPayment && (
+            <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Esta venda tem pagamento em Crédito de loja, Fiado ou Crédito Eficaz — o total não pode
+              mudar por aqui, só ser redistribuído entre os itens. Para mudar o valor, cancele a venda.
+            </p>
+          )}
+
+          {totalChanged && !hasLockedPayment && (
+            <div className="mb-3 rounded-md border border-amber-200 bg-white p-3">
+              <p className="mb-2 text-sm font-medium text-slate-900">
+                {totalDifference < 0
+                  ? `Devolver ${formatBRL(-totalDifference)} ao cliente`
+                  : `Cobrar ${formatBRL(totalDifference)} a mais do cliente`}
+              </p>
+              <p className="mb-3 text-xs text-slate-600">
+                {totalDifference < 0
+                  ? "A devolução (dinheiro ou estorno no cartão/PIX) é feita fora do sistema. Confira de qual pagamento sai a diferença — o caixa passa a esperar esses valores."
+                  : "Receba a diferença do cliente e confira em qual pagamento ela entra — o caixa passa a esperar esses valores."}
+              </p>
+              <div className="space-y-2">
+                {editablePayments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between gap-3">
+                    <label htmlFor={`edit-payment-${payment.id}`} className="text-sm font-medium text-slate-900">
+                      {PAYMENT_METHOD_LABELS[payment.method]}{" "}
+                      <span className="text-xs text-slate-400">(era {formatBRL(payment.amount)})</span>
+                    </label>
+                    <Input
+                      id={`edit-payment-${payment.id}`}
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      className="w-32"
+                      value={
+                        paymentAmountsTouched
+                          ? (paymentAmountValues[payment.id] ?? "")
+                          : String(suggestedPaymentAmounts[payment.id] ?? 0)
+                      }
+                      onChange={(e) => changePaymentAmount(payment.id, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p
+                className={
+                  paymentsMatch
+                    ? "mt-2 text-xs font-medium text-emerald-700"
+                    : "mt-2 text-xs font-medium text-red-700"
+                }
+              >
+                Pagamentos somam {formatBRL(paymentsSum)}
+                {paymentsMatch ? " — batem com o novo total." : ` — precisam somar ${formatBRL(editedTotal)}.`}
+              </p>
+            </div>
+          )}
+
           <Button
             type="button"
-            disabled={isEditing || !editedTotalMatches}
+            disabled={isEditing || !canSubmitEdit}
             fullWidth={false}
             onClick={submitEdit}
             className="bg-amber-600 px-4 hover:bg-amber-700"
