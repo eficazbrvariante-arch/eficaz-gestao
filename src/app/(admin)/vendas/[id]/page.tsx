@@ -21,10 +21,18 @@ function firstName(name: string) {
   return name.trim().split(/\s+/)[0] ?? "";
 }
 
-// Últimos 4 dígitos do telefone, pra nota impressa não expor o número inteiro.
-function phoneTail(phone: string | null | undefined) {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  return digits.length >= 4 ? digits.slice(-4) : null;
+// Número Eficaz na nota impressa: só os 3 últimos dígitos, o resto com
+// asterisco ("EF-000123" → "EF-***123"). Identifica o cliente no balcão sem
+// expor nenhum dado pessoal (telefone/CPF ficam só na tela).
+function maskedEficazNumber(code: string | null | undefined) {
+  if (!code) return null;
+  return code.replace(/\d+/, (digits) => "*".repeat(Math.max(0, digits.length - 3)) + digits.slice(-3));
+}
+
+/** "RONY · EF-***123" — primeiro nome + código mascarado, o que a nota impressa mostra do cliente. */
+function printedCustomerLabel(name: string, eficazNumber: string | null | undefined) {
+  const code = maskedEficazNumber(eficazNumber);
+  return code ? `${firstName(name)} · ${code}` : firstName(name);
 }
 
 export default async function ComprovantePage({
@@ -50,7 +58,10 @@ export default async function ComprovantePage({
         editedBy: { select: { name: true } },
         cashRegister: { select: { status: true } },
         convenioRedemption: {
-          include: { member: { select: { name: true } }, convenio: { select: { name: true } } },
+          include: {
+            member: { select: { name: true, customer: { select: { eficazNumber: true } } } },
+            convenio: { select: { name: true } },
+          },
         },
       },
     }),
@@ -235,7 +246,10 @@ export default async function ComprovantePage({
                 Benefício Convênio {sale.convenioRedemption.convenio.name} —{" "}
                 <span className="print:hidden">{sale.convenioRedemption.member.name}</span>
                 <span className="hidden print:inline">
-                  {firstName(sale.convenioRedemption.member.name)}
+                  {printedCustomerLabel(
+                    sale.convenioRedemption.member.name,
+                    sale.convenioRedemption.member.customer?.eficazNumber
+                  )}
                 </span>
                 {sale.convenioRedemption.reversedAt ? " (revertido)" : ""}
               </span>
@@ -298,10 +312,9 @@ export default async function ComprovantePage({
             </div>
             {/* Impressão: a nota fica com o cliente e pode ser perdida — só o mínimo. */}
             <div className="hidden space-y-0.5 print:block">
-              <p className="font-medium text-slate-900">Cliente: {firstName(sale.customer.name)}</p>
-              {phoneTail(sale.customer.phone || sale.customer.whatsapp) && (
-                <p>Contato: final {phoneTail(sale.customer.phone || sale.customer.whatsapp)}</p>
-              )}
+              <p className="font-medium text-slate-900">
+                Cliente: {printedCustomerLabel(sale.customer.name, sale.customer.eficazNumber)}
+              </p>
             </div>
           </div>
         )}
