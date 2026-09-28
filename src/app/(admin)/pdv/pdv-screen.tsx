@@ -37,6 +37,7 @@ import {
 import { CustomerPickerModal, type CustomerOption } from "./customer-picker-modal";
 import type { CustomerCreditTerms } from "@/modules/credito-eficaz/convenio-credit-service";
 import { SellerPickerModal } from "./seller-picker-modal";
+import { InitialPriceModal } from "./initial-price-modal";
 import { ConvenioModal } from "./convenio-modal";
 import { ConvenioSignupsModal } from "./convenio-signups-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
@@ -200,10 +201,13 @@ export function PdvScreen({
   canDiscountFreely,
   canFiado,
   canMoveCash,
+  canSetInitialPrice,
   autoPrintReceipt,
   creditoEficazSurchargePercent,
   pendingConvenioSignups,
 }: {
+  /** Gerente/Admin definem o primeiro preço de produto sem preço (R$ 0,00) — ver `canSetInitialPriceAtPdv`. */
+  canSetInitialPrice: boolean;
   canDiscount: boolean;
   /** Só ADMIN — a trava de capinha na película (ver `seller-discount-rules.ts`) vale até pro Gerente. */
   canDiscountFreely: boolean;
@@ -234,6 +238,10 @@ export function PdvScreen({
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [error, setError] = useState<string>();
+  // Produto sem preço aguardando o Gerente/Admin definir o primeiro preço.
+  const [pendingPrice, setPendingPrice] = useState<{ product: PdvProduct; variantId: string | null } | null>(
+    null
+  );
   const [discountNotice, setDiscountNotice] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
@@ -549,7 +557,30 @@ export function PdvScreen({
     };
   });
 
+  function clearSearch() {
+    setTerm("");
+    setResults([]);
+    setResultsTotalCount(0);
+    setSuggestionsOpen(false);
+  }
+
   function addToCart(product: PdvProduct, variantId: string | null) {
+    // Produto cadastrado sem preço (ex.: importado da nota do fornecedor):
+    // nunca entra no carrinho por R$ 0,00. Gerente/Admin definem o preço uma
+    // vez; o vendedor é orientado a chamar um deles.
+    if (product.price <= 0) {
+      clearSearch();
+      if (canSetInitialPrice) {
+        setPendingPrice({ product, variantId });
+      } else {
+        setError(
+          `"${product.name}" está sem preço. Chame o Gerente ou o Administrador para definir o preço.`
+        );
+        searchRef.current?.focus();
+      }
+      return;
+    }
+
     const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
     const key = `${product.id}:${variantId ?? ""}`;
     const unitPrice = round2(product.price + (variant?.priceAdjustment ?? 0));
@@ -1543,6 +1574,20 @@ export function PdvScreen({
         selected={customer}
         onSelect={selectCustomer}
         onClear={clearCustomer}
+      />
+
+      <InitialPriceModal
+        product={pendingPrice ? { id: pendingPrice.product.id, name: pendingPrice.product.name } : null}
+        onClose={() => {
+          setPendingPrice(null);
+          searchRef.current?.focus();
+        }}
+        onPriceSet={(price) => {
+          if (!pendingPrice) return;
+          const { product, variantId } = pendingPrice;
+          setPendingPrice(null);
+          addToCart({ ...product, price }, variantId);
+        }}
       />
 
       <SellerPickerModal

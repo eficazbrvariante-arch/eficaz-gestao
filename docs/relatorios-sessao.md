@@ -3108,3 +3108,41 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   **R$ 21.821,91 de custo**, igual ao total da nota. Produtos no sistema: 1.826 → 1.905.
 - **Observação**: a importação grava o estoque direto, sem lançar "entrada" no
   histórico de movimentação do estoque (é como a tela de importação funciona hoje).
+
+## 28/09/2026 — Publicação: Editar venda (total), Caixa (sangrias/correção) e nota mascarada
+
+- Commits `69c8ebe` (Editar venda), `19528b9` (Caixa) e `31e95a7` (nota + relatório),
+  cada um na sua branch, juntados na `main` (merges `6aa7a55` e `4f5a97d`; conflito só no
+  relatório, resolvido mantendo todas as entradas) e publicados.
+- Testes na `main` juntada: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`,
+  `npm test` 168/168, integração 132/132.
+- `check:deploy`: deploy Ready, páginas ok, `comprar-whatsapp` → 307.
+- **Atenção nos logs**: 12 logins com senha errada (`CredentialsSignin`) em
+  `app.eficazbr.com.br` entre 13:11 e 13:17 de 28/09. Não tem relação com o deploy, mas
+  vale confirmar se foi alguém da equipe errando a senha.
+- **Pendente**: testar no navegador as telas novas (Editar venda com total, correção da
+  contagem do caixa, "Ver mais" das sangrias, impressão da nota).
+
+## 28/09/2026 — PDV: primeiro preço de produto sem preço
+
+- **Pedido**: os 79 produtos da HOME 10 (preço R$ 0,00) ganham o preço na primeira vez
+  que passam no PDV, uma vez só.
+- **Decisões da pessoa**: só **Gerente e Administrador** definem o primeiro preço no PDV
+  (o vendedor vê "chame o Gerente ou o Administrador"). Na tela do produto, continua
+  como hoje: Admin e Gerente mudam o preço.
+- **Branch**: `feat/pdv-preco-primeira-venda` (não commitado, não publicado).
+- **Código**:
+  - `src/modules/products/initial-price.ts` (`setInitialProductPrice`): grava o preço
+    só se o produto está com R$ 0,00 e sem promoção. Usa `updateMany` com
+    `salePrice: 0` no filtro, então com dois caixas ao mesmo tempo só o primeiro grava.
+    Também atualiza o preço do catálogo e o histórico de preço.
+  - `pdv/actions.ts` (`setInitialPriceAction`), permissão `canSetInitialPriceAtPdv`,
+    auditoria `product.initial_price`.
+  - PDV: produto com preço 0 não entra no carrinho. Para o Gerente/Admin abre
+    "Produto sem preço"; depois de definido, o produto entra já com o preço.
+  - `createSale` passou a recusar item com preço R$ 0,00. Isso vale também para
+    produtos antigos com preço 0, que antes podiam ser vendidos de graça.
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test`
+  168/168, integração 137/137 (5 novos em `initial-price.integration.test.ts`).
+- **Pendente**: publicar; depois **ativar os 79 produtos** da HOME 10 (hoje inativos).
+  Ativar antes de publicar deixaria vender por R$ 0,00.

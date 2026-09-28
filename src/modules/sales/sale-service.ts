@@ -197,6 +197,14 @@ export async function createSale(
     }
 
     const basePrice = Number(product.promoPrice ?? product.salePrice);
+    // Produto cadastrado sem preço nunca é vendido por R$ 0,00 — o PDV pede
+    // o primeiro preço antes (ver `setInitialProductPrice`).
+    if (basePrice <= 0) {
+      return {
+        ok: false,
+        error: `"${product.name}" está sem preço. Defina o preço antes de vender.`,
+      };
+    }
     const unitPrice = round2(basePrice + Number(variant?.priceAdjustment ?? 0));
     const unitCost = Number(product.costPrice);
     const grossTotal = round2(unitPrice * item.quantity);

@@ -129,6 +129,15 @@ export function canManageProducts(role: UserRole) {
 }
 
 /**
+ * Definir no PDV o primeiro preço de venda de um produto cadastrado sem preço
+ * (R$ 0,00) — uma vez só; depois o preço muda apenas pela tela do produto.
+ * O vendedor não define: vê "chame o Gerente ou o Administrador".
+ */
+export function canSetInitialPriceAtPdv(role: UserRole) {
+  return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
  * Área Estoque (movimentações, inventário, ajuste rápido). Gerente ficou de
  * fora por decisão do dono (11/09/2026) — continua vendo a quantidade na
  * lista de produtos e no PDV, que é o que precisa pra vender.

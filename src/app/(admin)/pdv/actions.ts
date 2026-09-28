@@ -9,6 +9,7 @@ import {
   canManageFiado,
   canReviewConvenioSignups,
   canSell,
+  canSetInitialPriceAtPdv,
 } from "@/lib/permissions";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
@@ -25,6 +26,8 @@ import {
 } from "@/modules/credito-eficaz/convenio-credit-service";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
 import { createSale } from "@/modules/sales/sale-service";
+import { setInitialProductPrice } from "@/modules/products/initial-price";
+import { formatBRL } from "@/lib/format";
 import { isSellerAssignable } from "@/modules/sales/seller-eligibility";
 import {
   resolveConvenioCredential,
@@ -156,6 +159,40 @@ export async function searchProductsAction(
   ]);
 
   return { products: products.map(toPdvProduct), exact: false, totalCount };
+}
+
+/**
+ * Primeiro preço de um produto cadastrado sem preço, definido no PDV quando
+ * ele passa no caixa pela primeira vez (só Gerente/Admin — ver
+ * `canSetInitialPriceAtPdv`). Uma vez só: depois, só pela tela do produto.
+ */
+export async function setInitialPriceAction(
+  productId: string,
+  price: number
+): Promise<{ ok: true; price: number } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!canSetInitialPriceAtPdv(user.role)) {
+    return {
+      ok: false,
+      error: "Produto sem preço. Chame o Gerente ou o Administrador para definir o preço.",
+    };
+  }
+
+  const result = await setInitialProductPrice(user.tenantId, productId, Number(price));
+  if (!result.ok) return result;
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "product.initial_price",
+    entity: "Product",
+    entityId: productId,
+    description: `Definiu no PDV o primeiro preço de "${result.name}": ${formatBRL(result.price)}.`,
+  });
+
+  revalidatePath("/produtos");
+  return { ok: true, price: result.price };
 }
 
 export type PdvSellerOption = { id: string; name: string; role: string };
