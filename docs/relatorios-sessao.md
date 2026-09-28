@@ -3023,3 +3023,44 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   logins com senha errada (`CredentialsSignin`), nada deste deploy. `.codex/` e
   `docs/PWA_EFICAZ_relatorio.pdf` ficaram fora do commit.
 - **Pendente**: testar no navegador logado (Admin e Vendedor) a tela de serviços e a busca na OS.
+
+## 28/09/2026 — Nota impressa: primeiro nome + código do cliente mascarado
+
+- **Pedido**: na nota impressa, só o primeiro nome e o código interno do cliente, com
+  os três primeiros dígitos em asterisco.
+- **Branch**: `fix/nota-codigo-cliente` (não commitado, não publicado). As mudanças do
+  caixa (sangria/correção da contagem) e do "Editar venda" seguem guardadas no
+  `git stash` ("caixa-detalhe-sangria" e "editar-venda-mudar-total").
+- **Código** (`src/app/(admin)/vendas/[id]/page.tsx`, só a **impressão**; a tela
+  continua completa para a equipe):
+  - Cliente: "Cliente: RONY · EF-***123" (Número Eficaz, só os 3 últimos dígitos).
+    Saiu o "Contato: final XXXX" do telefone.
+  - Convênio: "Benefício Convênio Havan — RONY · EF-***123", com o Número Eficaz do
+    cliente ligado ao conveniado. Sem cliente ligado, sai só o primeiro nome. O
+    código curto do convênio (6 dígitos) **não** é impresso, porque serve para
+    resgatar o benefício no PDV.
+  - Vale também para a impressão pelo PDV, que usa a mesma página.
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`. A máscara foi
+  conferida à parte (`EF-000123` → `EF-***123`). Impressão ainda não testada no navegador.
+
+## 28/09/2026 — Cadastro dos produtos da nota HOME 10 (planilha `eficaz 28-09.xlsx`)
+
+- **Pedido**: cadastrar os produtos da planilha do fornecedor com custo e quantidade;
+  o preço de venda a pessoa coloca à mão.
+- **Como foi feito**: a planilha foi lida direto do arquivo (sem digitar da foto) e
+  virou um CSV. A importação rodou pela tela `/produtos/importar`, na produção, pelo
+  Chrome logado como Administrador, com confirmação da pessoa antes de gravar.
+  - 91 linhas → **79 produtos**. 12 códigos apareciam nas duas partes da planilha,
+    com o mesmo custo, e as quantidades foram somadas.
+  - Código do fornecedor como código interno; fornecedor "HOME 10 LOJA DE
+    DEPARTAMENTOS" (criado na importação); preço de venda R$ 0,00.
+  - **Inativos e fora da loja online** (escolha da pessoa), para ninguém vender por
+    R$ 0,00 no PDV. Ao colocar o preço, é preciso marcar "Ativo".
+  - Os dois "CARREGADOR RAPIDO FONTE 2 USB" ganharam o código no nome
+    (9977778, custo R$ 8,78; 9977777, custo R$ 10,17).
+  - Antes da importação, nenhum código ou modelo da planilha existia no sistema.
+- **Conferência depois**: os 79 produtos batem com a planilha em custo, estoque,
+  preço 0, inativo, fora do catálogo e fornecedor. Total: **1.384 unidades** e
+  **R$ 21.821,91 de custo**, igual ao total da nota. Produtos no sistema: 1.826 → 1.905.
+- **Observação**: a importação grava o estoque direto, sem lançar "entrada" no
+  histórico de movimentação do estoque (é como a tela de importação funciona hoje).
