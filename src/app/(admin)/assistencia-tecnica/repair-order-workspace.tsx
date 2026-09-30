@@ -35,6 +35,7 @@ import {
   cancelRepairOrderWithoutBillingAction,
   createRepairOrderAction,
   deliverRepairOrderAction,
+  editRepairOrderPaymentAmountAction,
   editRepairOrderPaymentMethodAction,
   ensureRepairOrderReceiptAction,
   grantRepairOrderCourtesyAction,
@@ -1738,8 +1739,9 @@ function CreditoEficazSurchargeNote({
 const EDITABLE_PAYMENT_METHODS = ["CASH", "PIX", "DEBIT", "CREDIT"] as const;
 
 /**
- * "Corrigir" a forma de um pagamento já registrado (só Admin, qualquer OS —
- * ver `editRepairOrderPaymentMethod`). Só a forma muda, nunca o valor.
+ * "Corrigir" a forma ou o valor de um pagamento já registrado (só Admin,
+ * qualquer OS — ver `editRepairOrderPaymentMethod` e
+ * `editRepairOrderPaymentAmount`).
  */
 function PaymentMethodEditor({
   repairOrderId,
@@ -1749,27 +1751,34 @@ function PaymentMethodEditor({
   payment: { id: string; method: string; amount: number; createdAt: string };
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<"method" | "amount" | null>(null);
   const [method, setMethod] = useState(payment.method);
+  const [amount, setAmount] = useState(String(payment.amount));
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string }>();
   const [isPending, startTransition] = useTransition();
 
   if (!(EDITABLE_PAYMENT_METHODS as readonly string[]).includes(payment.method)) return null;
 
+  const parsedAmount = Number(amount.replace(",", "."));
+  const amountUnchanged = !Number.isFinite(parsedAmount) || Math.abs(parsedAmount - payment.amount) < 0.005;
+
   function save() {
     setMessage(undefined);
     startTransition(async () => {
-      const result = await editRepairOrderPaymentMethodAction(
-        repairOrderId,
-        payment.id,
-        method as (typeof EDITABLE_PAYMENT_METHODS)[number]
-      );
+      const result =
+        editing === "amount"
+          ? await editRepairOrderPaymentAmountAction(repairOrderId, payment.id, parsedAmount)
+          : await editRepairOrderPaymentMethodAction(
+              repairOrderId,
+              payment.id,
+              method as (typeof EDITABLE_PAYMENT_METHODS)[number]
+            );
       if ("error" in result) {
         setMessage({ type: "error", text: result.error });
         return;
       }
       setMessage({ type: "success", text: result.success });
-      setEditing(false);
+      setEditing(null);
       router.refresh();
     });
   }
@@ -1782,11 +1791,22 @@ function PaymentMethodEditor({
           onClick={() => {
             setMethod(payment.method);
             setMessage(undefined);
-            setEditing(true);
+            setEditing("method");
           }}
           className="text-[11px] font-medium text-slate-600 underline hover:text-slate-900"
         >
           Corrigir forma
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAmount(String(payment.amount));
+            setMessage(undefined);
+            setEditing("amount");
+          }}
+          className="text-[11px] font-medium text-slate-600 underline hover:text-slate-900"
+        >
+          Corrigir valor
         </button>
         {message && (
           <span className={message.type === "error" ? "text-red-600" : "text-emerald-700"}>{message.text}</span>
@@ -1797,27 +1817,40 @@ function PaymentMethodEditor({
 
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <select
-        aria-label="Nova forma de pagamento"
-        value={method}
-        onChange={(e) => setMethod(e.target.value)}
-        className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
-      >
-        {EDITABLE_PAYMENT_METHODS.map((option) => (
-          <option key={option} value={option}>
-            {PAYMENT_METHOD_LABELS[option]}
-          </option>
-        ))}
-      </select>
+      {editing === "amount" ? (
+        <input
+          aria-label="Novo valor do pagamento"
+          type="number"
+          inputMode="decimal"
+          min="0.01"
+          step="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-24 rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+        />
+      ) : (
+        <select
+          aria-label="Nova forma de pagamento"
+          value={method}
+          onChange={(e) => setMethod(e.target.value)}
+          className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+        >
+          {EDITABLE_PAYMENT_METHODS.map((option) => (
+            <option key={option} value={option}>
+              {PAYMENT_METHOD_LABELS[option]}
+            </option>
+          ))}
+        </select>
+      )}
       <button
         type="button"
-        disabled={isPending || method === payment.method}
+        disabled={isPending || (editing === "amount" ? amountUnchanged || parsedAmount <= 0 : method === payment.method)}
         onClick={save}
         className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white disabled:opacity-40"
       >
         {isPending ? "Salvando..." : "Salvar"}
       </button>
-      <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-slate-500 hover:underline">
+      <button type="button" onClick={() => setEditing(null)} className="text-[11px] text-slate-500 hover:underline">
         Cancelar
       </button>
       {message?.type === "error" && <span className="text-red-600">{message.text}</span>}

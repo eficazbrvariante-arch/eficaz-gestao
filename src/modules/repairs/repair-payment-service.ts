@@ -620,3 +620,110 @@ export async function editRepairOrderPaymentMethod(
   ]);
   return { ok: true, before, after, amount: Number(payment.amount), orderNumber: payment.repairOrder.number };
 }
+
+export type EditRepairPaymentAmountResult =
+  | { ok: true; before: number; after: number; discountAdded: number; method: string; orderNumber: number }
+  | { ok: false; error: string };
+
+/**
+ * Corrige o VALOR de um pagamento já registrado numa OS (lançado errado —
+ * pedido do dono, só Admin, em qualquer OS, mesmo espírito de
+ * `editRepairOrderPaymentMethod`). Só Dinheiro/PIX/Cartão: as outras formas
+ * têm saldo/dívida do cliente por trás.
+ *
+ * O recebido nunca pode passar do total da OS. Se a OS estava quitada e o
+ * valor baixou, a diferença entra como desconto (mesmo mecanismo da
+ * cortesia) pra ela continuar quitada — o valor cobrado de fato foi o menor.
+ * Se ainda tinha saldo pendente, o saldo só aumenta. Bloqueada com
+ * financiamento de Crédito Eficaz (entrada/parcelas congeladas — mesma trava
+ * de `updateRepairOrder`).
+ */
+export async function editRepairOrderPaymentAmount(
+  tenantId: string,
+  repairOrderId: string,
+  paymentId: string,
+  newAmount: number
+): Promise<EditRepairPaymentAmountResult> {
+  const after = round2(newAmount);
+  if (!Number.isFinite(after) || after <= 0) {
+    return { ok: false, error: "Informe um valor maior que zero." };
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const order = await tx.repairOrder.findFirst({
+        where: { id: repairOrderId, tenantId },
+        select: {
+          number: true,
+          status: true,
+          discount: true,
+          items: { select: { unitPrice: true, quantity: true } },
+          payments: { select: { id: true, method: true, amount: true } },
+        },
+      });
+      if (!order) throw new RepairPaymentError("Ordem de serviço não encontrada.");
+      if (order.status === "CANCELLED") throw new RepairPaymentError("Esta OS está cancelada.");
+
+      const payment = order.payments.find((p) => p.id === paymentId);
+      if (!payment) throw new RepairPaymentError("Pagamento não encontrado nesta OS.");
+      if (!(EDITABLE_REPAIR_PAYMENT_METHODS as readonly string[]).includes(payment.method)) {
+        throw new RepairPaymentError(
+          `O pagamento em "${PAYMENT_METHOD_LABELS[payment.method]}" tem efeito no cadastro do cliente e não pode ser corrigido por aqui.`
+        );
+      }
+      const before = Number(payment.amount);
+      if (Math.abs(after - before) <= CENT) throw new RepairPaymentError("Esse já é o valor registrado.");
+
+      const financing = await tx.creditoEficazServiceFinancing.findFirst({
+        where: { tenantId, repairOrderId },
+        select: { id: true },
+      });
+      if (financing) {
+        throw new RepairPaymentError(
+          "Esta OS tem um financiamento de Crédito Eficaz — o valor dos pagamentos não pode ser corrigido."
+        );
+      }
+
+      const total = repairOrderTotal(order.items, order.discount);
+      const paidBefore = round2(order.payments.reduce((sum, p) => sum + Number(p.amount), 0));
+      const paidAfter = round2(paidBefore - before + after);
+      if (paidAfter > total + CENT) {
+        throw new RepairPaymentError(
+          `Com esse valor o recebido (${formatBRL(paidAfter)}) passa do total da OS (${formatBRL(total)}).`
+        );
+      }
+
+      const wasSettled = total - paidBefore <= CENT;
+      const discountAdded = wasSettled ? round2(Math.max(0, total - paidAfter)) : 0;
+
+      await tx.repairOrderPayment.update({ where: { id: payment.id }, data: { amount: after } });
+      await tx.repairOrder.update({
+        where: { id: repairOrderId },
+        data: {
+          receiptPdfUrl: null,
+          ...(discountAdded > 0 ? { discount: round2(Number(order.discount) + discountAdded) } : {}),
+        },
+      });
+      await tx.repairOrderEvent.create({
+        data: {
+          repairOrderId,
+          message:
+            `Valor de pagamento corrigido (${PAYMENT_METHOD_LABELS[payment.method]}): ${formatBRL(before)} para ${formatBRL(after)}` +
+            (discountAdded > 0 ? ` — total da OS ajustado para ${formatBRL(round2(total - discountAdded))}` : ""),
+        },
+      });
+
+      return {
+        ok: true as const,
+        before,
+        after,
+        discountAdded,
+        method: PAYMENT_METHOD_LABELS[payment.method],
+        orderNumber: order.number,
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof RepairPaymentError) return { ok: false, error: error.message };
+    return { ok: false, error: "Não foi possível salvar a correção. Tente novamente." };
+  }
+}

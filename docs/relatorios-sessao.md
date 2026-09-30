@@ -3146,3 +3146,22 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
   168/168, integração 137/137 (5 novos em `initial-price.integration.test.ts`).
 - **Pendente**: publicar; depois **ativar os 79 produtos** da HOME 10 (hoje inativos).
   Ativar antes de publicar deixaria vender por R$ 0,00.
+
+## 30/09/2026 — OS: correção do valor de um pagamento
+
+- **Pedido**: na OS #000071 o pagamento foi lançado como R$ 380, mas o certo era R$ 340.
+  Já existia "Corrigir forma", mas não havia como corrigir o valor.
+- **O que mudou** (sem migration):
+  - `repair-payment-service.ts`: nova `editRepairOrderPaymentAmount`. Só Dinheiro/PIX/Cartão,
+    OS não cancelada e sem financiamento de Crédito Eficaz. O recebido não pode passar do
+    total. Se a OS estava quitada e o valor baixou, a diferença vira desconto e a OS
+    continua quitada. Grava no histórico da OS e limpa o PDF do comprovante.
+  - `assistencia-tecnica/actions.ts`: `editRepairOrderPaymentAmountAction` (só ADMIN, reusa
+    `canEditRepairOrderPaymentMethod`), auditoria `repair.payment_amount_edit` (adicionada
+    em `audit-service.ts`).
+  - Tela da OS: botão "Corrigir valor" ao lado de "Corrigir forma".
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, integração 3/3 em
+  `repair-payment-amount-edit.integration.test.ts`.
+- **Riscos**: o valor esperado de um caixa já fechado não é recalculado (mesmo comportamento
+  de "Corrigir forma").
+- **Pendente**: commit/publicação; depois corrigir a OS #000071 pela tela.

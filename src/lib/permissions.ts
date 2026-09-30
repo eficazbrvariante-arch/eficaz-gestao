@@ -241,9 +241,9 @@ export function canCancelRepairOrderWithoutBilling(role: UserRole) {
 }
 
 /**
- * Corrigir a forma de pagamento (não o valor) de um pagamento já registrado
- * numa OS — só ADMIN, em qualquer OS (pedido do dono, 14/09/2026). Mesmo
- * espírito de `canEditSale` pras vendas.
+ * Corrigir a forma de pagamento — e, desde 30/09/2026, também o valor — de um
+ * pagamento já registrado numa OS — só ADMIN, em qualquer OS (pedido do dono,
+ * 14/09/2026). Mesmo espírito de `canEditSale` pras vendas.
  */
 export function canEditRepairOrderPaymentMethod(role: UserRole) {
   return role === "ADMIN";

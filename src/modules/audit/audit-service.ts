@@ -46,6 +46,7 @@ export type AuditAction =
   | "repair.courtesy_grant"
   | "repair.cancel_without_billing"
   | "repair.payment_method_edit"
+  | "repair.payment_amount_edit"
   | "repair.service_create"
   | "repair.service_edit"
   | "repair.service_deactivate"
@@ -115,6 +116,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "repair.courtesy_grant": "Cortesia concedida em OS de assistência técnica",
   "repair.cancel_without_billing": "OS cancelada sem faturamento",
   "repair.payment_method_edit": "Forma de pagamento corrigida em OS",
+  "repair.payment_amount_edit": "Valor de pagamento corrigido em OS",
   "repair.service_create": "Serviço de assistência cadastrado",
   "repair.service_edit": "Serviço de assistência editado",
   "repair.service_deactivate": "Serviço de assistência desativado",

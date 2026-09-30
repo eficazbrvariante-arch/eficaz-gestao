@@ -21,6 +21,7 @@ import {
 import {
   cancelRepairOrderWithoutBilling,
   deliverRepairOrder,
+  editRepairOrderPaymentAmount,
   editRepairOrderPaymentMethod,
   grantRepairOrderCourtesy,
   type EditableRepairPaymentMethod,
@@ -388,4 +389,36 @@ export async function editRepairOrderPaymentMethodAction(
   revalidatePath("/assistencia-tecnica");
   revalidatePath("/caixa");
   return { success: `Forma de pagamento corrigida para ${result.after}.` };
+}
+
+/** Corrige o valor de um pagamento da OS lançado errado. Só ADMIN, qualquer OS. */
+export async function editRepairOrderPaymentAmountAction(
+  id: string,
+  paymentId: string,
+  amount: number
+): Promise<{ error: string } | { success: string }> {
+  const user = await requireUser();
+  if (!canEditRepairOrderPaymentMethod(user.role)) {
+    return { error: "Só o Administrador pode corrigir o valor do pagamento." };
+  }
+
+  const result = await editRepairOrderPaymentAmount(user.tenantId, id, paymentId, Number(amount));
+  if (!result.ok) return { error: result.error };
+
+  await recordAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userName: user.name ?? user.email ?? "Usuário",
+    action: "repair.payment_amount_edit",
+    entity: "RepairOrder",
+    entityId: id,
+    description:
+      `Corrigiu o valor de um pagamento (${result.method}) na OS #${result.orderNumber}: ${result.before.toFixed(2)} para ${result.after.toFixed(2)}.` +
+      (result.discountAdded > 0 ? ` Desconto de ${result.discountAdded.toFixed(2)} aplicado ao total.` : ""),
+  });
+
+  revalidatePath(`/assistencia-tecnica/${id}`);
+  revalidatePath("/assistencia-tecnica");
+  revalidatePath("/caixa");
+  return { success: "Valor do pagamento corrigido." };
 }
