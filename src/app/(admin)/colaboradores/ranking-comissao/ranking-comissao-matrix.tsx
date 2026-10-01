@@ -49,7 +49,7 @@ function SellerDetailCard({ row }: { row: RankingComissaoRow }) {
       {tp && (
         <>
           <div className="my-3 border-t border-[#0f3d22]" />
-          <p className="mb-1 text-[#39ff88]/60">Faixa · mês corrente</p>
+          <p className="mb-1 text-[#39ff88]/60">Faixa · {monthLabel(tp.monthStartISO)}</p>
           <div className="flex justify-between font-mono text-xs text-[#39ff88]/80">
             <span>Faixa atual</span>
             <span className="text-white">
@@ -102,7 +102,10 @@ function SellerRow({ row, rank, period }: { row: RankingComissaoRow; rank: numbe
 
       {tp ? (
         <div className="mt-2">
-          <TierIndicators tierProgress={tp} />
+          <TierIndicators
+            tierProgress={tp}
+            periodTotals={{ commission: row.totalCommission, sales: row.totalSales }}
+          />
         </div>
       ) : (
         <p className="mt-1 font-mono text-[11px] text-[#39ff88]/40">
@@ -115,6 +118,12 @@ function SellerRow({ row, rank, period }: { row: RankingComissaoRow; rank: numbe
       {open && <SellerDetailCard row={row} />}
     </li>
   );
+}
+
+/** `YYYY-MM-01` → `mm/aaaa`. */
+function monthLabel(iso: string) {
+  const [year, month] = iso.split("-");
+  return `${month}/${year}`;
 }
 
 function shortDate(iso: string) {
@@ -142,9 +151,11 @@ function PaidStatusLine({ row }: { row: RankingComissaoRow }) {
 export function RankingComissaoMatrix({
   rows,
   period,
+  tierMonthISO,
 }: {
   rows: RankingComissaoRow[];
   period: Period;
+  tierMonthISO: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -176,6 +187,9 @@ export function RankingComissaoMatrix({
       <div className="relative">
         <p className="mb-6 font-mono text-xs tracking-widest text-[#39ff88]/70">
           &gt; ranking_comissao --de={period.from} --ate={period.to} --ordenar=desc
+        </p>
+        <p className="-mt-4 mb-6 font-mono text-[11px] text-[#39ff88]/40">
+          Comissão e vendido: período acima · faixa (barra e &quot;falta p/&quot;): {monthLabel(tierMonthISO)}
         </p>
 
         <ul className="flex flex-col gap-6">

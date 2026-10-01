@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/session";
 import { canEditCommission, canManageEmployeeLedger } from "@/lib/permissions";
-import { periodRange, currentMonthStartISO } from "@/lib/format";
+import { periodRange, startOfMonthISO, todayISO } from "@/lib/format";
 import { getCommissionRanking, COMMISSION_POLICY_EFFECTIVE_AT_ISO } from "@/modules/employees/commission-service";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
 import { resolvePeriod } from "../../relatorios/period";
@@ -30,14 +30,17 @@ export default async function RankingComissaoPage({
   const { start, end } = periodRange(period.from, period.to);
   const ranking = await getCommissionRanking(user.tenantId, { start, end });
 
-  // Faixa/progresso é sempre do mês corrente (conceito mensal, ver
-  // `getSellerTierProgressByUsers`) — independente do período escolhido no
-  // filtro acima, que só afeta a ordenação/comissão efetiva do ranking. Não
-  // confundir posição no ranking (período livre) com faixa de comissão (mês).
+  // Faixa é conceito mensal (ver `getSellerTierProgressByUsers`): mostra a do
+  // mês em que o período escolhido termina (nunca além de hoje). Antes era
+  // sempre o mês corrente — filtrando setembro já em outubro, os cards
+  // mostravam comissão/vendido de outubro, divergindo da tela do colaborador.
+  // Comissão e vendido dos cards vêm do período (ver `periodTotals` na matriz).
+  const today = todayISO();
+  const tierMonthISO = startOfMonthISO(period.to < today ? period.to : today);
   const tierProgressByUser = await getSellerTierProgressByUsers(
     user.tenantId,
     ranking.map((row) => row.userId),
-    currentMonthStartISO()
+    tierMonthISO
   );
   const rankingWithTiers = ranking.map((row) => ({
     ...row,
@@ -68,7 +71,7 @@ export default async function RankingComissaoPage({
 
       <PeriodPicker period={period} />
 
-      <RankingComissaoMatrix rows={rankingWithTiers} period={period} />
+      <RankingComissaoMatrix rows={rankingWithTiers} period={period} tierMonthISO={tierMonthISO} />
     </div>
   );
 }

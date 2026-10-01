@@ -526,7 +526,7 @@ export function EmployeeLedgerPanel({
                   href={`/colaboradores/${row.userId}/comissao`}
                   className="mt-3 flex justify-between border-t border-slate-100 pt-2 text-sm font-medium text-emerald-700 hover:underline"
                 >
-                  <span>Comissão de venda</span>
+                  <span>Comissão de venda (total acumulado)</span>
                   <span>{formatBRL(row.commissionTotal)}</span>
                 </Link>
                 <Link

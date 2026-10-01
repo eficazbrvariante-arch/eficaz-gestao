@@ -81,19 +81,31 @@ export function TierProgressBar({ tierProgress }: { tierProgress: SellerTierProg
   );
 }
 
-/** Os três indicadores: comissão, vendido, falta pra próxima faixa (ou meta atingida). */
-export function TierIndicators({ tierProgress: tp }: { tierProgress: SellerTierProgress }) {
+/**
+ * Os três indicadores: comissão, vendido, falta pra próxima faixa (ou meta atingida).
+ * `periodTotals` troca comissão/vendido pelos do período filtrado (Ranking) —
+ * sem isso eles mostram o mês da faixa, que pode não ser o período escolhido.
+ */
+export function TierIndicators({
+  tierProgress: tp,
+  periodTotals,
+}: {
+  tierProgress: SellerTierProgress;
+  periodTotals?: { commission: number; sales: number };
+}) {
   const { hasMultipleTiers, color } = tierBarGeometry(tp);
+  const commission = periodTotals?.commission ?? tp.totalCommission;
+  const sales = periodTotals?.sales ?? tp.totalSales;
   return (
     <div className="grid grid-cols-3 gap-2">
       <div className="rounded-md bg-[#0a1a10] px-2 py-1.5">
         <p className="font-mono text-[9px] uppercase tracking-wide text-[#39ff88]/50">Comissão</p>
-        <p className="font-mono text-xs font-semibold text-[#39ff88]">{formatBRL(tp.totalCommission)}</p>
+        <p className="font-mono text-xs font-semibold text-[#39ff88]">{formatBRL(commission)}</p>
       </div>
       <div className="rounded-md bg-[#0a1a10] px-2 py-1.5">
         <p className="font-mono text-[9px] uppercase tracking-wide text-[#39ff88]/50">Vendido</p>
         <p className="font-mono text-xs font-semibold" style={{ color }}>
-          {formatBRL(tp.totalSales)}
+          {formatBRL(sales)}
         </p>
       </div>
       {hasMultipleTiers && tp.nextTier ? (

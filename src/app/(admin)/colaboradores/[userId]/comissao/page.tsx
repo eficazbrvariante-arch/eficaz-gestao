@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { canManageEmployeeLedger, canPayCommission } from "@/lib/permissions";
-import { formatBRL, formatDateTime, formatISODate, periodRange, currentMonthStartISO } from "@/lib/format";
+import { formatBRL, formatDateTime, formatISODate, periodRange, startOfMonthISO, todayISO } from "@/lib/format";
 import { getSellerCommissionHistory } from "@/modules/employees/commission-service";
 import {
   getCommissionPaymentPreview,
@@ -37,9 +37,12 @@ export default async function ComissaoColaboradorPage({
 
   const period = resolvePeriod(await searchParams);
   const { start, end } = periodRange(period.from, period.to);
+  // Mesma regra do Ranking: faixa do mês em que o período termina (nunca além de hoje).
+  const today = todayISO();
+  const tierMonthISO = startOfMonthISO(period.to < today ? period.to : today);
   const [history, tierProgress, payment, payments] = await Promise.all([
     getSellerCommissionHistory(user.tenantId, userId, { start, end }).catch(() => null),
-    getSellerTierProgressByUsers(user.tenantId, [userId], currentMonthStartISO()).then((m) => m.get(userId) ?? null),
+    getSellerTierProgressByUsers(user.tenantId, [userId], tierMonthISO).then((m) => m.get(userId) ?? null),
     getCommissionPaymentPreview(user.tenantId, userId, period).catch(() => null),
     listCommissionPayments(user.tenantId, userId),
   ]);
@@ -68,7 +71,7 @@ export default async function ComissaoColaboradorPage({
       {tierProgress && (
         <div className="mb-6 rounded-xl border border-[#0f3d22] bg-[#020805] p-5 shadow-[0_0_40px_-15px_rgba(57,255,136,0.35)]">
           <div className="mb-2 flex items-center justify-between">
-            <p className="font-mono text-xs tracking-widest text-[#39ff88]/70">&gt; sua_faixa --mes=corrente</p>
+            <p className="font-mono text-xs tracking-widest text-[#39ff88]/70">&gt; sua_faixa --mes={tierMonthISO.slice(0, 7)}</p>
             <TierBadge tierProgress={tierProgress} />
           </div>
           <TierProgressBar tierProgress={tierProgress} />
@@ -76,8 +79,8 @@ export default async function ComissaoColaboradorPage({
             <TierIndicators tierProgress={tierProgress} />
           </div>
           <p className="mt-3 font-mono text-[11px] text-[#39ff88]/40">
-            Sua faixa é sempre do mês corrente — o histórico de vendas abaixo é do período que você
-            escolher no filtro, por isso os dois números podem ser diferentes.
+            Faixa do mês em que o período escolhido termina — se o período pegar mais de um mês, o
+            histórico de vendas abaixo soma todos eles, por isso os números podem ser diferentes.
           </p>
         </div>
       )}

@@ -141,7 +141,7 @@ export default async function PdvPage() {
       {tenant.pdvRankingEnabled && (
         <div className="mt-6">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Ranking de Comissão de venda do mês</h2>
-          <RankingComissaoMatrix rows={pdvRanking} period={{ from: monthStart, to: today }} />
+          <RankingComissaoMatrix rows={pdvRanking} period={{ from: monthStart, to: today }} tierMonthISO={monthStart} />
         </div>
       )}
     </div>
