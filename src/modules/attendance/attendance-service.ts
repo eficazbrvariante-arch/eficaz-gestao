@@ -280,11 +280,34 @@ export async function addMissingAttendanceEntry(
   const dayKey = todayISO(input.occurredAt);
   const { start: dayStart, end: dayEnd } = periodRange(dayKey, dayKey);
 
-  const sameDayEntries = await prisma.attendanceEntry.findMany({
-    where: { tenantId, userId: input.userId, occurredAt: { gte: dayStart, lt: dayEnd } },
-    select: { type: true },
+  // Compara com o valor EFETIVO de cada marcação (o que a tela mostra), não o
+  // original: uma "Saída" corrigida para "Saída para intervalo" não pode
+  // continuar bloqueando o lançamento da saída de verdade. Busca também as
+  // marcações cuja correção caiu neste dia, vindas de outro.
+  const candidateEntries = await prisma.attendanceEntry.findMany({
+    where: {
+      tenantId,
+      userId: input.userId,
+      OR: [
+        { occurredAt: { gte: dayStart, lt: dayEnd } },
+        { corrections: { some: { newOccurredAt: { gte: dayStart, lt: dayEnd } } } },
+      ],
+    },
+    select: {
+      type: true,
+      occurredAt: true,
+      corrections: { select: { newType: true, newOccurredAt: true, createdAt: true } },
+    },
   });
-  if (sameDayEntries.some((entry) => entry.type === input.type)) {
+  const hasSameType = candidateEntries.some((entry) => {
+    const effective = resolveEffectiveAttendanceEntry(entry, entry.corrections);
+    return (
+      effective.type === input.type &&
+      effective.occurredAt >= dayStart &&
+      effective.occurredAt < dayEnd
+    );
+  });
+  if (hasSameType) {
     return { ok: false, error: "Esse dia já tem uma marcação desse tipo." };
   }
 

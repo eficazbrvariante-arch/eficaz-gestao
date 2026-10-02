@@ -3165,3 +3165,17 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Riscos**: o valor esperado de um caixa já fechado não é recalculado (mesmo comportamento
   de "Corrigir forma").
 - **Pendente**: commit/publicação; depois corrigir a OS #000071 pela tela.
+
+## 02/10/2026 — Ponto: "Esse dia já tem uma marcação desse tipo" com marcação corrigida
+
+- **Pedido**: ao lançar a saída esquecida da colaboradora MD em 24/09/2026 (19:08), o
+  painel recusava com "Esse dia já tem uma marcação desse tipo".
+- **Causa**: `addMissingAttendanceEntry` checava o tipo ORIGINAL das marcações do dia. A
+  "Saída para intervalo (corrigido)" tinha sido batida como "Saída / fim de expediente", então
+  a saída de verdade era bloqueada. O mesmo erro deixava passar uma segunda saída quando
+  outra marcação tinha sido corrigida PARA saída.
+- **Correção** (`attendance-service.ts`): compara com o valor efetivo
+  (`resolveEffectiveAttendanceEntry`), incluindo marcações cuja correção caiu no dia.
+- **Testes**: 3 novos em `attendance-service.integration.test.ts` (2 falhavam sem a
+  correção); lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test` 168/168,
+  integração 143/143. Feito numa worktree a partir da `main`, sem o desconto à vista.
