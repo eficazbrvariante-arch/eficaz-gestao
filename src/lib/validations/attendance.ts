@@ -4,6 +4,8 @@ const attendanceEntryTypeEnum = z.enum(["CLOCK_IN", "BREAK_START", "BREAK_END", 
 
 export const punchAttendanceSchema = z.object({
   userId: z.string().trim().min(1, "Selecione o colaborador."),
+  /** Escolhido na tela quando há mais de uma opção (intervalo ou saída) — reconferido no servidor. */
+  type: attendanceEntryTypeEnum.optional(),
   selfieUrl: z.string().trim().url().optional().or(z.literal("")),
   waived: z.boolean().default(false),
   waiveReason: z.string().trim().optional().or(z.literal("")),

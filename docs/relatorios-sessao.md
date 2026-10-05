@@ -3179,3 +3179,19 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Testes**: 3 novos em `attendance-service.integration.test.ts` (2 falhavam sem a
   correção); lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test` 168/168,
   integração 143/143. Feito numa worktree a partir da `main`, sem o desconto à vista.
+
+## 02/10/2026 — Ponto: colaborador escolhe entre intervalo e fim de expediente
+
+- **Pedido**: evitar correções manuais quando o colaborador bate "Saída para intervalo" no
+  lugar da saída (ex.: entrou 13h, saiu 18h sem intervalo). Admin continua corrigindo.
+- **Branch**: `feat/ponto-escolha-saida` (a partir da `main` com a correção do ponto; sem
+  commit ainda). Sem migration.
+- **Regra** (`getAllowedAttendanceTypes`): Entrada obrigatória; depois dela, escolha entre
+  "Saída para intervalo" e "Saída / fim de expediente"; do intervalo em diante, sequência fixa.
+  `punchAttendance` aceita o tipo da tela só se estiver entre os permitidos e passou a olhar
+  as marcações de hoje já corrigidas.
+- **Tela** (`clock-widget.tsx`): depois da entrada, dois botões; a selfie mostra o que está
+  sendo registrado.
+- **Testes**: 4 unitários + 2 de integração novos; lint (0 erros, mesmos 9 avisos),
+  typecheck, `build:app`, `npm test` 172/172, integração 145/145. Tela não testada no
+  navegador (sem login local).

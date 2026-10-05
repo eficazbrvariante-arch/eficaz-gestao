@@ -1,9 +1,10 @@
 import type { AttendanceEntryType } from "@/generated/prisma/enums";
 
 /**
- * Sequência fixa e diária do ciclo de ponto: Entrada → Saída para intervalo →
- * Retorno do intervalo → Saída/fim de expediente. O colaborador nunca escolhe
- * o tipo — só o próximo da sequência é aceito.
+ * Sequência diária do ciclo de ponto: Entrada → Saída para intervalo →
+ * Retorno do intervalo → Saída/fim de expediente. A única escolha do
+ * colaborador é logo depois da Entrada: intervalo ou saída direto (quem não
+ * faz intervalo) — ver `getAllowedAttendanceTypes`.
  */
 const ATTENDANCE_CYCLE: AttendanceEntryType[] = [
   "CLOCK_IN",
@@ -32,6 +33,23 @@ export function getNextExpectedAttendanceType(
   const lastIndex = ATTENDANCE_CYCLE.indexOf(lastType);
   const nextIndex = lastIndex + 1;
   return nextIndex < ATTENDANCE_CYCLE.length ? ATTENDANCE_CYCLE[nextIndex] : null;
+}
+
+/**
+ * Marcações que o colaborador pode fazer agora (pedido do dono, 02/10/2026):
+ * a Entrada é obrigatória; depois dela, ele escolhe entre sair para o
+ * intervalo ou encerrar o expediente — assim quem não faz intervalo não bate
+ * "Saída para intervalo" no lugar da saída e ninguém precisa corrigir depois.
+ * Do intervalo em diante segue a sequência fixa. Vazio quando o dia já foi
+ * encerrado. O primeiro item é a sugestão (mesmo de `getNextExpectedAttendanceType`).
+ */
+export function getAllowedAttendanceTypes(
+  todaysEntries: { type: AttendanceEntryType; occurredAt: Date }[]
+): AttendanceEntryType[] {
+  const next = getNextExpectedAttendanceType(todaysEntries);
+  if (!next) return [];
+  if (next === "BREAK_START") return ["BREAK_START", "CLOCK_OUT"];
+  return [next];
 }
 
 export type ResolvedAttendanceValue = {

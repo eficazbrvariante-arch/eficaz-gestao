@@ -10,7 +10,7 @@ import { recordAudit } from "@/modules/audit/audit-service";
 import {
   addMissingAttendanceEntry,
   correctAttendanceEntry,
-  getNextExpectedForToday,
+  getAllowedTypesForToday,
   listEffectiveEntries,
   punchAttendance,
   type EffectiveAttendanceEntry,
@@ -79,6 +79,7 @@ export async function punchAttendanceAction(input: PunchAttendanceInput) {
       userAgent,
     },
     {
+      type: parsed.data.type ?? null,
       selfieUrl: parsed.data.selfieUrl || null,
       waived: parsed.data.waived,
       waiveReason: parsed.data.waiveReason || null,
@@ -108,11 +109,12 @@ export async function punchAttendanceAction(input: PunchAttendanceInput) {
 }
 
 export type PunchStatus = {
-  nextType: AttendanceEntryType | null;
+  /** Marcações possíveis agora; vazio = dia encerrado. Mais de uma = o colaborador escolhe. */
+  allowedTypes: AttendanceEntryType[];
   todaysEntries: EffectiveAttendanceEntry[];
 };
 
-/** Próxima marcação esperada e marcações de hoje do colaborador selecionado. */
+/** Marcações possíveis agora e marcações de hoje do colaborador selecionado. */
 export async function getPunchStatusAction(
   userId: string
 ): Promise<PunchStatus | { error: string }> {
@@ -124,12 +126,12 @@ export async function getPunchStatusAction(
   }
 
   const { start, end } = todayRange();
-  const [nextType, todaysEntries] = await Promise.all([
-    getNextExpectedForToday(user.tenantId, employee.id),
+  const [allowedTypes, todaysEntries] = await Promise.all([
+    getAllowedTypesForToday(user.tenantId, employee.id),
     listEffectiveEntries(user.tenantId, { userId: employee.id, from: start, to: end }),
   ]);
 
-  return { nextType, todaysEntries };
+  return { allowedTypes, todaysEntries };
 }
 
 export async function correctAttendanceEntryAction(input: CorrectAttendanceEntryInput) {

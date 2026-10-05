@@ -29,7 +29,9 @@ export function ClockWidget({
   const router = useRouter();
   const [selectedId, setSelectedId] = useState("");
   const [loadingStatus, setLoadingStatus] = useState(false);
-  const [nextType, setNextType] = useState<AttendanceEntryType | null>(null);
+  const [allowedTypes, setAllowedTypes] = useState<AttendanceEntryType[]>([]);
+  /** Marcação escolhida antes da selfie — só muda algo quando há mais de uma opção. */
+  const [chosenType, setChosenType] = useState<AttendanceEntryType | null>(null);
   const [todaysEntries, setTodaysEntries] = useState<EffectiveAttendanceEntry[]>([]);
   const [statusError, setStatusError] = useState<string>();
 
@@ -47,7 +49,7 @@ export function ClockWidget({
   function submit(payload: { selfieUrl?: string; waived: boolean; waiveReason?: string }) {
     setError(undefined);
     startTransition(async () => {
-      const result = await punchAttendanceAction({ userId: selectedId, ...payload });
+      const result = await punchAttendanceAction({ userId: selectedId, type: chosenType ?? undefined, ...payload });
       if ("error" in result) {
         setError(result.error);
         return;
@@ -83,8 +85,9 @@ export function ClockWidget({
     setPaymentError(undefined);
     setPaymentSuccess(undefined);
 
+    setChosenType(null);
     if (!id) {
-      setNextType(null);
+      setAllowedTypes([]);
       setTodaysEntries([]);
       return;
     }
@@ -96,7 +99,7 @@ export function ClockWidget({
         setStatusError(result.error);
         return;
       }
-      setNextType(result.nextType);
+      setAllowedTypes(result.allowedTypes);
       setTodaysEntries(result.todaysEntries);
     });
 
@@ -138,25 +141,60 @@ export function ClockWidget({
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center shadow-sm">
           <p className="text-sm font-medium text-emerald-700">✓ {success}</p>
         </div>
-      ) : !nextType ? (
+      ) : allowedTypes.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
           <p className="text-sm font-medium text-emerald-700">
             O ciclo de ponto de hoje já foi encerrado.
           </p>
         </div>
       ) : !capturing ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <p className="mb-4 text-sm text-slate-500">Próxima marcação</p>
-          <p className="mb-6 text-lg font-semibold text-slate-900">
-            {ATTENDANCE_TYPE_LABELS[nextType]}
-          </p>
-          <Button type="button" onClick={() => setCapturing(true)}>
-            Registrar {ATTENDANCE_TYPE_LABELS[nextType].toLowerCase()}
-          </Button>
-          <FormBanner message={error} variant="error" />
-        </div>
+        allowedTypes.length === 1 ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <p className="mb-4 text-sm text-slate-500">Próxima marcação</p>
+            <p className="mb-6 text-lg font-semibold text-slate-900">
+              {ATTENDANCE_TYPE_LABELS[allowedTypes[0]]}
+            </p>
+            <Button
+              type="button"
+              onClick={() => {
+                setChosenType(allowedTypes[0]);
+                setCapturing(true);
+              }}
+            >
+              Registrar {ATTENDANCE_TYPE_LABELS[allowedTypes[0]].toLowerCase()}
+            </Button>
+            <FormBanner message={error} variant="error" />
+          </div>
+        ) : (
+          // Depois da Entrada: o colaborador escolhe se vai para o intervalo
+          // ou se está encerrando o expediente (ver `getAllowedAttendanceTypes`).
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <p className="mb-4 text-sm text-slate-500">Qual marcação você vai registrar?</p>
+            <div className="space-y-3">
+              {allowedTypes.map((type) => (
+                <Button
+                  key={type}
+                  type="button"
+                  variant={type === "CLOCK_OUT" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setChosenType(type);
+                    setCapturing(true);
+                  }}
+                >
+                  {ATTENDANCE_TYPE_LABELS[type]}
+                </Button>
+              ))}
+            </div>
+            <FormBanner message={error} variant="error" />
+          </div>
+        )
       ) : (
         <div className="space-y-3">
+          {chosenType && (
+            <p className="text-center text-sm font-semibold text-slate-900">
+              Registrando: {ATTENDANCE_TYPE_LABELS[chosenType]}
+            </p>
+          )}
           <SelfieCaptureField
             canWaive={canWaive}
             disabled={isPending}

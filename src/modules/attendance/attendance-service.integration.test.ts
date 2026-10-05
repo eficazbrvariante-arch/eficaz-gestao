@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { addMissingAttendanceEntry, correctAttendanceEntry } from "./attendance-service";
+import { addMissingAttendanceEntry, correctAttendanceEntry, punchAttendance } from "./attendance-service";
 
 const SUBDOMAIN = "qa-ponto-marcacao-corrigida-test";
 
@@ -108,5 +108,37 @@ describe("addMissingAttendanceEntry", () => {
       reason: "teste",
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("punchAttendance — escolha entre intervalo e saída", () => {
+  let userId: string;
+  const selfie = { selfieUrl: "https://example.com/selfie.jpg" };
+
+  beforeAll(async () => {
+    userId = (
+      await prisma.user.create({
+        data: { tenantId, name: "Colaborador Ponto QA", email: `ponto@${SUBDOMAIN}.qa.test`, passwordHash: "qa", role: "SELLER" },
+      })
+    ).id;
+  });
+
+  it("primeira marcação é sempre a entrada, mesmo se a tela pedir outra", async () => {
+    const wrong = await punchAttendance({ tenantId, userId }, { ...selfie, type: "CLOCK_OUT" });
+    expect(wrong.ok).toBe(false);
+    const entrada = await punchAttendance({ tenantId, userId }, selfie);
+    expect(entrada).toMatchObject({ ok: true, type: "CLOCK_IN" });
+  });
+
+  it("depois da entrada, exige a escolha e aceita a saída direto", async () => {
+    const semEscolha = await punchAttendance({ tenantId, userId }, selfie);
+    expect(semEscolha.ok).toBe(false);
+    expect(await punchAttendance({ tenantId, userId }, { ...selfie, type: "BREAK_END" })).toMatchObject({
+      ok: false,
+    });
+
+    const saida = await punchAttendance({ tenantId, userId }, { ...selfie, type: "CLOCK_OUT" });
+    expect(saida).toMatchObject({ ok: true, type: "CLOCK_OUT" });
+    expect((await punchAttendance({ tenantId, userId }, { ...selfie, type: "BREAK_START" })).ok).toBe(false);
   });
 });

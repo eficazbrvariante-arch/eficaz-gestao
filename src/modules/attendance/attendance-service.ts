@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { periodRange, todayISO, todayRange } from "@/lib/format";
 import {
   computeWorkedMinutes,
-  getNextExpectedAttendanceType,
+  getAllowedAttendanceTypes,
   resolveEffectiveAttendanceEntry,
   type TodayAttendanceStatus,
 } from "./attendance-rules";
@@ -17,6 +17,9 @@ export type PunchAttendanceContext = {
 };
 
 export type PunchAttendanceInput = {
+  /** Tipo escolhido na tela — só vale se estiver em `getAllowedAttendanceTypes`.
+   *  Pode ser omitido quando só existe uma opção. */
+  type?: AttendanceEntryType | null;
   selfieUrl?: string | null;
   /** Marcação sem selfie, só aceita quando `canWaiveAttendanceSelfie(actor.role)`. */
   waived?: boolean;
@@ -30,25 +33,40 @@ export type PunchAttendanceResult =
   | { ok: true; entryId: string; type: AttendanceEntryType }
   | { ok: false; error: string };
 
+/** Marcações de hoje do colaborador já com as correções aplicadas. */
+async function todaysEffectiveEntries(tenantId: string, userId: string) {
+  const { start, end } = todayRange();
+  const entries = await prisma.attendanceEntry.findMany({
+    where: { tenantId, userId, occurredAt: { gte: start, lt: end } },
+    select: {
+      type: true,
+      occurredAt: true,
+      corrections: { select: { newType: true, newOccurredAt: true, createdAt: true } },
+    },
+  });
+  return entries.map((entry) => resolveEffectiveAttendanceEntry(entry, entry.corrections));
+}
+
 /**
- * Registra a marcação de ponto do colaborador. O tipo NUNCA vem do cliente —
- * é sempre recalculado aqui a partir das marcações de hoje (ver
- * `getNextExpectedAttendanceType`), então não há como um colaborador escolher
- * livremente "Entrada" duas vezes ou pular uma etapa do ciclo.
+ * Registra a marcação de ponto do colaborador. O tipo pedido pela tela só é
+ * aceito se estiver entre os permitidos agora (`getAllowedAttendanceTypes`,
+ * recalculado aqui a partir das marcações de hoje já corrigidas) — não há
+ * como bater "Entrada" duas vezes nem pular uma etapa do ciclo.
  */
 export async function punchAttendance(
   ctx: PunchAttendanceContext,
   input: PunchAttendanceInput
 ): Promise<PunchAttendanceResult> {
-  const { start, end } = todayRange();
-  const todaysEntries = await prisma.attendanceEntry.findMany({
-    where: { tenantId: ctx.tenantId, userId: ctx.userId, occurredAt: { gte: start, lt: end } },
-    select: { type: true, occurredAt: true },
-  });
-
-  const nextType = getNextExpectedAttendanceType(todaysEntries);
-  if (!nextType) {
+  const allowed = getAllowedAttendanceTypes(await todaysEffectiveEntries(ctx.tenantId, ctx.userId));
+  if (allowed.length === 0) {
     return { ok: false, error: "O ciclo de ponto de hoje já foi encerrado." };
+  }
+  const nextType = input.type ?? (allowed.length === 1 ? allowed[0] : null);
+  if (!nextType) {
+    return { ok: false, error: "Escolha se é saída para intervalo ou fim de expediente." };
+  }
+  if (!allowed.includes(nextType)) {
+    return { ok: false, error: "Essa marcação não é permitida agora. Atualize a página." };
   }
 
   if (!input.selfieUrl && !input.waived) {
@@ -77,17 +95,12 @@ export async function punchAttendance(
   return { ok: true, entryId: entry.id, type: entry.type };
 }
 
-/** Próxima marcação esperada para o colaborador hoje, sem registrar nada. */
-export async function getNextExpectedForToday(
+/** Marcações que o colaborador pode fazer agora, sem registrar nada (vazio = dia encerrado). */
+export async function getAllowedTypesForToday(
   tenantId: string,
   userId: string
-): Promise<AttendanceEntryType | null> {
-  const { start, end } = todayRange();
-  const todaysEntries = await prisma.attendanceEntry.findMany({
-    where: { tenantId, userId, occurredAt: { gte: start, lt: end } },
-    select: { type: true, occurredAt: true },
-  });
-  return getNextExpectedAttendanceType(todaysEntries);
+): Promise<AttendanceEntryType[]> {
+  return getAllowedAttendanceTypes(await todaysEffectiveEntries(tenantId, userId));
 }
 
 export type EffectiveAttendanceEntry = {

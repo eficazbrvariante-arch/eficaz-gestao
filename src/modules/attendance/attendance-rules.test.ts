@@ -5,10 +5,44 @@ import {
   computeWorkedMinutes,
   formatBalanceMinutes,
   formatWorkedMinutes,
+  getAllowedAttendanceTypes,
   getNextExpectedAttendanceType,
   parseAttendanceSettings,
   resolveEffectiveAttendanceEntry,
 } from "./attendance-rules";
+
+describe("getAllowedAttendanceTypes", () => {
+  const at = (time: string) => new Date(`2026-10-02T${time}:00-03:00`);
+
+  it("dia vazio: só a entrada (obrigatória)", () => {
+    expect(getAllowedAttendanceTypes([])).toEqual(["CLOCK_IN"]);
+  });
+
+  it("depois da entrada: escolhe entre intervalo e fim de expediente", () => {
+    expect(getAllowedAttendanceTypes([{ type: "CLOCK_IN", occurredAt: at("13:00") }])).toEqual([
+      "BREAK_START",
+      "CLOCK_OUT",
+    ]);
+  });
+
+  it("no intervalo: só o retorno; depois do retorno: só a saída", () => {
+    const entrada = { type: "CLOCK_IN" as const, occurredAt: at("13:00") };
+    const intervalo = { type: "BREAK_START" as const, occurredAt: at("15:00") };
+    expect(getAllowedAttendanceTypes([entrada, intervalo])).toEqual(["BREAK_END"]);
+    expect(
+      getAllowedAttendanceTypes([entrada, intervalo, { type: "BREAK_END", occurredAt: at("15:30") }])
+    ).toEqual(["CLOCK_OUT"]);
+  });
+
+  it("depois da saída: nada (dia encerrado), com ou sem intervalo", () => {
+    expect(
+      getAllowedAttendanceTypes([
+        { type: "CLOCK_IN", occurredAt: at("13:00") },
+        { type: "CLOCK_OUT", occurredAt: at("18:00") },
+      ])
+    ).toEqual([]);
+  });
+});
 
 describe("getNextExpectedAttendanceType", () => {
   it("dia vazio: próxima marcação é a entrada", () => {
