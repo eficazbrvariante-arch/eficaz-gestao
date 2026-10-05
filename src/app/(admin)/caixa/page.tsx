@@ -2,7 +2,12 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatDateTime } from "@/lib/format";
-import { canCloseCashRegisterDirectly, canMoveCash, canViewReports } from "@/lib/permissions";
+import {
+  canCloseCashRegisterDirectly,
+  canMoveCash,
+  canViewPendingCashReviews,
+  canViewReports,
+} from "@/lib/permissions";
 import { getCashSummary, getOpenCashRegister } from "@/modules/cash/cash-service";
 import { OpenCashForm, CloseCashForm, SubmitCashForReviewForm, CashMovementForm } from "./cash-forms";
 
@@ -22,11 +27,14 @@ export default async function CaixaPage() {
         include: { closedBy: { select: { name: true } } },
         orderBy: { closedAt: "desc" },
       }),
-      prisma.cashRegister.findMany({
-        where: { tenantId: user.tenantId, status: "PENDING_REVIEW" },
-        include: { reviewSubmittedBy: { select: { name: true } } },
-        orderBy: { reviewSubmittedAt: "desc" },
-      }),
+      // Só Admin/Gerente veem a fila de revisão — pro Vendedor nem consulta.
+      canViewPendingCashReviews(user.role)
+        ? prisma.cashRegister.findMany({
+            where: { tenantId: user.tenantId, status: "PENDING_REVIEW" },
+            include: { reviewSubmittedBy: { select: { name: true } } },
+            orderBy: { reviewSubmittedAt: "desc" },
+          })
+        : Promise.resolve([]),
     ]);
 
     return (

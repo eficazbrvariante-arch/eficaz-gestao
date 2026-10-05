@@ -6,6 +6,7 @@ import {
   canManageStock,
   canQuickEditStockQty,
   canViewAttendancePanel,
+  canViewPendingCashReviews,
   canViewProductCost,
   canViewReports,
   canWaiveAttendanceSelfie,
@@ -48,5 +49,16 @@ describe("custo de produto — demais papéis", () => {
     expect(canEnterProductCostOnCreate("ADMIN", false)).toBe(true);
     expect(canViewProductCost("SELLER")).toBe(false);
     expect(canEnterProductCostOnCreate("SELLER", true)).toBe(false);
+  });
+});
+
+// Pedido do dono (05/10/2026): fila de caixas aguardando revisão só para Admin e Gerente.
+describe("caixas aguardando revisão", () => {
+  it("Admin e Gerente veem; Vendedor e demais perfis não", () => {
+    expect(canViewPendingCashReviews("ADMIN")).toBe(true);
+    expect(canViewPendingCashReviews("MANAGER")).toBe(true);
+    expect(canViewPendingCashReviews("SELLER")).toBe(false);
+    expect(canViewPendingCashReviews("STOCKIST")).toBe(false);
+    expect(canViewPendingCashReviews("STOCK_COLLABORATOR")).toBe(false);
   });
 });

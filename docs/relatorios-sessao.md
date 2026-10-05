@@ -3195,3 +3195,13 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Testes**: 4 unitários + 2 de integração novos; lint (0 erros, mesmos 9 avisos),
   typecheck, `build:app`, `npm test` 172/172, integração 145/145. Tela não testada no
   navegador (sem login local).
+
+## 05/10/2026 — Caixa: lista "aguardando revisão" só para Admin e Gerente
+
+- **Pedido**: o quadro "N caixas aguardando revisão do Administrador" (tela do Caixa, sem
+  caixa aberto) aparecia para os vendedores.
+- **Mudança**: nova permissão `canViewPendingCashReviews` (ADMIN e MANAGER); a página nem
+  consulta a lista para os outros perfis. O histórico de caixas já era restrito.
+- **Branch**: `fix/caixa-revisao-so-admin`. Sem migration.
+- **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test` 173/173
+  (1 novo em `permissions.test.ts`).
