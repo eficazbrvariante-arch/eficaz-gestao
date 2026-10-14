@@ -1,5 +1,88 @@
 # Relatórios de sessão
 
+## 2026-09-30 — Parcelar uma dívida já existente no Crédito Eficaz
+
+Pedido do usuário: um cliente com Crédito Eficaz (Guilherme Ryan) pediu
+para dividir em duas vezes uma compra que vencia dia 10. Não existia
+nenhuma forma de fazer isso: o painel do cliente só sabia alterar limite,
+bloquear, redefinir PIN e registrar pagamento — parcelamento só acontecia
+no momento da venda/OS. O pedido foi por um informativo no painel
+individual que tornasse essa mudança prática e didática.
+
+Levantei o módulo antes de mexer e apresentei o plano; o usuário aprovou e
+escolheu **aplicar o percentual de acréscimo do Crédito Eficaz** sobre o
+saldo renegociado (em vez de parcelar sem acréscimo). Sem migration: tudo
+cabe nas tabelas que já existiam.
+
+**Serviço** (`credito-eficaz-service.ts`): `splitCreditoEficazUsage`
+transforma uma obrigação `OPEN` em N parcelas dentro de uma transação. A
+linha original vira a parcela 1 (carregando junto o que já tiver sido pago
+nela) e as demais viram linhas novas da mesma venda/financiamento — nada é
+apagado. `renumberUsageGroupInTx` renumera `installmentNumber`/
+`installmentCount` de todas as obrigações vivas da mesma origem, em duas
+passadas (números negativos na primeira) porque `[saleId,
+installmentNumber]` é único. `getSplitCreditoEficazUsageTerms` devolve
+acréscimo e teto de parcelas do cliente, respeitando convênio.
+
+O acréscimo incide sobre o saldo em aberto e é debitado do disponível do
+cliente — e aqui o disponível **pode ficar negativo**, decisão consciente:
+recusar a renegociação de quem estourou o limite seria negar a saída para
+quem mais precisa. Saldo negativo já barra compra nova sozinho (todo guard
+do PDV exige disponível maior que zero) e volta ao normal conforme os
+pagamentos entram.
+
+**Action** (`splitCreditoEficazUsageAction`): mesma permissão das outras
+(`canManageCreditoEficaz`), motivo obrigatório, `recordAudit` com a nova
+ação `credito_eficaz.usage_split`. Reusa a trava de acréscimo desatualizado
+do PDV — se o Admin mudar o percentual com a tela aberta, recusa em vez de
+gravar valor diferente do combinado com o cliente.
+
+**Tela** (`credito-eficaz-panel.tsx`): bloco informativo em azul acima da
+tabela de operações com o passo a passo em quatro itens e a explicação do
+acréscimo; botão "Parcelar" em cada linha em aberto; diálogo com saldo,
+acréscimo, total, seletor de parcelas (2 até o teto), prévia editável
+(mudar a data da 1ª reagenda as outras de mês em mês) e campo de motivo. A
+prévia usa as mesmas funções puras do servidor
+(`computeCreditoEficazSurcharge`, `splitCreditoEficazInstallments`), então
+o que o Admin combina na tela é exatamente o que é gravado.
+
+**Testes** (5 novos, integração, 35–39): divisão sem acréscimo com soma e
+saldo preservados; com 10% de acréscimo saindo do disponível; pagamento
+parcial ficando na parcela 1; recusas (soma errada, parcela única,
+obrigação quitada/cancelada, acréscimo desatualizado) sem tocar na
+obrigação; e parcelar de novo uma parcela renumerando a venda inteira.
+
+Rodados: `npm run typecheck` (limpo), `npm run lint` (9 warnings, todos
+pré-existentes de `react-hooks/incompatible-library` em formulários com
+React Hook Form — nenhum nos arquivos alterados), `npm run build:app`
+(ok), suíte de integração do Crédito Eficaz completa (39/39).
+
+**Validação na tela**: rodei o app local e exercitei o fluxo inteiro num
+tenant de QA (admin temporário, desativado no fim; e-mail e acréscimo do
+tenant revertidos). Parcelei uma obrigação de R$ 100,00 com 10% em 2x de
+R$ 55,00 e conferi o resultado: obrigação virou duas linhas renumeradas,
+"Utilizado" subiu R$ 10,00 e "Disponível" caiu R$ 10,00 (só o acréscimo),
+e a auditoria gravou valor, acréscimo e motivo. A prévia em 3x fecha a
+conta com a última parcela absorvendo o centavo (36,67 + 36,67 + 36,66).
+
+Três coisas só apareceram na tela e foram corrigidas: o `<select>` de
+parcelas usava classes cruas e ficava ilegível no tema escuro (trocado
+pelo `Select` do design system, que usa os tokens de tema); o texto do
+diálogo dizia "vence hoje em" (virou "vencimento atual em"); e a tabela de
+operações, ordenada por `createdAt`, passou a mostrar a parcela nova fora
+da sequência dela ("3/4" acima de "2/4") — `listCustomerUsages` agora
+ordena por `dueDate desc` com desempate por `createdAt desc`, o que
+mantém a ordem de sempre quando várias obrigações vencem no mesmo dia.
+
+Riscos e pendências: nada commitado nem deployado. O disponível negativo é
+novo no sistema — acontece quando o acréscimo da renegociação não cabe no
+limite restante; se a intenção for nunca permitir isso, é uma linha para
+mudar em `splitCreditoEficazUsage`. Numa execução da suíte de integração 8
+testes falharam com erro de conexão (321s contra os ~80s normais); as duas
+execuções seguintes passaram 39/39, então foi instabilidade do Neon, não
+regressão.
+
+
 ## 2026-09-18 — Crédito Eficaz × Convênio: segundo caminho para o mesmo crédito
 
 Pedido do usuário: evoluir o Crédito Eficaz existente com uma integração
@@ -3147,6 +3230,22 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Pendente**: publicar; depois **ativar os 79 produtos** da HOME 10 (hoje inativos).
   Ativar antes de publicar deixaria vender por R$ 0,00.
 
+## 28/09/2026 — Publicação do primeiro preço no PDV e ativação dos 79 produtos HOME 10
+
+- **Publicação**: commit `6786023` (PDV: primeiro preço), juntado na `main` sem merge
+  extra (`--ff-only`) e publicado. `check:deploy` ok; nos logs, só os mesmos 12 logins
+  errados das 13:11–13:17.
+- **Ativação dos 79 produtos** (autorizada pela pessoa, opção 1): antes, conferimos na
+  produção que os 79 estavam intactos, iguais à importação. Depois reenviamos a mesma
+  planilha só com `ativo` = sim → "0 criados, 79 atualizados".
+  - Conferência depois: 79 ativos, 0 na loja online, 79 com preço R$ 0,00, 1.384
+    unidades, R$ 21.821,91 de custo. Total de produtos continua 1.905.
+  - Nas duas primeiras tentativas o clique não chegou ao botão "Importar produtos" (a
+    janela mudou de tamanho) e nada foi enviado. O envio foi feito pelo próprio
+    formulário da página.
+- **Como fica**: ao escanear um desses produtos no PDV, o Gerente/Admin define o preço
+  uma vez; o vendedor vê "chame o Gerente ou o Administrador".
+
 ## 30/09/2026 — OS: correção do valor de um pagamento
 
 - **Pedido**: na OS #000071 o pagamento foi lançado como R$ 380, mas o certo era R$ 340.
@@ -3205,3 +3304,42 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Branch**: `fix/caixa-revisao-so-admin`. Sem migration.
 - **Testes**: lint (0 erros, mesmos 9 avisos), typecheck, `build:app`, `npm test` 173/173
   (1 novo em `permissions.test.ts`).
+## 13/10/2026 — Colaboradores: desconto automático e tela "Lançamentos"
+
+- **Pedido**: (1) adiantamento/mercadoria do colaborador não pode ficar pendente depois que o
+  pagamento é feito com o desconto — deve sair da soma automaticamente, mantendo a opção de
+  reverter; (2) item "Lançamentos" no menu para o colaborador lançar o que pegou, de qualquer
+  login, com selfie obrigatória e sem opção de escolher imagem.
+- **Branch**: trabalho do desconto à vista da OS commitado em `feat/os-desconto-a-vista`
+  (`11d2ff8`); mudanças novas em `feat/colaborador-lancamentos` (sem commit ainda).
+- **Banco** (migration `20261013120000_colaborador_lancamentos_selfie_desconto`, só colunas
+  opcionais): `employee_ledger_entries.selfieUrl` e `deductedInEntryId` (FK para o pagamento
+  que descontou). Aplicada no dev-local com `migrate deploy` (o `migrate dev` pedia reset por
+  migrations de outras branches no banco).
+- **Desconto**: ao marcar um Pagamento por horas como pago ("Foi pago", "Marcar como pago" ou
+  selfie no Ponto), o Adiantamento/Mercadoria pendente é quitado do mais antigo para o mais
+  novo até o valor do pagamento; se o último não cabe inteiro, é dividido (parte descontada
+  paga, restante pendente). Reverter ou excluir o pagamento devolve os descontos para pendente.
+- **Lançamentos** (`/lancamentos`, visível para todos os perfis, inclusive Estoque): nome,
+  tipo (mercadoria/adiantamento), valor, descrição e selfie só pela câmera (`cameraOnly` no
+  `SelfieCaptureField`). Entra pendente em Colaboradores com link "selfie do lançamento";
+  auditoria `employee_ledger.self_service_create`.
+- **Testes**: typecheck, lint (0 erros, mesmos 9 avisos), `build:app`, `npm test` 168/168,
+  integração nova 7/7 (`employee-ledger-deductions.integration.test.ts`).
+- **Riscos/pendências**: telas não testadas no navegador (sem login local). Na confirmação por
+  selfie no Ponto, o valor exibido ainda é o bruto (o desconto aparece só na mensagem de
+  sucesso). Falta commit e publicação — a migration roda no deploy.
+
+## 2026-10-14 — Lançamento do colaborador direto no PDV
+
+- **O que mudou:** card "Lançamento" (mercadoria / adiantamento) na grade de atalhos do PDV, ao
+  lado de "Caixa". Abre um modal com o mesmo formulário de `/lancamentos` (nome, tipo, valor,
+  descrição e selfie obrigatória só pela câmera), sem sair da venda. Visível para todo perfil que
+  vende.
+- **Arquivos:** `src/app/(admin)/pdv/employee-ledger-modal.tsx` (novo),
+  `src/app/(admin)/pdv/pdv-screen.tsx`, `src/app/(admin)/pdv/page.tsx`.
+- **Testes:** `typecheck` e `build:app` OK; `lint` sem avisos novos (9, mesmo número de antes).
+  Não abri no navegador por falta de login local.
+- **Commits:** nenhum — continua tudo pendente na branch `feat/colaborador-lancamentos`.
+- **Pendências:** a tela `/lancamentos` no menu lateral continua existindo; o valor exibido na
+  confirmação por selfie do Ponto ainda é o bruto.

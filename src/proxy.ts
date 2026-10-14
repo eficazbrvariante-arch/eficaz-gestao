@@ -67,12 +67,12 @@ export default auth(async (req) => {
     return NextResponse.redirect(new URL("/dashboard", nextUrl));
   }
 
-  // Colaborador de Estoque só pode ver a tela de ajuste rápido de estoque e a
-  // de bater o próprio ponto — qualquer outra rota do painel (inclusive
+  // Colaborador de Estoque só pode ver a tela de ajuste rápido de estoque, a
+  // de bater o próprio ponto e a de lançar o que pegou — qualquer outra rota do painel (inclusive
   // server actions, que também passam por aqui) é barrada aqui, já que as
   // páginas/actions individuais nem sempre checam o papel. Sem isso esse
   // papel enxergaria preços e telas que não deveria.
-  const STOCK_COLLABORATOR_ROUTES = ["/colaborador-estoque", "/ponto"];
+  const STOCK_COLLABORATOR_ROUTES = ["/colaborador-estoque", "/ponto", "/lancamentos"];
   if (
     isLoggedIn &&
     req.auth!.user.role === "STOCK_COLLABORATOR" &&

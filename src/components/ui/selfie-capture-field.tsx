@@ -24,7 +24,14 @@ export function SelfieCaptureField({
   clientPayload,
   maxSizeBytes = 3 * 1024 * 1024,
   access = "public",
+  cameraOnly = false,
 }: {
+  /**
+   * Só foto ao vivo pela câmera — sem o fallback de `<input type="file">`,
+   * que no computador abre o seletor de arquivos e deixaria mandar qualquer
+   * imagem salva (ver tela Lançamentos). Sem câmera, só resta "Corrigir câmera".
+   */
+  cameraOnly?: boolean;
   onCaptured: (url: string) => void;
   onWaive?: (reason: string) => void;
   canWaive?: boolean;
@@ -318,22 +325,31 @@ export function SelfieCaptureField({
 
       {mode === "fallback" && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">
-            Não foi possível acessar a câmera diretamente. Use o botão abaixo — em celular, ele abre a
-            câmera do aparelho.
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            disabled={disabled}
-            onChange={(e) => handleFallbackFile(e.target.files?.[0])}
-          />
-          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            Tirar/selecionar foto
-          </Button>
+          {cameraOnly ? (
+            <p className="text-sm text-slate-600">
+              Não foi possível acessar a câmera. A selfie é obrigatória e precisa ser tirada na hora —
+              toque em &quot;Corrigir câmera&quot; para tentar de novo.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-slate-600">
+                Não foi possível acessar a câmera diretamente. Use o botão abaixo — em celular, ele abre a
+                câmera do aparelho.
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                className="hidden"
+                disabled={disabled}
+                onChange={(e) => handleFallbackFile(e.target.files?.[0])}
+              />
+              <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                Tirar/selecionar foto
+              </Button>
+            </>
+          )}
           <Button type="button" onClick={fixCamera} disabled={disabled || fixing} className="gap-1.5">
             <Wrench className="size-4" />
             {fixing ? "Verificando câmera..." : "Corrigir câmera"}

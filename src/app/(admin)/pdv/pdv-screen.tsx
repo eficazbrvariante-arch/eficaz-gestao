@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   ClipboardList,
   RefreshCw,
+  Receipt,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
@@ -42,6 +43,8 @@ import { ConvenioModal } from "./convenio-modal";
 import { ConvenioSignupsModal } from "./convenio-signups-modal";
 import { ProtecaoEficazRedemptionModal } from "./protecao-eficaz-redemption-modal";
 import { CashMovementModal } from "./cash-movement-modal";
+import { EmployeeLedgerModal } from "./employee-ledger-modal";
+import type { ActiveEmployeeOption } from "../ponto/actions";
 import {
   buildCreditoEficazInstallments,
   computeCreditoEficazSurcharge,
@@ -205,6 +208,7 @@ export function PdvScreen({
   autoPrintReceipt,
   creditoEficazSurchargePercent,
   pendingConvenioSignups,
+  ledgerEmployees,
 }: {
   /** Gerente/Admin definem o primeiro preço de produto sem preço (R$ 0,00) — ver `canSetInitialPriceAtPdv`. */
   canSetInitialPrice: boolean;
@@ -223,6 +227,8 @@ export function PdvScreen({
   creditoEficazSurchargePercent: number
   /** Cadastros de convênio aguardando aprovação (todos os convênios) — ver `ConvenioSignupsModal`. */
   pendingConvenioSignups: number;
+  /** Colaboradores ativos pro Lançamento (mercadoria/adiantamento com selfie) — ver `EmployeeLedgerModal`. */
+  ledgerEmployees: ActiveEmployeeOption[];
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -267,6 +273,7 @@ export function PdvScreen({
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
   const [cashMovementModalOpen, setCashMovementModalOpen] = useState(false);
+  const [employeeLedgerModalOpen, setEmployeeLedgerModalOpen] = useState(false);
 
   // Benefício de Convênio Corporativo — nunca escolhido/digitado como valor
   // pelo vendedor, só o resultado já validado do QR (ver `ConvenioModal`).
@@ -1275,6 +1282,18 @@ export function PdvScreen({
             )}
 
             <PdvChip
+              tone="credit"
+              icon={Receipt}
+              label="Lançamento"
+              value="Mercadoria / adiantamento"
+              // Sem `active`, como o Caixa: é uma ação sempre disponível, não um
+              // estado da venda. Aberto a todo perfil que vende — o colaborador
+              // lança por conta própria, com selfie (ver `EmployeeLedgerModal`).
+              title="Lançar mercadoria ou adiantamento que você pegou da loja, com selfie"
+              onClick={() => setEmployeeLedgerModalOpen(true)}
+            />
+
+            <PdvChip
               tone="benefits"
               icon={HandCoins}
               label="Convênio"
@@ -1630,6 +1649,12 @@ export function PdvScreen({
           onClose={() => setCashMovementModalOpen(false)}
         />
       )}
+
+      <EmployeeLedgerModal
+        open={employeeLedgerModalOpen}
+        onClose={() => setEmployeeLedgerModalOpen(false)}
+        employees={ledgerEmployees}
+      />
 
       </div>
     </div>

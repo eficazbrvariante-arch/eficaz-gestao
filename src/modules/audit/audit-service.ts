@@ -54,6 +54,7 @@ export type AuditAction =
   | "employee_ledger.confirm_paid"
   | "employee_ledger.delete"
   | "employee_ledger.revert_to_pending"
+  | "employee_ledger.self_service_create"
   | "commission.tiers_update"
   | "commission.pdv_ranking_toggle"
   | "commission.payment"
@@ -124,6 +125,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "employee_ledger.confirm_paid": "Pagamento confirmado por selfie pelo colaborador",
   "employee_ledger.delete": "Lançamento de colaborador excluído",
   "employee_ledger.revert_to_pending": "Lançamento de colaborador revertido de pago para pendente",
+  "employee_ledger.self_service_create": "Lançamento feito pelo próprio colaborador com selfie",
   "commission.tiers_update": "Faixas de comissão progressiva alteradas",
   "commission.pdv_ranking_toggle": "Ranking de Comissão no PDV ligado/desligado",
   "commission.payment": "Comissão de venda paga",

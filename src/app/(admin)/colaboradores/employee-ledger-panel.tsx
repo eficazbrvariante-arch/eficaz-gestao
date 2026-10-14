@@ -61,6 +61,10 @@ export type EmployeeLedgerEntryRow = {
   createdAt: Date;
   /** Selfie do colaborador confirmando o recebimento — null quando foi o Admin/Gerente quem marcou como pago. */
   paidSelfieUrl: string | null;
+  /** Selfie do colaborador ao lançar pela tela Lançamentos — null quando lançado aqui. */
+  selfieUrl: string | null;
+  /** Adiantamento/Mercadoria quitado pelo desconto automático num Pagamento por horas. */
+  deductedInHourlyPayment: boolean;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -192,7 +196,12 @@ export function EmployeeLedgerPanel({
     setFeedback(undefined);
     startTransition(async () => {
       const result = await settleEmployeeLedgerEntryAction(id);
-      if (result?.error) setFeedback({ type: "error", message: result.error });
+      setFeedback(
+        result?.error
+          ? { type: "error", message: result.error }
+          : { type: "success", message: result?.success ?? "Lançamento quitado." }
+      );
+      router.refresh();
     });
   }
 
@@ -637,7 +646,19 @@ export function EmployeeLedgerPanel({
                   <td className="px-3 py-2 text-slate-600">
                     {EMPLOYEE_LEDGER_TYPE_LABELS[entry.type]}
                   </td>
-                  <td className="px-3 py-2 text-slate-500">{entry.description ?? "-"}</td>
+                  <td className="px-3 py-2 text-slate-500">
+                    {entry.description ?? "-"}
+                    {entry.selfieUrl && (
+                      <a
+                        href={entry.selfieUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-xs font-medium text-slate-500 hover:underline"
+                      >
+                        selfie do lançamento
+                      </a>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right font-medium text-slate-900">
                     {formatBRL(entry.amount)}
                   </td>
@@ -645,6 +666,9 @@ export function EmployeeLedgerPanel({
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[entry.status]}`}>
                       {STATUS_LABEL[entry.status]}
                     </span>
+                    {entry.status === "PAID" && entry.deductedInHourlyPayment && (
+                      <span className="ml-2 text-xs text-slate-500">descontado nas horas</span>
+                    )}
                     {entry.paidSelfieUrl && (
                       <a
                         href={entry.paidSelfieUrl}

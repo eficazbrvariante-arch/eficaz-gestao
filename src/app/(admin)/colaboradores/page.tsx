@@ -83,6 +83,8 @@ export default async function ColaboradoresPage() {
     status: entry.status,
     createdAt: entry.createdAt,
     paidSelfieUrl: entry.paidSelfieUrl,
+    selfieUrl: entry.selfieUrl,
+    deductedInHourlyPayment: entry.deductedInEntryId !== null,
   }));
 
   const totalPending = debtSummary.reduce((sum, row) => sum + row.totalPending, 0);

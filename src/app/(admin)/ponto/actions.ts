@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, getCurrentUser } from "@/lib/session";
 import { canCorrectAttendance, canWaiveAttendanceSelfie } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { todayRange } from "@/lib/format";
+import { formatBRL, todayRange } from "@/lib/format";
 import { recordAudit } from "@/modules/audit/audit-service";
 import {
   addMissingAttendanceEntry,
@@ -241,13 +241,17 @@ export async function confirmEmployeeLedgerEntryAction(input: ConfirmEmployeeLed
     action: "employee_ledger.confirm_paid",
     entity: "EmployeeLedgerEntry",
     entityId: result.id,
-    description: `${employee.name} confirmou o recebimento de um pagamento com selfie no Ponto.`,
+    description: `${employee.name} confirmou o recebimento de um pagamento com selfie no Ponto.${
+      result.deducted > 0
+        ? ` ${formatBRL(result.deducted)} de adiantamento/mercadoria descontado(s) automaticamente.`
+        : ""
+    }`,
   });
 
   revalidatePath("/colaboradores");
   revalidatePath(`/colaboradores/${parsed.data.userId}/horas`);
 
-  return { ok: true as const };
+  return { ok: true as const, deducted: result.deducted };
 }
 
 export type ActiveEmployeeOption = { id: string; name: string; role: string };

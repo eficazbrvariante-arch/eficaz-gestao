@@ -32,6 +32,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Caixa", href: "/caixa", available: true, visibleTo: canSell },
   { label: "Vendas", href: "/vendas", available: true, visibleTo: canSell },
   { label: "Troca", href: "/vendas/buscar", available: true, visibleTo: canSell },
+  // Sem `visibleTo`: o colaborador lança o que pegou de qualquer login da loja (igual ao Ponto).
+  { label: "Lançamentos", href: "/lancamentos", available: true },
   { label: "Produtos", href: "/produtos", available: true, visibleTo: canManageProducts },
   { label: "Estoque", href: "/estoque", available: true, visibleTo: canManageStock },
   { label: "Ponto", href: "/ponto", available: true },
@@ -139,6 +141,7 @@ export const NAV_ITEMS: NavItem[] = [
 const STOCK_COLLABORATOR_ITEMS: NavItem[] = [
   { label: "Estoque (fotos)", href: "/colaborador-estoque", available: true },
   { label: "Ponto", href: "/ponto", available: true },
+  { label: "Lançamentos", href: "/lancamentos", available: true },
 ];
 
 export function navItemsForRole(role: UserRole) {

@@ -61,8 +61,8 @@ export function HorasPanel({
   /** `true` quando o período pedido inteiro já está coberto — nada pendente. */
   fullyCovered: boolean;
   history: HourlyPaymentHistoryEntry[];
-  /** Adiantamento de salário pendente deste colaborador — só informativo,
-   *  descontado do "Líquido a receber" aqui, sem quitar o lançamento. */
+  /** Adiantamento de salário pendente deste colaborador — descontado do
+   *  "Líquido a receber" e quitado de fato ao marcar o pagamento como pago. */
   advancePending: number;
   /** Compra de mercadoria pendente deste colaborador — mesmo tratamento. */
   purchasePending: number;
@@ -116,7 +116,7 @@ export function HorasPanel({
       setFeedback(
         result?.error
           ? { type: "error", message: result.error }
-          : { type: "success", message: "Pagamento marcado como pago." }
+          : { type: "success", message: result?.success ?? "Pagamento marcado como pago." }
       );
       router.refresh();
     });
@@ -284,9 +284,9 @@ export function HorasPanel({
             Descontos pendentes (o que ela deve à loja)
           </p>
           <p className="mb-3 text-xs text-slate-500">
-            Só informativo — não muda o que é registrado ao clicar em &quot;Pagar horas&quot;.
-            Pra quitar de fato, marque o Adiantamento/Mercadoria como pago na tabela de
-            Lançamentos, em Colaboradores.
+            Descontados automaticamente quando o pagamento for marcado como &quot;Foi pago&quot; —
+            saem de pendente na hora. Se o pagamento for revertido ou excluído, voltam a ficar
+            pendentes.
           </p>
           <div className="space-y-1 text-sm">
             {advancePending > 0 && (

@@ -1473,6 +1473,15 @@ model EmployeeLedgerEntry {
   /// venda duas vezes é `CommissionPaymentSale.saleId @unique`, não o período.
   commissionPeriodFrom DateTime?
   commissionPeriodTo   DateTime?
+  /// Selfie tirada pelo próprio colaborador ao lançar, na tela Lançamentos,
+  /// algo que pegou da loja (adiantamento/mercadoria) — obrigatória lá; nula
+  /// em lançamento feito pelo Admin/Gerente em Colaboradores.
+  selfieUrl            String?
+  /// Pagamento por horas (HOURLY_PAYMENT) que descontou este
+  /// Adiantamento/Mercadoria — preenchido quando o pagamento vira PAGO (ver
+  /// `markEmployeeLedgerEntryPaid`). Reverter ou excluir o pagamento devolve
+  /// estes lançamentos pra pendente.
+  deductedInEntryId    String?
   createdById          String
   createdAt            DateTime             @default(now())
 
@@ -1480,10 +1489,13 @@ model EmployeeLedgerEntry {
   user            User                    @relation("EmployeeLedgerUser", fields: [userId], references: [id])
   createdBy       User                    @relation("EmployeeLedgerCreatedBy", fields: [createdById], references: [id])
   commissionSales CommissionPaymentSale[]
+  deductedIn      EmployeeLedgerEntry?    @relation("EmployeeLedgerDeduction", fields: [deductedInEntryId], references: [id], onDelete: SetNull)
+  deductions      EmployeeLedgerEntry[]   @relation("EmployeeLedgerDeduction")
 
   @@index([tenantId, userId, status])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, userId, type, hourlyPeriodTo])
+  @@index([deductedInEntryId])
   @@map("employee_ledger_entries")
 }
 

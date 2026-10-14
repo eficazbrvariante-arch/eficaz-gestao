@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import type {
-  CreateEmployeeLedgerEntryInput,
-  EmployeeLedgerTypeValue,
+import type { Prisma } from "@/generated/prisma/client";
+import {
+  EMPLOYEE_LEDGER_TYPE_LABELS,
+  type CreateEmployeeLedgerEntryInput,
+  type EmployeeLedgerTypeValue,
 } from "@/lib/validations/employee-ledger";
 
 function round2(value: number) {
@@ -12,7 +14,9 @@ export type EmployeeLedgerResult = { ok: true; id: string } | { ok: false; error
 
 export async function createEmployeeLedgerEntry(
   ctx: { tenantId: string; createdById: string },
-  input: CreateEmployeeLedgerEntryInput
+  input: CreateEmployeeLedgerEntryInput,
+  /** Selfie do próprio colaborador — só na tela Lançamentos (ver `createSelfServiceLedgerEntryAction`). */
+  selfieUrl?: string
 ): Promise<EmployeeLedgerResult> {
   const user = await prisma.user.findFirst({
     where: { id: input.userId, tenantId: ctx.tenantId },
@@ -27,6 +31,7 @@ export async function createEmployeeLedgerEntry(
       type: input.type,
       amount: round2(input.amount),
       description: input.description || null,
+      selfieUrl: selfieUrl ?? null,
       createdById: ctx.createdById,
     },
     select: { id: true },
@@ -35,23 +40,130 @@ export async function createEmployeeLedgerEntry(
   return { ok: true, id: created.id };
 }
 
+/**
+ * Desconta do Pagamento por horas `paymentId` (que acabou de virar PAGO) o
+ * Adiantamento/Mercadoria pendente do colaborador, do mais antigo pro mais
+ * novo, até o valor do pagamento — é o mesmo "Líquido a receber" mostrado na
+ * tela de Horas, agora aplicado de fato: o que foi descontado sai de
+ * pendente e fica ligado ao pagamento (`deductedInEntryId`), pra voltar a
+ * pendente se o pagamento for revertido/excluído (ver
+ * `revertHourlyPaymentDeductions`). Quando o último lançamento não cabe
+ * inteiro, ele é dividido: a parte descontada vira um lançamento PAGO à
+ * parte e o restante continua pendente pra ser descontado depois.
+ */
+async function applyHourlyPaymentDeductions(
+  tx: Prisma.TransactionClient,
+  payment: { id: string; tenantId: string; userId: string; amount: number },
+  settledAt: Date
+): Promise<number> {
+  const pending = await tx.employeeLedgerEntry.findMany({
+    where: {
+      tenantId: payment.tenantId,
+      userId: payment.userId,
+      status: "PENDING",
+      type: { in: ["ADVANCE", "PURCHASE"] },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let budget = round2(payment.amount);
+  let deducted = 0;
+  for (const entry of pending) {
+    if (budget <= 0) break;
+    const amount = Number(entry.amount);
+    if (amount <= budget) {
+      await tx.employeeLedgerEntry.update({
+        where: { id: entry.id },
+        data: { status: "PAID", settledAt, deductedInEntryId: payment.id },
+      });
+      budget = round2(budget - amount);
+      deducted = round2(deducted + amount);
+      continue;
+    }
+
+    await tx.employeeLedgerEntry.update({
+      where: { id: entry.id },
+      data: { amount: round2(amount - budget) },
+    });
+    await tx.employeeLedgerEntry.create({
+      data: {
+        tenantId: entry.tenantId,
+        userId: entry.userId,
+        type: entry.type,
+        amount: budget,
+        description: `${entry.description ?? EMPLOYEE_LEDGER_TYPE_LABELS[entry.type]} (parte descontada)`,
+        status: "PAID",
+        settledAt,
+        selfieUrl: entry.selfieUrl,
+        paidSelfieUrl: entry.paidSelfieUrl,
+        deductedInEntryId: payment.id,
+        createdById: entry.createdById,
+        createdAt: entry.createdAt,
+      },
+    });
+    deducted = round2(deducted + budget);
+    budget = 0;
+  }
+  return deducted;
+}
+
+/** Desfaz `applyHourlyPaymentDeductions`: o que o pagamento descontou volta a ficar pendente. */
+async function revertHourlyPaymentDeductions(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  paymentId: string
+) {
+  return tx.employeeLedgerEntry.updateMany({
+    where: { tenantId, deductedInEntryId: paymentId },
+    data: { status: "PENDING", settledAt: null, deductedInEntryId: null },
+  });
+}
+
+export type SettleEmployeeLedgerResult =
+  | { ok: true; id: string; deducted: number }
+  | { ok: false; error: string };
+
+/**
+ * Marca um lançamento como PAGO — num Pagamento por horas, também desconta
+ * na hora o Adiantamento/Mercadoria pendente (ver
+ * `applyHourlyPaymentDeductions`). `updateMany` com `status: "PENDING"` no
+ * filtro: dois cliques simultâneos não descontam duas vezes.
+ */
+async function markEmployeeLedgerEntryPaid(
+  entry: { id: string; tenantId: string; userId: string; type: EmployeeLedgerTypeValue; amount: number },
+  paidSelfieUrl?: string
+): Promise<number> {
+  const settledAt = new Date();
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.employeeLedgerEntry.updateMany({
+      where: { id: entry.id, tenantId: entry.tenantId, status: "PENDING" },
+      data: { status: "PAID", settledAt, ...(paidSelfieUrl ? { paidSelfieUrl } : {}) },
+    });
+    if (updated.count === 0 || entry.type !== "HOURLY_PAYMENT") return 0;
+    return applyHourlyPaymentDeductions(tx, entry, settledAt);
+  });
+}
+
 export async function settleEmployeeLedgerEntry(
   tenantId: string,
   id: string
-): Promise<EmployeeLedgerResult> {
+): Promise<SettleEmployeeLedgerResult> {
   const entry = await prisma.employeeLedgerEntry.findFirst({
     where: { id, tenantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, type: true, amount: true, userId: true },
   });
   if (!entry) return { ok: false, error: "Lançamento não encontrado." };
-  if (entry.status === "PAID") return { ok: true, id: entry.id };
+  if (entry.status === "PAID") return { ok: true, id: entry.id, deducted: 0 };
 
-  await prisma.employeeLedgerEntry.update({
-    where: { id },
-    data: { status: "PAID", settledAt: new Date() },
+  const deducted = await markEmployeeLedgerEntryPaid({
+    id: entry.id,
+    tenantId,
+    userId: entry.userId,
+    type: entry.type,
+    amount: Number(entry.amount),
   });
 
-  return { ok: true, id: entry.id };
+  return { ok: true, id: entry.id, deducted };
 }
 
 /**
@@ -77,9 +189,14 @@ export async function revertEmployeeLedgerEntryToPending(
     return { ok: false, error: "Pagamento de comissão não volta pra pendente — exclua o lançamento pra desfazer." };
   }
 
-  await prisma.employeeLedgerEntry.update({
-    where: { id },
-    data: { status: "PENDING", settledAt: null },
+  // Pagamento por horas revertido: o que ele tinha descontado volta junto pra
+  // pendente, senão a dívida sumia sem o dinheiro ter sido descontado.
+  await prisma.$transaction(async (tx) => {
+    await tx.employeeLedgerEntry.update({
+      where: { id },
+      data: { status: "PENDING", settledAt: null, deductedInEntryId: null },
+    });
+    if (entry.type === "HOURLY_PAYMENT") await revertHourlyPaymentDeductions(tx, tenantId, id);
   });
 
   return { ok: true, id: entry.id };
@@ -118,7 +235,7 @@ export async function revertPaidDebtEntriesToPending(
 
   await prisma.employeeLedgerEntry.updateMany({
     where: { tenantId, id: { in: entries.map((entry) => entry.id) } },
-    data: { status: "PENDING", settledAt: null },
+    data: { status: "PENDING", settledAt: null, deductedInEntryId: null },
   });
 
   const total = round2(entries.reduce((sum, entry) => sum + Number(entry.amount), 0));
@@ -145,7 +262,10 @@ export async function deleteEmployeeLedgerEntry(
   });
   if (!entry) return { ok: false, error: "Lançamento não encontrado." };
 
-  await prisma.employeeLedgerEntry.delete({ where: { id: entry.id } });
+  await prisma.$transaction(async (tx) => {
+    if (entry.type === "HOURLY_PAYMENT") await revertHourlyPaymentDeductions(tx, tenantId, entry.id);
+    await tx.employeeLedgerEntry.delete({ where: { id: entry.id } });
+  });
 
   return { ok: true, userName: entry.user.name, type: entry.type, amount: Number(entry.amount) };
 }
@@ -260,10 +380,10 @@ export async function confirmEmployeeLedgerEntryBySelfie(
   userId: string,
   entryId: string,
   selfieUrl: string
-): Promise<EmployeeLedgerResult> {
+): Promise<SettleEmployeeLedgerResult> {
   const entry = await prisma.employeeLedgerEntry.findFirst({
     where: { id: entryId, tenantId, userId },
-    select: { id: true, status: true, type: true },
+    select: { id: true, status: true, type: true, amount: true },
   });
   if (!entry) return { ok: false, error: "Lançamento não encontrado." };
   if (entry.type === "ADVANCE" || entry.type === "PURCHASE") {
@@ -272,12 +392,12 @@ export async function confirmEmployeeLedgerEntryBySelfie(
       error: "Adiantamento e mercadoria são dívida com a loja — não dá pra confirmar como recebido.",
     };
   }
-  if (entry.status === "PAID") return { ok: true, id: entry.id };
+  if (entry.status === "PAID") return { ok: true, id: entry.id, deducted: 0 };
 
-  await prisma.employeeLedgerEntry.update({
-    where: { id: entry.id },
-    data: { status: "PAID", settledAt: new Date(), paidSelfieUrl: selfieUrl },
-  });
+  const deducted = await markEmployeeLedgerEntryPaid(
+    { id: entry.id, tenantId, userId, type: entry.type, amount: Number(entry.amount) },
+    selfieUrl
+  );
 
-  return { ok: true, id: entry.id };
+  return { ok: true, id: entry.id, deducted };
 }

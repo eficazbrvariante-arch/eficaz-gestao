@@ -70,7 +70,11 @@ export function ClockWidget({
       }
       setConfirmingEntryId(undefined);
       setPendingPayments((current) => current.filter((entry) => entry.id !== entryId));
-      setPaymentSuccess("Recebimento confirmado.");
+      setPaymentSuccess(
+        result.deducted > 0
+          ? `Recebimento confirmado — ${formatBRL(result.deducted)} de adiantamento/mercadoria descontado(s).`
+          : "Recebimento confirmado."
+      );
     });
   }
 

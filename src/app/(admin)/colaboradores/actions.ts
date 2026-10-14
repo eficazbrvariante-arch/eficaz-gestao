@@ -77,7 +77,13 @@ export async function settleEmployeeLedgerEntryAction(id: string) {
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/colaboradores");
-  return { success: "Lançamento quitado." };
+  revalidatePath("/colaboradores/[userId]/horas", "page");
+  return {
+    success:
+      result.deducted > 0
+        ? `Lançamento quitado — ${formatBRL(result.deducted)} de adiantamento/mercadoria descontado(s) automaticamente.`
+        : "Lançamento quitado.",
+  };
 }
 
 /**

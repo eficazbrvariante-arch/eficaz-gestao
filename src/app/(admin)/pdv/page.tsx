@@ -9,6 +9,7 @@ import { formatDateTime, todayISO, periodRange, currentMonthStartISO } from "@/l
 import { getCommissionRanking } from "@/modules/employees/commission-service";
 import { getSellerTierProgressByUsers } from "@/modules/employees/commission-tier-service";
 import { RankingComissaoMatrix, type RankingComissaoRow } from "../colaboradores/ranking-comissao/ranking-comissao-matrix";
+import { listActiveEmployeesAction } from "../ponto/actions";
 import { PdvScreen } from "./pdv-screen";
 
 // Trava o zoom só nesta rota: o PDV é operado por toque rápido e um pinch
@@ -55,9 +56,10 @@ export default async function PdvPage() {
     );
   }
 
-  const [birthdayAlerts, pendingConvenioSignups] = await Promise.all([
+  const [birthdayAlerts, pendingConvenioSignups, ledgerEmployees] = await Promise.all([
     getBirthdayAlerts(user.tenantId),
     countPendingConvenioMembers(user.tenantId),
+    listActiveEmployeesAction(),
   ]);
 
   // Permanente por padrão — só pula a consulta quando o Admin desligou o
@@ -134,6 +136,7 @@ export default async function PdvPage() {
         autoPrintReceipt={tenant.autoPrintReceipt}
         creditoEficazSurchargePercent={Number(tenant.creditoEficazSurchargePercent)}
         pendingConvenioSignups={pendingConvenioSignups}
+        ledgerEmployees={ledgerEmployees}
       />
 
       {/* Rodapé, nunca a área operacional do topo — permanente por padrão,

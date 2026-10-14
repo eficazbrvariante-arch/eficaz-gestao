@@ -39,6 +39,22 @@ export const createEmployeeLedgerEntrySchema = z
   });
 export type CreateEmployeeLedgerEntryInput = z.infer<typeof createEmployeeLedgerEntrySchema>;
 
+/**
+ * Tipos que o próprio colaborador lança na tela Lançamentos — só o que ele
+ * pegou da loja (dívida dele), nunca o que a loja deve a ele.
+ */
+export const SELF_SERVICE_EMPLOYEE_LEDGER_TYPES = ["PURCHASE", "ADVANCE"] as const;
+
+/** Lançamento pelo próprio colaborador — selfie e descrição obrigatórias. */
+export const createSelfServiceLedgerEntrySchema = z.object({
+  userId: z.string().trim().min(1, "Selecione seu nome"),
+  type: z.enum(SELF_SERVICE_EMPLOYEE_LEDGER_TYPES),
+  amount: z.coerce.number().positive("Informe um valor maior que zero"),
+  description: z.string().trim().min(1, "Descreva o que você pegou"),
+  selfieUrl: z.string().trim().url("Selfie obrigatória"),
+});
+export type CreateSelfServiceLedgerEntryInput = z.infer<typeof createSelfServiceLedgerEntrySchema>;
+
 export const confirmEmployeeLedgerEntrySchema = z.object({
   entryId: z.string().trim().min(1),
   userId: z.string().trim().min(1),
