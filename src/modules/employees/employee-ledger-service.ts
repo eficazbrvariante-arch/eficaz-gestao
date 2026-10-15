@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
+import { formatBRL } from "@/lib/format";
 import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
+  EMPLOYEE_PURCHASE_DISCOUNT_PERCENT,
+  employeePurchaseNetAmount,
   type CreateEmployeeLedgerEntryInput,
   type EmployeeLedgerTypeValue,
 } from "@/lib/validations/employee-ledger";
@@ -12,32 +15,50 @@ function round2(value: number) {
 
 export type EmployeeLedgerResult = { ok: true; id: string } | { ok: false; error: string };
 
+export type CreateEmployeeLedgerResult =
+  | { ok: true; id: string; amount: number }
+  | { ok: false; error: string };
+
+/**
+ * Em Compra de mercadoria, `input.amount` é o preço cheio: grava o valor com
+ * o desconto de colaborador (ver `EMPLOYEE_PURCHASE_DISCOUNT_PERCENT`) e
+ * deixa o preço cheio na descrição, pra conferência no histórico.
+ */
 export async function createEmployeeLedgerEntry(
   ctx: { tenantId: string; createdById: string },
   input: CreateEmployeeLedgerEntryInput,
   /** Selfie do próprio colaborador — só na tela Lançamentos (ver `createSelfServiceLedgerEntryAction`). */
   selfieUrl?: string
-): Promise<EmployeeLedgerResult> {
+): Promise<CreateEmployeeLedgerResult> {
   const user = await prisma.user.findFirst({
     where: { id: input.userId, tenantId: ctx.tenantId },
     select: { id: true },
   });
   if (!user) return { ok: false, error: "Colaborador não encontrado." };
 
+  const isPurchase = input.type === "PURCHASE";
+  const amount = isPurchase ? employeePurchaseNetAmount(input.amount) : round2(input.amount);
+  const discountNote = `preço cheio ${formatBRL(round2(input.amount))}, ${EMPLOYEE_PURCHASE_DISCOUNT_PERCENT}% de desconto de colaborador`;
+  const description = isPurchase
+    ? input.description
+      ? `${input.description} (${discountNote})`
+      : `${discountNote.charAt(0).toUpperCase()}${discountNote.slice(1)}`
+    : input.description || null;
+
   const created = await prisma.employeeLedgerEntry.create({
     data: {
       tenantId: ctx.tenantId,
       userId: input.userId,
       type: input.type,
-      amount: round2(input.amount),
-      description: input.description || null,
+      amount,
+      description,
       selfieUrl: selfieUrl ?? null,
       createdById: ctx.createdById,
     },
     select: { id: true },
   });
 
-  return { ok: true, id: created.id };
+  return { ok: true, id: created.id, amount };
 }
 
 /**
@@ -343,6 +364,8 @@ export type PendingLedgerEntry = {
   amount: number;
   description: string | null;
   createdAt: Date;
+  /** Num Pagamento por horas, quanto de adiantamento/mercadoria pendente vai ser descontado se ele for confirmado agora. */
+  deductionPreview: number;
 };
 
 /**
@@ -363,7 +386,58 @@ export async function listPendingLedgerEntriesForEmployee(
     select: { id: true, type: true, amount: true, description: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
-  return entries.map((entry) => ({ ...entry, amount: Number(entry.amount) }));
+  const { advancePending, purchasePending } = await getEmployeeDeductionsPending(tenantId, userId);
+  const debt = round2(advancePending + purchasePending);
+  // Cada pagamento é confirmado sozinho: a prévia de cada um considera a
+  // dívida inteira (a tela recarrega a lista depois de cada confirmação).
+  return entries.map((entry) => {
+    const amount = Number(entry.amount);
+    return {
+      ...entry,
+      amount,
+      deductionPreview: entry.type === "HOURLY_PAYMENT" ? Math.min(amount, debt) : 0,
+    };
+  });
+}
+
+export type EmployeeOwingPurchases = {
+  userId: string;
+  name: string;
+  total: number;
+  count: number;
+  oldestAt: Date;
+};
+
+/**
+ * Colaboradores com Compra de mercadoria ainda pendente — aviso do
+ * Dashboard. Some quando a mercadoria é descontada num pagamento (vira
+ * PAGO); o lançamento continua no histórico de Colaboradores.
+ */
+export async function listEmployeesOwingPurchases(tenantId: string): Promise<EmployeeOwingPurchases[]> {
+  const groups = await prisma.employeeLedgerEntry.groupBy({
+    by: ["userId"],
+    where: { tenantId, status: "PENDING", type: "PURCHASE" },
+    _sum: { amount: true },
+    _count: true,
+    _min: { createdAt: true },
+  });
+  if (groups.length === 0) return [];
+
+  const users = await prisma.user.findMany({
+    where: { tenantId, id: { in: groups.map((group) => group.userId) } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(users.map((user) => [user.id, user.name]));
+
+  return groups
+    .map((group) => ({
+      userId: group.userId,
+      name: nameById.get(group.userId) ?? "Colaborador",
+      total: round2(Number(group._sum.amount ?? 0)),
+      count: group._count,
+      oldestAt: group._min.createdAt ?? new Date(),
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 /**

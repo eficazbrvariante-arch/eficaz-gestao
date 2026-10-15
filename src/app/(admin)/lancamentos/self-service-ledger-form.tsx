@@ -6,8 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { FormBanner } from "@/components/ui/form-banner";
 import { SelfieCaptureField } from "@/components/ui/selfie-capture-field";
+import { formatBRL } from "@/lib/format";
 import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
+  EMPLOYEE_PURCHASE_DISCOUNT_PERCENT,
+  employeePurchaseNetAmount,
   SELF_SERVICE_EMPLOYEE_LEDGER_TYPES,
 } from "@/lib/validations/employee-ledger";
 import type { ActiveEmployeeOption } from "../ponto/actions";
@@ -88,7 +91,9 @@ export function SelfServiceLedgerForm({ employees }: { employees: ActiveEmployee
           </Select>
         </div>
         <div>
-          <Label htmlFor="lancamento-valor">Valor (R$)</Label>
+          <Label htmlFor="lancamento-valor">
+            {type === "PURCHASE" ? "Preço do produto (R$)" : "Valor (R$)"}
+          </Label>
           <Input
             id="lancamento-valor"
             type="number"
@@ -99,6 +104,15 @@ export function SelfServiceLedgerForm({ employees }: { employees: ActiveEmployee
             onChange={(e) => setAmount(e.target.value)}
             disabled={isPending}
           />
+          {type === "PURCHASE" && Number(amount) > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              Com {EMPLOYEE_PURCHASE_DISCOUNT_PERCENT}% de desconto de colaborador, você paga{" "}
+              <span className="font-semibold text-slate-700">
+                {formatBRL(employeePurchaseNetAmount(Number(amount)))}
+              </span>
+              .
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="lancamento-descricao">Descrição</Label>

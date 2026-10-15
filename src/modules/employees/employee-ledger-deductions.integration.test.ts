@@ -10,6 +10,8 @@ import {
   createEmployeeLedgerEntry,
   deleteEmployeeLedgerEntry,
   getEmployeeDeductionsPending,
+  listEmployeesOwingPurchases,
+  listPendingLedgerEntriesForEmployee,
   revertEmployeeLedgerEntryToPending,
   settleEmployeeLedgerEntry,
 } from "@/modules/employees/employee-ledger-service";
@@ -20,10 +22,16 @@ let tenantId: string;
 let adminId: string;
 let employeeId: string;
 
+/** `amount` é o valor que fica gravado — na mercadoria, passa o preço cheio equivalente (antes dos 20%). */
 async function addEntry(type: "ADVANCE" | "PURCHASE" | "HOURLY_PAYMENT", amount: number, selfieUrl?: string) {
   const result = await createEmployeeLedgerEntry(
     { tenantId, createdById: adminId },
-    { userId: employeeId, type, amount, description: `${type} ${amount}` },
+    {
+      userId: employeeId,
+      type,
+      amount: type === "PURCHASE" ? amount / 0.8 : amount,
+      description: `${type} ${amount}`,
+    },
     selfieUrl
   );
   if (!result.ok) throw new Error(result.error);
@@ -157,5 +165,53 @@ describe("desconto automático no pagamento por horas", () => {
     const entry = await prisma.employeeLedgerEntry.findUniqueOrThrow({ where: { id } });
     expect(entry.selfieUrl).toBe("https://example.com/lancamento.jpg");
     expect(entry.status).toBe("PENDING");
+  });
+});
+
+describe("desconto de colaborador na mercadoria", () => {
+  it("grava 80% do preço cheio e guarda o preço cheio na descrição", async () => {
+    const result = await createEmployeeLedgerEntry(
+      { tenantId, createdById: adminId },
+      { userId: employeeId, type: "PURCHASE", amount: 49.9, description: "Capinha" }
+    );
+    expect(result).toMatchObject({ ok: true, amount: 39.92 });
+    if (!result.ok) return;
+    const entry = await prisma.employeeLedgerEntry.findUniqueOrThrow({ where: { id: result.id } });
+    expect(Number(entry.amount)).toBe(39.92);
+    expect(entry.description).toContain("Capinha");
+    expect(entry.description).toContain("20% de desconto de colaborador");
+  });
+
+  it("não aplica desconto em adiantamento", async () => {
+    const result = await createEmployeeLedgerEntry(
+      { tenantId, createdById: adminId },
+      { userId: employeeId, type: "ADVANCE", amount: 100, description: "Vale" }
+    );
+    expect(result).toMatchObject({ ok: true, amount: 100 });
+  });
+});
+
+describe("prévia do desconto no Ponto e aviso no Dashboard", () => {
+  it("mostra quanto vai ser descontado do pagamento antes de confirmar", async () => {
+    await addEntry("ADVANCE", 60);
+    await addEntry("PURCHASE", 40);
+    await addEntry("HOURLY_PAYMENT", 70);
+
+    const [payment] = await listPendingLedgerEntriesForEmployee(tenantId, employeeId);
+    expect(payment).toMatchObject({ type: "HOURLY_PAYMENT", amount: 70, deductionPreview: 70 });
+  });
+
+  it("lista quem deve mercadoria até ela ser descontada", async () => {
+    await addEntry("PURCHASE", 40);
+    await addEntry("PURCHASE", 10);
+    await addEntry("ADVANCE", 30);
+
+    expect(await listEmployeesOwingPurchases(tenantId)).toEqual([
+      expect.objectContaining({ userId: employeeId, total: 50, count: 2 }),
+    ]);
+
+    const paymentId = await addEntry("HOURLY_PAYMENT", 500);
+    await settleEmployeeLedgerEntry(tenantId, paymentId);
+    expect(await listEmployeesOwingPurchases(tenantId)).toEqual([]);
   });
 });

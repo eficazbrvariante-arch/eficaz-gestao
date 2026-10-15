@@ -70,6 +70,10 @@ export function ClockWidget({
       }
       setConfirmingEntryId(undefined);
       setPendingPayments((current) => current.filter((entry) => entry.id !== entryId));
+      // Recarrega: a dívida já descontada muda a prévia dos outros pagamentos pendentes.
+      getPendingLedgerEntriesAction(selectedId).then((pending) => {
+        if (Array.isArray(pending)) setPendingPayments(pending);
+      });
       setPaymentSuccess(
         result.deducted > 0
           ? `Recebimento confirmado — ${formatBRL(result.deducted)} de adiantamento/mercadoria descontado(s).`
@@ -254,6 +258,18 @@ export function ClockWidget({
                 </div>
                 {entry.description && (
                   <p className="mt-1 text-xs text-slate-500">{entry.description}</p>
+                )}
+                {entry.deductionPreview > 0 && (
+                  <div className="mt-2 space-y-0.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs">
+                    <p className="flex justify-between text-slate-600">
+                      <span>Desconto de adiantamento/mercadoria</span>
+                      <span>-{formatBRL(entry.deductionPreview)}</span>
+                    </p>
+                    <p className="flex justify-between font-semibold text-slate-900">
+                      <span>Líquido a receber</span>
+                      <span>{formatBRL(entry.amount - entry.deductionPreview)}</span>
+                    </p>
+                  </div>
                 )}
                 {confirmingEntryId !== entry.id ? (
                   <Button

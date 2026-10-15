@@ -3343,3 +3343,34 @@ Os dados da Ana não foram alterados: cabe ao dono conferir no histórico e desf
 - **Commits:** nenhum — continua tudo pendente na branch `feat/colaborador-lancamentos`.
 - **Pendências:** a tela `/lancamentos` no menu lateral continua existindo; o valor exibido na
   confirmação por selfie do Ponto ainda é o bruto.
+
+## 2026-10-14 — Publicação dos lançamentos do colaborador
+
+- **Publicação**: só os lançamentos (desconto automático, tela "Lançamentos" e card no PDV).
+  O commit foi reaplicado sobre a `main` na branch `feat/lancamentos-publicar` (`da7cf94`),
+  juntado na `main` com `--ff-only` e publicado. O desconto à vista da OS (`11d2ff8`) ficou
+  de fora, a pedido.
+- **Testes antes do envio**: typecheck, lint (mesmos 9 avisos), `npm test` 173/173,
+  `test:integration` 152/152, `npm run build` completo.
+- **Deploy**: migration de duas colunas opcionais aplicada no deploy. `check:deploy` ok, sem
+  erros recentes nos logs.
+- **Pendências**: desconto à vista da OS continua em `feat/os-desconto-a-vista`, sem publicar;
+  na confirmação por selfie do Ponto, o valor exibido ainda é o bruto.
+
+## 2026-10-15 — Desconto de 20% na mercadoria, aviso no Dashboard e líquido no Ponto
+
+- **Branch**: `feat/ponto-valor-liquido` (a partir da `main`). Sem migration. Sem commit ainda.
+- **Desconto de colaborador**: toda Compra de mercadoria (PDV, tela Lançamentos e Colaboradores)
+  é informada pelo preço cheio e gravada com 20% de desconto; o preço cheio fica na descrição.
+  Os formulários mostram o valor com desconto antes de registrar. Constante
+  `EMPLOYEE_PURCHASE_DISCOUNT_PERCENT` em `src/lib/validations/employee-ledger.ts`. Não altera
+  lançamentos já existentes.
+- **Dashboard**: aviso "Colaboradores devendo mercadoria" (Admin/Gerente) com nome, total e
+  desde quando. Some quando a mercadoria é descontada num pagamento; o lançamento continua no
+  histórico de Colaboradores como "descontado nas horas".
+- **Ponto**: o pagamento pendente mostra o desconto de adiantamento/mercadoria e o líquido a
+  receber antes da selfie; a lista é recarregada depois de cada confirmação.
+- **Testes**: typecheck, lint (mesmos 9 avisos), `build:app`, `npm test` 173/173; integração
+  dos lançamentos 11/11 (4 novos). Na suíte completa de integração, 4 testes do Crédito Eficaz
+  falharam e passaram 59/59 rodando sozinhos — instabilidade de execução simultânea no banco dev,
+  sem relação com esta mudança. Não abri no navegador por falta de login local.

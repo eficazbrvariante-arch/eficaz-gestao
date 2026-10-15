@@ -64,7 +64,12 @@ export async function createEmployeeLedgerEntryAction(input: CreateEmployeeLedge
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/colaboradores");
-  return { success: "Lançamento registrado." };
+  return {
+    success:
+      parsed.data.type === "PURCHASE"
+        ? `Lançamento registrado — ${formatBRL(result.amount)} já com o desconto de colaborador.`
+        : "Lançamento registrado.",
+  };
 }
 
 export async function settleEmployeeLedgerEntryAction(id: string) {

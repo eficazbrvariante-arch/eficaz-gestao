@@ -13,6 +13,8 @@ import { FormBanner } from "@/components/ui/form-banner";
 import { EmptyState } from "@/components/admin/stat-card";
 import {
   EMPLOYEE_LEDGER_TYPE_LABELS,
+  EMPLOYEE_PURCHASE_DISCOUNT_PERCENT,
+  employeePurchaseNetAmount,
   MANUAL_EMPLOYEE_LEDGER_TYPES,
   type EmployeeLedgerTypeValue,
   type ManualEmployeeLedgerTypeValue,
@@ -188,7 +190,7 @@ export function EmployeeLedgerPanel({
       setType("ADVANCE");
       setAmount("");
       setDescription("");
-      setFeedback({ type: "success", message: "Lançamento registrado." });
+      setFeedback({ type: "success", message: result?.success ?? "Lançamento registrado." });
     });
   }
 
@@ -397,7 +399,7 @@ export function EmployeeLedgerPanel({
             </Select>
           </div>
           <div>
-            <Label htmlFor="amount">Valor (R$)</Label>
+            <Label htmlFor="amount">{type === "PURCHASE" ? "Preço do produto (R$)" : "Valor (R$)"}</Label>
             <Input
               id="amount"
               type="number"
@@ -406,6 +408,14 @@ export function EmployeeLedgerPanel({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
+            {type === "PURCHASE" && Number(amount) > 0 && (
+              <p className="mt-1 text-xs text-slate-500">
+                Com {EMPLOYEE_PURCHASE_DISCOUNT_PERCENT}% de desconto de colaborador:{" "}
+                <span className="font-semibold text-slate-700">
+                  {formatBRL(employeePurchaseNetAmount(Number(amount)))}
+                </span>
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="description">

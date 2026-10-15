@@ -53,10 +53,10 @@ export async function createSelfServiceLedgerEntryAction(
     action: "employee_ledger.self_service_create",
     entity: "EmployeeLedgerEntry",
     entityId: result.id,
-    description: `${employee.name} lançou ${EMPLOYEE_LEDGER_TYPE_LABELS[parsed.data.type]} de ${formatBRL(parsed.data.amount)} com selfie (${parsed.data.description}).`,
+    description: `${employee.name} lançou ${EMPLOYEE_LEDGER_TYPE_LABELS[parsed.data.type]} de ${formatBRL(result.amount)} com selfie (${parsed.data.description}).`,
   });
 
   revalidatePath("/colaboradores");
   revalidatePath(`/colaboradores/${employee.id}/horas`);
-  return { success: `Lançamento de ${formatBRL(parsed.data.amount)} registrado para ${employee.name}.` };
+  return { success: `Lançamento de ${formatBRL(result.amount)} registrado para ${employee.name}.` };
 }

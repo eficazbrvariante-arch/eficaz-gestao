@@ -2,10 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { formatBRL, todayRange } from "@/lib/format";
-import { canManageStock, canViewDashboard, canViewReports } from "@/lib/permissions";
+import { formatBRL, formatDate, todayRange } from "@/lib/format";
+import { canManageEmployeeLedger, canManageStock, canViewDashboard, canViewReports } from "@/lib/permissions";
 import { needsRestock, stockStatusLabel } from "@/modules/products/stock-status";
 import { getOpenCashRegister } from "@/modules/cash/cash-service";
+import { listEmployeesOwingPurchases } from "@/modules/employees/employee-ledger-service";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -13,8 +14,9 @@ export default async function DashboardPage() {
 
   const { start, end } = todayRange();
   const showFinancials = canViewReports(user.role);
+  const showEmployeeDebts = canManageEmployeeLedger(user.role);
 
-  const [totalProducts, activeProducts, todayTotals, topItems, register] = await Promise.all([
+  const [totalProducts, activeProducts, todayTotals, topItems, register, employeesOwing] = await Promise.all([
     prisma.product.count({ where: { tenantId: user.tenantId } }),
     prisma.product.findMany({
       where: { tenantId: user.tenantId, active: true },
@@ -37,6 +39,7 @@ export default async function DashboardPage() {
       take: 5,
     }),
     getOpenCashRegister(user.tenantId),
+    showEmployeeDebts ? listEmployeesOwingPurchases(user.tenantId) : Promise.resolve([]),
   ]);
 
   const lowStock = activeProducts.filter(needsRestock);
@@ -84,6 +87,35 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Fica enquanto houver mercadoria pendente; some quando ela é descontada
+          no pagamento e continua no histórico de Colaboradores. */}
+      {employeesOwing.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-amber-900">
+              Colaboradores devendo mercadoria ({employeesOwing.length})
+            </h2>
+            <Link href="/colaboradores" className="text-sm font-medium text-amber-900 underline">
+              Ver em Colaboradores
+            </Link>
+          </div>
+          <ul className="space-y-1 text-sm text-amber-900">
+            {employeesOwing.map((employee) => (
+              <li key={employee.userId} className="flex flex-wrap justify-between gap-x-3">
+                <span>
+                  {employee.name}{" "}
+                  <span className="text-xs text-amber-800">
+                    · {employee.count} lançamento{employee.count === 1 ? "" : "s"} desde{" "}
+                    {formatDate(employee.oldestAt)}
+                  </span>
+                </span>
+                <span className="font-semibold">{formatBRL(employee.total)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

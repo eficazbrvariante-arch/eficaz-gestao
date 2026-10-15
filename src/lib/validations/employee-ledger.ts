@@ -26,6 +26,17 @@ export const EMPLOYEE_LEDGER_TYPE_LABELS: Record<EmployeeLedgerTypeValue, string
   COMMISSION_PAYMENT: "Pagamento de comissão",
 };
 
+/**
+ * Desconto de colaborador em mercadoria: quem lança (o próprio colaborador ou
+ * Admin/Gerente) informa o preço cheio do produto, e o lançamento grava o
+ * valor já com o desconto — é o que vai ser descontado no pagamento.
+ */
+export const EMPLOYEE_PURCHASE_DISCOUNT_PERCENT = 20;
+
+export function employeePurchaseNetAmount(fullPrice: number) {
+  return Math.round(fullPrice * (100 - EMPLOYEE_PURCHASE_DISCOUNT_PERCENT)) / 100;
+}
+
 export const createEmployeeLedgerEntrySchema = z
   .object({
     userId: z.string().trim().min(1, "Selecione o colaborador"),
